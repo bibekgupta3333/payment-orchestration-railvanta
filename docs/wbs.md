@@ -86,7 +86,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 2.2 | Routing and mock execution | 2.1 | M2 | Not started |
 | 2.3 | Atomic ledger posting | 2.2 | M2 | Not started |
 | 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Not started |
-| 3.1 | Payment-facing screens | 1.4, 2.1 | M3 | Not started |
+| 3.1 | Payment-facing screens | 1.4, 2.1 | M3 | Tasks done; terminal-state, slow-API and CI gates pending (2026-10-31) |
 | 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Not started |
 | 4.1 | Ledger explorer | 2.3, 3.1 | M4 | Not started |
 | 4.2 | Reconciliation | 2.4, 4.1 | M4 | Not started |
@@ -407,40 +407,42 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 1.4, 2.1 · **Deliverable:** Landing page, overview, payment explorer and payment detail wired to the real sandbox API.
 
 **Tasks**
-- [ ] 3.1.1 Build the public landing page in `frontend/app/page.tsx` (hero, architecture strip, capability cards, copyable API example, "Sandbox only / no real funds" notice); mark planned capabilities as planned.
-- [ ] 3.1.2 Add typed payment queries in `frontend/lib/hooks/payments.ts` (`usePayments`, `usePayment`, `usePaymentAttempts`) with cache keys that include the workspace and environment; set a bounded retry for safe reads and no retry for 401/403/404/422.
-- [ ] 3.1.3 Implement `frontend/lib/money/` helpers that format decimal-string minor units using exact BigInt arithmetic and a per-currency exponent table, plus unit tests in `frontend/tests/components/money.test.ts`.
-- [ ] 3.1.4 Build the overview at `frontend/app/dashboard/page.tsx` from `GET /v1/dashboard/summary` and `/v1/dashboard/payment-volume`: metric cards for volume per currency (no cross-currency totals), a success rate, and a p95 card that shows "No observations" when data is missing.
-- [ ] 3.1.5 Add a payment-volume chart in `frontend/components/charts/PaymentVolumeChart.tsx` (Recharts) with a text summary and a data table alternative; show the data source, time range and last-updated time.
-- [ ] 3.1.6 Add a "Needs attention" banner on the overview that lists `unknown` payments with links to their detail pages; it offers no retry action.
-- [ ] 3.1.7 Build the payment list at `frontend/app/dashboard/payments/page.tsx`: search by payment ID or `merchant_reference`, filter by status/rail/provider/date/amount, sort, and paginate with a cursor. All of these live in URL query parameters.
-- [ ] 3.1.8 Build a responsive payment table in `frontend/components/payments/PaymentTable.tsx`: a labelled scroll region or summary cards at 375px, tabular numerals, and status labels that pair text with an icon.
-- [ ] 3.1.9 Build the create-payment dialog in `frontend/components/payments/CreatePaymentDialog.tsx` (React Hook Form + Zod): amount, currency, rail, existing payment-method reference, optional `merchant_reference`, and inline field errors; it never collects card or bank data.
-- [ ] 3.1.10 Implement retry-safe submission in `frontend/lib/hooks/useCreatePayment.ts`: one idempotency key per payment intent, kept across transport retries and replaced when the intent is edited, with mutation `retry: false`; the button is disabled while pending, and no success is shown before the API confirms it.
-- [ ] 3.1.11 Build payment detail at `frontend/app/dashboard/payments/[id]/page.tsx` with Summary, Attempts, Events and Journal tabs, a state-history timeline, the masked idempotency key and the correlation ID.
-- [ ] 3.1.12 Poll non-terminal payments (`created`, `processing`, `unknown`) with a manual refresh and stop at terminal states; show `unknown` as "Outcome unknown — checking status" with an explanation of reconciliation.
-- [ ] 3.1.13 Add loading skeletons, empty states, filtered-empty states, read-error states (with request ID and Retry) and stale-data states to the overview, list and detail pages.
+- [x] 3.1.1 Build the public landing page in `frontend/app/page.tsx` (hero, architecture strip, capability cards, copyable API example, "Sandbox only / no real funds" notice); mark planned capabilities as planned.
+- [x] 3.1.2 Add typed payment queries in `frontend/lib/hooks/payments.ts` (`usePayments`, `usePayment`, `usePaymentAttempts`) with cache keys that include the workspace and environment; set a bounded retry for safe reads and no retry for 401/403/404/422.
+- [x] 3.1.3 Implement `frontend/lib/money/` helpers that format decimal-string minor units using exact BigInt arithmetic and a per-currency exponent table, plus unit tests in `frontend/tests/components/money.test.ts`.
+- [x] 3.1.4 Build the overview at `frontend/app/dashboard/page.tsx` from `GET /v1/dashboard/summary` and `/v1/dashboard/payment-volume`: metric cards for volume per currency (no cross-currency totals), a success rate, and a p95 card that shows "No observations" when data is missing.
+- [x] 3.1.5 Add a payment-volume chart in `frontend/components/charts/PaymentVolumeChart.tsx` (Recharts) with a text summary and a data table alternative; show the data source, time range and last-updated time.
+- [x] 3.1.6 Add a "Needs attention" banner on the overview that lists `unknown` payments with links to their detail pages; it offers no retry action.
+- [x] 3.1.7 Build the payment list at `frontend/app/dashboard/payments/page.tsx`: search by payment ID or `merchant_reference`, filter by status/rail/provider/date/amount, sort, and paginate with a cursor. All of these live in URL query parameters.
+- [x] 3.1.8 Build a responsive payment table in `frontend/components/payments/PaymentTable.tsx`: a labelled scroll region or summary cards at 375px, tabular numerals, and status labels that pair text with an icon.
+- [x] 3.1.9 Build the create-payment dialog in `frontend/components/payments/CreatePaymentDialog.tsx` (React Hook Form + Zod): amount, currency, rail, existing payment-method reference, optional `merchant_reference`, and inline field errors; it never collects card or bank data.
+- [x] 3.1.10 Implement retry-safe submission in `frontend/lib/hooks/useCreatePayment.ts`: one idempotency key per payment intent, kept across transport retries and replaced when the intent is edited, with mutation `retry: false`; the button is disabled while pending, and no success is shown before the API confirms it.
+- [x] 3.1.11 Build payment detail at `frontend/app/dashboard/payments/[id]/page.tsx` with Summary, Attempts, Events and Journal tabs, a state-history timeline, the masked idempotency key and the correlation ID.
+- [x] 3.1.12 Poll non-terminal payments (`created`, `processing`, `unknown`) with a manual refresh and stop at terminal states; show `unknown` as "Outcome unknown — checking status" with an explanation of reconciliation.
+- [x] 3.1.13 Add loading skeletons, empty states, filtered-empty states, read-error states (with request ID and Retry) and stale-data states to the overview, list and detail pages.
 
 **Acceptance gate**
-- [ ] A double-click or a resend after a network timeout creates exactly one payment, and the request log shows the same `Idempotency-Key`.
-- [ ] Amounts above 2^53 round-trip and display exactly; no money value passes through a floating-point `Number`.
+- [x] A double-click or a resend after a network timeout creates exactly one payment, and the request log shows the same `Idempotency-Key`.
+- [x] Amounts above 2^53 round-trip and display exactly; no money value passes through a floating-point `Number`.
 - [ ] Before the API confirms a terminal state, no payment shows as succeeded.
-- [ ] An `unknown` payment shows no retry or alternate-provider action on any screen.
-- [ ] Filters, search (including `merchant_reference`), sort and cursor survive a page refresh and back navigation.
-- [ ] Overview volumes are grouped by currency, and simulated or seeded series are labelled as such.
+- [x] An `unknown` payment shows no retry or alternate-provider action on any screen.
+- [x] Filters, search (including `merchant_reference`), sort and cursor survive a page refresh and back navigation.
+- [x] Overview volumes are grouped by currency, and simulated or seeded series are labelled as such.
 - [ ] Each screen renders correct loading, empty, error and stale states when the API is slow, returns nothing, returns a 5xx, or is offline.
-- [ ] At 375px and 1440px there is no horizontal page scroll, and every action can be reached by keyboard.
-- [ ] axe reports no serious or critical violations; dialogs trap focus, close with Escape and return focus to their trigger.
+- [x] At 375px and 1440px there is no horizontal page scroll, and every action can be reached by keyboard.
+- [x] axe reports no serious or critical violations; dialogs trap focus, close with Escape and return focus to their trigger.
 - [ ] The Vitest and Playwright suites pass in CI against the real mock-backed API.
+
+**Verification notes (2026-10-31, worktree branch):** `pnpm check` exit 0 and `pnpm test:e2e` 34 passed. Still open: (1) no payment reaches a terminal state without the 2.2 dispatcher, so "before the API confirms a terminal state" and "then shows its real final state" are verified only for `created` (the spec asserts the detail page mirrors whatever the API reports and shows no success otherwise); (2) the `unknown` checks use an offline database fixture (`/mark-unknown` in the E2E harness) plus a mocked component test, because no code path produces `unknown` yet; (3) loading/error/stale states are verified for an offline API and a 503 (component test), not for a deliberately slow API; (4) CI has not run. The Journal tab shows "Journal appears once posting is available" while `GET /v1/ledger/transactions` returns 501.
 
 **E2E test** — `e2e/ui/payments.spec.ts`
 - [ ] Creating a sandbox payment in the dialog shows it as pending, then shows its real final state on the detail page (never an optimistic success)
-- [ ] Double-clicking submit, and reloading while pending, still produce one payment because the idempotency key is preserved
-- [ ] An `unknown` payment shows "Outcome unknown" with an explanation and no retry button
-- [ ] List filters, sorting and cursor pagination survive reload and back navigation (state lives in the URL)
-- [ ] With the API stopped, pages show an error with the request ID and a Retry action, and no stale data presented as current
-- [ ] Overview metrics show their source and never sum different currencies
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] Double-clicking submit, and reloading while pending, still produce one payment because the idempotency key is preserved
+- [x] An `unknown` payment shows "Outcome unknown" with an explanation and no retry button
+- [x] List filters, sorting and cursor pagination survive reload and back navigation (state lives in the URL)
+- [x] With the API stopped, pages show an error with the request ID and a Retry action, and no stale data presented as current
+- [x] Overview metrics show their source and never sum different currencies
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 3.2 Routing and simulation UI — frontend + backend
 **Depends on:** 2.2, 3.1 · **Deliverable:** Routing inspection and evaluation, provider diagnostics, and a backend-driven simulator with persisted runs.

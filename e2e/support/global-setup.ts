@@ -200,9 +200,33 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     }
     try {
       let body: Record<string, unknown> = { ok: true };
+      const url = new URL(request.url ?? "/", "http://control.invalid");
       if (request.url === "/restart" || request.url === "/kill") {
         await stop(api, request.url === "/kill");
         await startApi();
+      } else if (request.url === "/stop") {
+        await stop(api);
+      } else if (request.url === "/start") {
+        if (!api || api.exitCode !== null || api.signalCode !== null)
+          await startApi();
+      } else if (url.pathname === "/mark-unknown") {
+        // Offline fixture: until the dispatcher can produce an unknown outcome,
+        // move one stopped-database payment through processing to unknown
+        // with append-only audit rows, then restart the API.
+        const payment = url.searchParams.get("payment") ?? "";
+        if (!/^[0-9a-f-]{36}$/.test(payment))
+          throw new Error("A payment UUID is required");
+        await stop(api);
+        try {
+          sqlite(
+            `import sqlite3,sys,time; d=sqlite3.connect(sys.argv[1]); d.execute("PRAGMA foreign_keys=ON"); p=sys.argv[2]; w=d.execute("SELECT workspace_id, version FROM payments WHERE id=? AND status='created'",(p,)).fetchone(); assert w, "payment must be created"; t=int(time.time()*1000); d.execute("UPDATE payments SET status='unknown', version=?, updated_at=? WHERE id=?",(w[1]+2,t,p)); d.execute("INSERT INTO payment_state_transitions(id,workspace_id,payment_id,from_status,to_status,reason,actor_reference,created_at) VALUES(?,?,?,?,?,?,?,?)",(p[:-4]+"aaa1",w[0],p,"created","processing","e2e fixture: dispatched","system:e2e-fixture",t)); d.execute("INSERT INTO payment_state_transitions(id,workspace_id,payment_id,from_status,to_status,reason,actor_reference,created_at) VALUES(?,?,?,?,?,?,?,?)",(p[:-4]+"aaa2",w[0],p,"processing","unknown","e2e fixture: provider timeout after submission","system:e2e-fixture",t+1)); d.execute("UPDATE outbox_events SET status='delivered', delivered_at=? WHERE payment_id=? AND status='pending'",(t,p)); d.commit(); d.close()`.replace(
+              "sys.argv[2]",
+              JSON.stringify(payment),
+            ),
+          );
+        } finally {
+          await startApi();
+        }
       } else if (request.url === "/durability-fixture") {
         await stop(api);
         try {

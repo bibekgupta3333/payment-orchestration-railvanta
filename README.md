@@ -71,9 +71,11 @@ The default API has no automatic public credentials or login screen. Sessions us
 
 For local fixtures, set `DEMO_MODE=true` with a literal loopback `HTTP_ADDR` and provide all three `DEMO_OPERATOR_KEY`, `DEMO_READER_KEY`, and `DEMO_OTHER_WORKSPACE_KEY` values. Give each a distinct prefix and a freshly generated random secret of at least 24 characters. Optional `DEMO_SESSION_TOKEN` and `DEMO_CSRF_TOKEN` must be supplied together. Generate secrets locally, keep them out of Git, and reuse them across restarts; seeding never resets revoked or existing keys.
 
-The E2E harness generates these credentials in temporary storage automatically. Ordinary API startup does not seed demo records. Secure cookies require HTTPS for normal browser use; do not remove the Secure flag to make local sessions work. The shell is usable without authentication because its financial controls remain unavailable.
+The E2E harness generates these credentials in temporary storage automatically. Ordinary API startup does not seed demo records. Secure cookies require HTTPS for normal browser use (Chromium also treats loopback HTTP as secure, which the E2E harness relies on); do not remove the Secure flag to make local sessions work. Without a session the shell still renders, and the overview and payment pages show an error with the request ID instead of data.
 
-Implemented reads include `/v1/workspace`, `/v1/workspaces/{id}`, `/v1/payment-methods`, `/v1/payment-methods/{id}`, and `/v1/session`. Operator API keys can revoke themselves through `DELETE /v1/api-keys/current`. `POST /v1/payments` validates the intent and authority but returns `501` for valid requests until M2 implements acceptance. No charge is executed by M1.
+The dashboard sends `X-CSRF-Token` on writes from a readable `railvanta_csrf` cookie; the session cookie itself stays HttpOnly. Whatever establishes a browser session must set both (the E2E helper `e2e/support/browser.ts` does this for the seeded demo session).
+
+Implemented reads include `/v1/workspace`, `/v1/workspaces/{id}`, `/v1/payment-methods`, `/v1/payment-methods/{id}`, and `/v1/session`. Operator API keys can revoke themselves through `DELETE /v1/api-keys/current`. `POST /v1/payments` accepts payments idempotently (WBS 2.1). `GET /v1/payments` supports search (`q`: exact ID or merchant reference), status, currency, rail, provider, date and amount filters, and `sort=created_desc|created_asc` with sort-bound cursors. WBS 3.1 adds `GET /v1/payments/{id}/history` (state transitions, outbox events, masked idempotency key) and `GET /v1/dashboard/summary` and `/v1/dashboard/payment-volume` (`window=24h|7d|30d`; exact per-currency decimal-string volumes; `null` success rate and p95 without observations).
 
 ## Checks and tests
 

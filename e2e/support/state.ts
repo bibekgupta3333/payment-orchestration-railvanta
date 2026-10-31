@@ -48,6 +48,20 @@ export async function killApi(): Promise<void> {
   await control("kill");
 }
 
+/** Stops the API without restarting it; always pair with startApi(). */
+export async function stopApi(): Promise<void> {
+  await control("stop");
+}
+
+export async function startApi(): Promise<void> {
+  await control("start");
+}
+
+/** Offline fixture: moves a created payment to unknown (restarts the API). */
+export async function markPaymentUnknown(paymentId: string): Promise<void> {
+  await control(`mark-unknown?payment=${encodeURIComponent(paymentId)}`);
+}
+
 export function rejectProduction(): Promise<Record<string, unknown>> {
   return control("production");
 }
