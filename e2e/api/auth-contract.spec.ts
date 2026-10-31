@@ -55,12 +55,12 @@ test("money input rejects non-string, fractional, signed, blank and overflowing 
     expect(response.status()).toBe(400);
     expect((await response.json()).field_errors.length).toBeGreaterThan(0);
   }
-  // M1 validates the full int64 input but does not pretend to execute payments.
+  // The full int64 range is accepted (WBS 2.1); dispatch is a later package.
   const acceptedInput = await api.call("POST", "/v1/payments", {
     data: intent("9223372036854775807"),
     headers: { "Idempotency-Key": "valid_money_contract" },
   });
-  expect(acceptedInput.status()).toBe(501);
+  expect(acceptedInput.status()).toBe(202);
 });
 
 test("read credentials cannot invoke operator mutations", async ({
@@ -101,7 +101,7 @@ test("session writes require both their CSRF token and configured origin", async
       "Idempotency-Key": "csrf_contract",
     },
   });
-  expect(valid.status()).toBe(501);
+  expect(valid.status()).toBe(202);
 });
 
 test("request logs exclude authorization, cookie, body, query and idempotency secrets", async ({

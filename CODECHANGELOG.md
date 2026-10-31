@@ -22,6 +22,70 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add idempotent payment acceptance and payment reads
+
+**WBS:** 2.1.1–2.1.12, 2.1 acceptance gate, 2.1 E2E · **PR/commit:** uncommitted
+
+**Changed**
+- `backend/internal/payment/status.go` — `Status` enum, `Statuses`, `ParseStatus`, `Terminal`, and pure `ValidateTransition(from, to)` (empty from = initial `created` only; `unknown` never returns to `processing`).
+- `backend/internal/payment/money.go` — `ParseAmount`, `ValidateCurrency`, `CurrencyExponent`, sentinel `ErrInvalidAmount`/`ErrUnsupportedCurrency`; `ParseMinor`/`FormatMinor` keep their signatures.
+- `backend/internal/payment/idempotency.go` — `OperationCreatePayment = "payment.create"`; `CanonicalRequest.Canonical()/Hash()`: versioned, length-prefixed fields (operation, amount, currency, method, merchant reference) hashed with SHA-256; field order and normalization documented.
+- `backend/internal/payment/service.go` — `NewService(db, Options)` and `Accept`: one transaction that replays, rejects with 409, or validates the method and its token, reserves the key, inserts the payment, writes the NULL→`created` transition, appends `payment.dispatch` (`DispatchCommand{payment_id, workspace_id}`, dedup key `payment.dispatch:{id}`), and stores the 202 body. A lost unique race re-reads the winner. `SQLITE_BUSY` retries the whole transaction up to 4 times with full jitter, then returns `ErrBusy`. Test-only `FaultInjector` stages. `Get`/`List`/`Attempts` reads.
+- `backend/internal/payment/transition.go` — `ApplyTransition(tx, Transition)`: validates the graph, compare-and-swap on status+version, appends the audit row (for 2.2–2.4).
+- `backend/internal/payment/metrics.go`, `view.go` — in-process acceptance counters and a latency histogram (`Metrics.Snapshot`); `PaymentView`/`AttemptView` API DTOs with decimal-string money and RFC 3339 times.
+- `backend/internal/storage/payment_repository.go` — workspace-scoped repository functions on the caller's `*gorm.DB`: payments (insert/get/keyset list/CAS status update), transitions, idempotency records, outbox insert, attempts list, method/token lookup; `ErrNotFound`, `ErrStaleVersion`, `IsUniqueViolation`, `IsBusy`.
+- `backend/internal/transport/http/payments.go`, `handler.go` — `POST /v1/payments` (replaces the 501 stub; 202 + `Location`, `Idempotent-Replayed` on replay, 400/404/409/422/503 envelopes), `GET /v1/payments` (cursor, `limit`, `status`), `GET /v1/payments/{id}`, `GET /v1/payments/{id}/attempts`; `Config.Payments` lets tests inject a service. `handler_test.go` now expects 202 and uses distinct keys.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — payment operations documented as implemented; new `PaymentStatus`; `Payment` adds `merchant_reference`, `created_at` and `updated_at`; `Attempt` adds attempt number, rule, provider reference, error code and timestamps.
+- `backend/internal/payment/*_test.go` — table-driven tests of all 42 (from, to) pairs, plus vocabulary, hash stability/sensitivity/boundary, and amount/currency tests.
+- `backend/tests/helpers_test.go`, `backend/tests/payment_acceptance_test.go` — file-backed WAL integration tests for every acceptance-gate bullet, plus untokenized method (422), auth/header failures that write nothing, pagination/status filter, guarded transitions, and busy retry recovery/exhaustion with a real competing write lock.
+- `e2e/api/payment-acceptance.spec.ts` — new spec for the 2.1 E2E block; `e2e/api/auth-contract.spec.ts` now expects 202 where M1 expected 501.
+- `docs/backend/flows.md` — implemented acceptance contract table; `docs/wbs.md` — 2.1 boxes ticked and status updated.
+
+**Verification**
+- `go -C backend test -count=1 -v ./tests/ ./internal/payment/ ./internal/storage/ ./internal/transport/...` — pass, 62 PASS lines (12 top-level integration tests in `backend/tests`, 5 top-level payment unit tests, plus subtests).
+- `go -C backend test -race -count=3 -run 'Concurrent|InitialTransition' ./tests/` — pass.
+- `pnpm lint:openapi` — valid (1 existing `no-server-example.com` warning); `pnpm generate:api` — regenerated.
+- `pnpm check` — exit 0 (golangci-lint 0 issues; all Go packages, including other agents' provider/routing/ledger at that moment, passed; frontend 23 tests passed; build passed).
+- `pnpm test:e2e` — 26 passed, 0 failed (includes 6 new `payment-acceptance.spec.ts` tests and all earlier specs).
+
+**Notes:** No migration was needed. The actor reference is `api_key:<role>` or `session:<role>` because `auth.Principal` has no user/key ID. Metrics are in-process only; no exporter or endpoint exists yet. The seed already tokenizes the demo methods (`mock_reference_*`); scenario-specific seeded methods for 2.2 are not added here. The `pending` idempotency branch returns `409 idempotency_in_progress` but cannot be observed through the single-transaction path.
+
+## 2026-10-31 — Add provider interface, durable mock adapter and routing engine
+
+**WBS:** 2.2.1, 2.2.2, 2.2.3, 2.2.4, 2.2.5 · **PR/commit:** uncommitted
+
+**Changed**
+- `backend/internal/provider/provider.go` (replaces `doc.go`) — `Provider` interface (`Capabilities`, `Submit`, `Lookup`), typed outcomes `succeeded`/`declined`/`ambiguous`, `SubmitRequest.Validate`, `ErrUnavailable` distinct from lookup "not found"; no payment-domain imports.
+- `backend/internal/provider/mock/mock.go` — durable adapter over `mock_provider_charges` (local `Charge` model, own `*gorm.DB`, short own transactions, pauses outside any transaction). Scenario comes from the persisted token reference prefix (`mock_success`, `mock_decline`, `mock_delayed_success`, `mock_timeout_before_execution`, `mock_timeout_after_success`, `mock_outage`; anything else = success) and is persisted on the charge. Same key replays the original charge; injectable `Sleep`/`Now`; `SetAvailable` simulates whole-provider outage.
+- `backend/internal/routing/routing.go`, `load.go` (replace `doc.go`) — pure `Decide`/`Eligible`/`Explain` over a `Snapshot` (token ∩ enabled provider ∩ enabled rule matching rail, currency, inclusive amount bounds; priority ascending, rule ID tie-break; caller exclusions reported as `excluded`), plus read-only workspace-scoped `Load`.
+- `backend/internal/provider/provider_test.go`, `backend/internal/provider/mock/mock_test.go`, `backend/internal/routing/routing_test.go` — table-driven and file-backed SQLite tests.
+
+**Verification**
+- `go -C backend test -race -count=1 ./internal/provider/... ./internal/routing/...` — pass (3 packages, 54 test/subtest PASS lines with `-v`): every scenario, resubmit → one charge row, 8 concurrent submits → one row, blocked delayed submit allows a concurrent write (no open transaction), deadline honoured, restart durability, unavailable vs not found, routing ordering/bounds/eligibility, `Load` writes nothing and is workspace-scoped.
+- `go -C backend vet ./internal/provider/... ./internal/routing/...` — pass; `gofmt -l` on both packages — clean.
+- Not run: `pnpm check`, full `go test ./...`, `pnpm test:e2e` (other packages were being edited concurrently).
+
+**Notes:** Not yet wired into a dispatcher or `POST /v1/routing/evaluate` (2.2.6+). Seeded tokens (`mock_reference_<method>`) map to `success`; scenario-specific seeded methods are for the seed/e2e owner. A `processing` delayed-success charge settles to `succeeded` on its next lookup or replay.
+
+## 2026-10-31 — WBS 2.3 ledger service (2.3.1–2.3.4, 2.3.6, 2.3.7)
+
+**WBS:** 2.3.1, 2.3.2, 2.3.3, 2.3.4, 2.3.6, 2.3.7, ledger-only parts of 2.3.9 · **PR/commit:** uncommitted
+
+**Changed**
+- `backend/internal/ledger/posting.go` — `Post` builds a draft journal, inserts entries, re-checks persisted totals with overflow-checked int64 sums and marks the journal posted, only on a caller-owned transaction (`ErrNoTransaction` otherwise). `PostPaymentSuccess` debits `provider_clearing:{provider_id}` and credits `merchant_payable` for the payment's own currency and amount, with posting key `payment:{id}:success`. A repeated key returns the stored journal (`AlreadyPosted`) only when currency, payment, reversal link and lines match; otherwise `ErrPostingMismatch`. `Reverse` posts a mirrored journal with `reversal_of` and key `journal:{id}:reversal`, checks the exact offset and rejects a second reversal (`ErrAlreadyReversed`).
+- `backend/internal/ledger/accounts.go` — lazily creates per-workspace, per-currency accounts (`INSERT … ON CONFLICT DO NOTHING` on `(workspace_id, code, currency)`); the provider must belong to the workspace. Posting rejects accounts from another workspace or currency (`ErrAccountMismatch`).
+- `backend/internal/ledger/verify.go` — `Verify`/`Check` report committed draft journals, unbalanced or under-two-entry posted journals, entry/journal workspace or currency drift, reversals that do not mirror their original, succeeded payments without exactly one matching success journal, and failed/canceled payments with one. Payments are read through a local struct.
+- `backend/internal/ledger/ledger_test.go` — file-backed SQLite tests: success posting and account scheme; duplicate success delivered 3x sequentially and 3x concurrently over three connections → one journal, two entries; key mismatch; injected failure after entries are inserted → no journal, entries, accounts or payment change; service rejects unbalanced, single/no entry, mixed currency, cross-workspace, overflow, zero/negative amounts and bad sides; raw SQL shows the triggers/FKs reject unbalanced, single-entry, mixed-currency, cross-workspace, overflow-sum (SQLite `integer overflow`) and direct-posted journals; UPDATE/DELETE/INSERT on posted journals/entries fail as `immutable`; reversal nets accounts to zero, second reversal is rejected by both the service and `UNIQUE (reversal_of)`; verifier detects seeded violations.
+- `backend/internal/ledger/doc.go` — package description.
+
+**Verification**
+- `go -C backend vet ./internal/ledger/...` — pass.
+- `gofmt -l backend/internal/ledger` — no output.
+- `go -C backend test -count=1 ./internal/ledger/...` — pass. `go -C backend test -race -count=3 -v ./internal/ledger/...` — all 9 tests and subtests pass on every run.
+- Not run: `pnpm check`, `pnpm test:e2e` and the full Go suite (other agents are editing the tree). 2.3.5, 2.3.8 and the E2E spec are not part of this change.
+
+**Notes:** No migration was needed; existing triggers and composite FKs cover the required rejections. SQL still allows a committed draft journal and does not check a reversal's economic meaning; `Verify` reports both.
+
 ## 2026-10-31 — Require docs/changelog updates via Claude Code hooks
 
 **WBS:** process · **PR/commit:** uncommitted

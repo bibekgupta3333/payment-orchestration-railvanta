@@ -75,6 +75,24 @@ flowchart TD
 
 The acceptance transaction should make partially reserved records unobservable on its normal path. The retryable branch covers contention or a future explicit reservation protocol. Validation and authorization failures are not cached as accepted payments. Clients retain one key across transport retries and generate a new key only for a new logical payment.
 
+### Implemented acceptance contract (WBS 2.1)
+
+`payment.Service.Accept` (`backend/internal/payment/service.go`) runs one short transaction in this order: look up `(workspace_id, 'payment.create', key)`; if absent, check that the payment method belongs to the workspace and has at least one `payment_method_tokens` row; insert a `pending` idempotency record; insert the payment (`created`, version 1); insert the initial transition (`from_status` NULL → `created`); insert a `payment.dispatch` outbox row (deduplication key `payment.dispatch:{payment_id}`, payload `{"payment_id","workspace_id"}`); then complete the record with status `202` and the response body. The replay lookup runs before method validation, so a stored acceptance remains replayable.
+
+| Situation | Response |
+| --- | --- |
+| New key, valid request | `202`, `Location: /v1/payments/{id}`, payment snapshot body |
+| Same key, same canonical hash | Stored status and body replayed byte-for-byte, plus `Idempotent-Replayed: true` |
+| Same key, different hash (amount, currency, method or merchant reference) | `409 idempotency_conflict`; the original is unchanged |
+| Same key, record still `pending` (not observable on the normal path) | `409 idempotency_in_progress` with `Retry-After: 1` |
+| Concurrent insert loses the unique race | Transaction rolls back and the loser re-reads the committed winner (bounded to three re-reads) |
+| Method missing or in another workspace | `404 not_found`; nothing written |
+| Method has no provider token | `422 payment_method_unusable`; nothing written |
+| `SQLITE_BUSY` after `busy_timeout` | The whole transaction is retried up to four times with full-jitter exponential backoff (10–250 ms), then `503` with `Retry-After`; nothing committed |
+| Missing or invalid header, body, amount or currency; auth or CSRF failure | `400`/`401`/`403`/`413`/`415` before the service runs; no idempotency record |
+
+The canonical hash (`payment/idempotency.go`) covers operation, amount, currency, payment method and merchant reference, with length-prefixed fields; an absent merchant reference equals `""`. JSON field order and whitespace do not affect it. `GET /v1/payments/{id}` returns current state, so it can differ from the replayed acceptance snapshot once dispatch has moved the payment.
+
 ## Payment state machine
 
 ```mermaid

@@ -98,13 +98,13 @@ export interface paths {
     };
     /**
      * List workspace payments
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Newest-first keyset pagination over the authenticated workspace's payments. Pass next_cursor back as cursor; it is opaque. Optional status filter.
      */
     get: operations["listPayments"];
     put?: never;
     /**
-     * Validate a sandbox payment intent
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * Accept a sandbox payment
+     * @description Idempotently accepts a payment. One short transaction reserves (workspace, operation, Idempotency-Key), inserts the payment and its initial audit transition, appends a payment.dispatch outbox command and stores this 202 response. Reusing the key with the same canonical request (amount, currency, payment method, merchant reference) replays the stored body byte-for-byte with Idempotent-Replayed true; a different request returns 409 idempotency_conflict. Validation and authorization failures never reserve the key. The method must belong to the workspace (else 404) and hold a provider token (else 422).
      */
     post: operations["createPayment"];
     delete?: never;
@@ -124,7 +124,7 @@ export interface paths {
     };
     /**
      * Read a payment
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Returns current state, independent of the original acceptance snapshot. Another workspace's payment ID returns 404.
      */
     get: operations["getPayment"];
     put?: never;
@@ -146,7 +146,7 @@ export interface paths {
     };
     /**
      * Read provider attempts
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Attempts in attempt-number order. Empty until dispatch (WBS 2.2) creates one. Another workspace's payment ID returns 404.
      */
     get: operations["listAttempts"];
     put?: never;
@@ -445,6 +445,14 @@ export interface components {
       payment_method_id: string;
       merchant_reference?: string;
     };
+    /** @enum {string} */
+    PaymentStatus:
+      | "created"
+      | "processing"
+      | "succeeded"
+      | "failed"
+      | "canceled"
+      | "unknown";
     Payment: {
       /** Format: uuid */
       id: string;
@@ -457,14 +465,12 @@ export interface components {
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
       /** Format: uuid */
       payment_method_id: string;
-      /** @enum {string} */
-      status:
-        | "created"
-        | "processing"
-        | "succeeded"
-        | "failed"
-        | "canceled"
-        | "unknown";
+      merchant_reference: string | null;
+      status: components["schemas"]["PaymentStatus"];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
     };
     Attempt: {
       /** Format: uuid */
@@ -473,9 +479,20 @@ export interface components {
       payment_id: string;
       /** Format: uuid */
       provider_id: string;
+      attempt_number: number;
       /** @enum {string} */
       status: "created" | "submitted" | "succeeded" | "failed" | "unknown";
+      /** Format: uuid */
+      routing_rule_id: string | null;
       routing_reason: string;
+      provider_reference: string | null;
+      error_code: string | null;
+      /** Format: date-time */
+      submitted_at: string | null;
+      /** Format: date-time */
+      completed_at: string | null;
+      /** Format: date-time */
+      created_at: string;
     };
     MetricSummary: {
       /** @enum {string} */
@@ -791,6 +808,7 @@ export interface operations {
       query?: {
         cursor?: string;
         limit?: number;
+        status?: components["schemas"]["PaymentStatus"];
       };
       header?: {
         "X-Request-ID"?: string;
@@ -814,12 +832,12 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -842,15 +860,31 @@ export interface operations {
       };
     };
     responses: {
+      /** @description Accepted (or replayed); poll the Location for current state */
+      202: {
+        headers: {
+          "X-Request-ID"?: string;
+          /** @description Relative URL of the accepted payment */
+          Location?: string;
+          /** @description Present and true when the stored response is replayed */
+          "Idempotent-Replayed"?: "true";
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Payment"];
+        };
+      };
       400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
       413: components["responses"]["Error"];
       415: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      500: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -881,9 +915,8 @@ export interface operations {
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -917,9 +950,8 @@ export interface operations {
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

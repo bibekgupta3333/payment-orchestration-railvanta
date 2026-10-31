@@ -82,7 +82,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 1.2 | Database foundation | 1.1 | M1 | Schema checks passed; Go runner and database E2E pending |
 | 1.3 | API and auth contract | 1.1 | M1 | Auth source added; generated types and runtime tests pending |
 | 1.4 | UI shell | 1.1 | M1 | Source/tests added; formatting, build and browser checks pending |
-| 2.1 | Payment acceptance | 1.2, 1.3 | M2 | Not started |
+| 2.1 | Payment acceptance | 1.2, 1.3 | M2 | Done (verified 2026-10-31) |
 | 2.2 | Routing and mock execution | 2.1 | M2 | Not started |
 | 2.3 | Atomic ledger posting | 2.2 | M2 | Not started |
 | 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Not started |
@@ -275,46 +275,46 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 1.2, 1.3 · **Deliverable:** Idempotent `POST /v1/payments` plus workspace-scoped list/detail reads, with the payment, audit transition, outbox command and stored response committed atomically.
 
 **Tasks**
-- [ ] 2.1.1 Define the `Payment` aggregate and status enum in `backend/internal/payment/` (`created`, `processing`, `succeeded`, `failed`, `canceled`, `unknown`) with a pure transition-validation function and table-driven unit tests for every legal and illegal transition.
-- [ ] 2.1.2 Implement amount parsing in `backend/internal/payment/money.go`: decimal-string `amount_minor` → positive int64, rejecting fractions, zero, negatives, leading `+`, whitespace, and values beyond int64; validate currency code and exponent against a domain currency list.
-- [ ] 2.1.3 Implement request canonicalization and SHA-256 hashing in `backend/internal/payment/idempotency.go` over operation, amount, currency, payment method and merchant reference; document field order and normalization.
-- [ ] 2.1.4 Add GORM repositories in `backend/internal/storage/` for payments, state transitions, idempotency records and outbox events; every query carries a `workspace_id` predicate and accepts the caller's `*gorm.DB` transaction handle.
-- [ ] 2.1.5 Implement the acceptance unit of work in `backend/internal/payment/service.go`: one short `db.Transaction` that reserves `(workspace_id, operation, key)`, inserts the payment, writes the initial transition (`from_status` NULL → `created`, per 1.2 schema revision), appends a `payment.dispatch` outbox command, and stores the `202` response body.
-- [ ] 2.1.6 Handle key reuse: same key and hash replays the stored status and body; changed hash returns `409 idempotency_conflict`; a losing concurrent insert reads the committed winner instead of creating a second payment.
-- [ ] 2.1.7 Validate that the payment method belongs to the authenticated workspace and has at least one provider token (`payment_method_tokens`, per 1.2 schema revision) before accepting.
-- [ ] 2.1.8 Add HTTP handlers in `backend/internal/transport/http/payments.go`: `POST /v1/payments` (requires `Idempotency-Key`, 1–255 chars), `GET /v1/payments` (cursor pagination, status filter), `GET /v1/payments/{id}`, and `GET /v1/payments/{id}/attempts`; serialize money as decimal strings.
-- [ ] 2.1.9 Return the shared error envelope with request ID for validation, auth, not-found and conflict cases; ensure validation and auth failures never create idempotency records.
-- [ ] 2.1.10 Add bounded `SQLITE_BUSY` retry with jitter for the acceptance transaction only (it has no external side effects); emit busy-error and acceptance-latency metrics.
-- [ ] 2.1.11 Add the operations to the OpenAPI document and contract tests confirming responses match the schema.
-- [ ] 2.1.12 Write integration tests in `backend/tests/` against a temporary file-backed SQLite database with WAL enabled.
+- [x] 2.1.1 Define the `Payment` aggregate and status enum in `backend/internal/payment/` (`created`, `processing`, `succeeded`, `failed`, `canceled`, `unknown`) with a pure transition-validation function and table-driven unit tests for every legal and illegal transition.
+- [x] 2.1.2 Implement amount parsing in `backend/internal/payment/money.go`: decimal-string `amount_minor` → positive int64, rejecting fractions, zero, negatives, leading `+`, whitespace, and values beyond int64; validate currency code and exponent against a domain currency list.
+- [x] 2.1.3 Implement request canonicalization and SHA-256 hashing in `backend/internal/payment/idempotency.go` over operation, amount, currency, payment method and merchant reference; document field order and normalization.
+- [x] 2.1.4 Add GORM repositories in `backend/internal/storage/` for payments, state transitions, idempotency records and outbox events; every query carries a `workspace_id` predicate and accepts the caller's `*gorm.DB` transaction handle.
+- [x] 2.1.5 Implement the acceptance unit of work in `backend/internal/payment/service.go`: one short `db.Transaction` that reserves `(workspace_id, operation, key)`, inserts the payment, writes the initial transition (`from_status` NULL → `created`, per 1.2 schema revision), appends a `payment.dispatch` outbox command, and stores the `202` response body.
+- [x] 2.1.6 Handle key reuse: same key and hash replays the stored status and body; changed hash returns `409 idempotency_conflict`; a losing concurrent insert reads the committed winner instead of creating a second payment.
+- [x] 2.1.7 Validate that the payment method belongs to the authenticated workspace and has at least one provider token (`payment_method_tokens`, per 1.2 schema revision) before accepting.
+- [x] 2.1.8 Add HTTP handlers in `backend/internal/transport/http/payments.go`: `POST /v1/payments` (requires `Idempotency-Key`, 1–255 chars), `GET /v1/payments` (cursor pagination, status filter), `GET /v1/payments/{id}`, and `GET /v1/payments/{id}/attempts`; serialize money as decimal strings.
+- [x] 2.1.9 Return the shared error envelope with request ID for validation, auth, not-found and conflict cases; ensure validation and auth failures never create idempotency records.
+- [x] 2.1.10 Add bounded `SQLITE_BUSY` retry with jitter for the acceptance transaction only (it has no external side effects); emit busy-error and acceptance-latency metrics.
+- [x] 2.1.11 Add the operations to the OpenAPI document and contract tests confirming responses match the schema.
+- [x] 2.1.12 Write integration tests in `backend/tests/` against a temporary file-backed SQLite database with WAL enabled.
 
 **Acceptance gate**
-- [ ] 50 concurrent `POST /v1/payments` requests with the same key and body yield exactly one payment row, one idempotency record, one outbox command, and identical `202` bodies.
-- [ ] Same key with a changed amount, currency or method returns `409`, and the original payment is unchanged.
-- [ ] Restarting the process between requests still replays the stored response for a reused key.
-- [ ] An amount of `"9223372036854775807"` round-trips through the API exactly; `"9223372036854775808"`, `"0"`, `"-1"` and `"1.5"` return `400`.
-- [ ] A request using another workspace's payment ID or method ID returns `404` and reads or writes nothing.
-- [ ] Injecting a failure after the payment insert rolls back the whole transaction (no payment, record, transition or outbox row remains).
-- [ ] Every created payment has exactly one initial audit transition.
+- [x] 50 concurrent `POST /v1/payments` requests with the same key and body yield exactly one payment row, one idempotency record, one outbox command, and identical `202` bodies.
+- [x] Same key with a changed amount, currency or method returns `409`, and the original payment is unchanged.
+- [x] Restarting the process between requests still replays the stored response for a reused key.
+- [x] An amount of `"9223372036854775807"` round-trips through the API exactly; `"9223372036854775808"`, `"0"`, `"-1"` and `"1.5"` return `400`.
+- [x] A request using another workspace's payment ID or method ID returns `404` and reads or writes nothing.
+- [x] Injecting a failure after the payment insert rolls back the whole transaction (no payment, record, transition or outbox row remains).
+- [x] Every created payment has exactly one initial audit transition.
 
 **E2E test** — `e2e/api/payment-acceptance.spec.ts`
-- [ ] `POST /v1/payments` returns 202 with a payment ID and a `Location` header, and `GET` on that location returns the payment
-- [ ] Replaying the same key with the same body returns a byte-identical stored response; a changed body returns 409
-- [ ] 20 concurrent requests with the same key produce exactly one payment (checked with the list endpoint)
-- [ ] A request without an `Idempotency-Key` is rejected, and nothing is created
-- [ ] After `restartApi()`, replaying the original key still returns the stored response
-- [ ] Amounts above `Number.MAX_SAFE_INTEGER` round-trip exactly as decimal strings
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] `POST /v1/payments` returns 202 with a payment ID and a `Location` header, and `GET` on that location returns the payment
+- [x] Replaying the same key with the same body returns a byte-identical stored response; a changed body returns 409
+- [x] 20 concurrent requests with the same key produce exactly one payment (checked with the list endpoint)
+- [x] A request without an `Idempotency-Key` is rejected, and nothing is created
+- [x] After `restartApi()`, replaying the original key still returns the stored response
+- [x] Amounts above `Number.MAX_SAFE_INTEGER` round-trip exactly as decimal strings
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 2.2 Routing and mock execution — backend
 **Depends on:** 2.1; 1.2 schema revisions (`payment_method_tokens`, attempt `submitted_at`/`completed_at`, `mock_provider_charges`) · **Deliverable:** Persisted routing decisions plus an in-process dispatcher that executes attempts through a deterministic mock provider, with provider I/O outside database transactions.
 
 **Tasks**
-- [ ] 2.2.1 Define the provider interface in `backend/internal/provider/` (`Submit`, `Lookup` by provider idempotency key, `Capabilities`) with typed outcomes `Succeeded`, `Declined` (proven no effect), and `Ambiguous`; keep adapters free of payment-domain imports.
-- [ ] 2.2.2 Implement the mock adapter in `backend/internal/provider/mock/` with durable `mock_provider_charges` keyed by provider idempotency key, read and written only by the adapter, so its record of what executed survives restarts.
-- [ ] 2.2.3 Add deterministic scenarios to the mock: success, decline, delayed success, timeout before execution, timeout after success, and outage; select the scenario from persisted simulation input, never from wall-clock randomness.
-- [ ] 2.2.4 Make the mock honor its idempotency contract: resubmitting the same key returns the original charge instead of executing again.
-- [ ] 2.2.5 Implement routing in `backend/internal/routing/`: eligible providers = providers holding a token for the method ∩ enabled rules matching rail, currency and amount bounds, ordered by priority; return the chosen provider, rule ID and a human-readable reason.
+- [x] 2.2.1 Define the provider interface in `backend/internal/provider/` (`Submit`, `Lookup` by provider idempotency key, `Capabilities`) with typed outcomes `Succeeded`, `Declined` (proven no effect), and `Ambiguous`; keep adapters free of payment-domain imports.
+- [x] 2.2.2 Implement the mock adapter in `backend/internal/provider/mock/` with durable `mock_provider_charges` keyed by provider idempotency key, read and written only by the adapter, so its record of what executed survives restarts.
+- [x] 2.2.3 Add deterministic scenarios to the mock: success, decline, delayed success, timeout before execution, timeout after success, and outage; select the scenario from persisted simulation input, never from wall-clock randomness.
+- [x] 2.2.4 Make the mock honor its idempotency contract: resubmitting the same key returns the original charge instead of executing again.
+- [x] 2.2.5 Implement routing in `backend/internal/routing/`: eligible providers = providers holding a token for the method ∩ enabled rules matching rail, currency and amount bounds, ordered by priority; return the chosen provider, rule ID and a human-readable reason.
 - [ ] 2.2.6 Implement `POST /v1/routing/evaluate` as a read-only evaluation that writes nothing and has no money-moving effect.
 - [ ] 2.2.7 Implement the outbox dispatcher in `backend/internal/event/dispatcher.go`: claim due rows with a compare-and-swap update, a fresh unpredictable lease token in `lease_owner`, and a bounded `lease_until`; renew and complete only when the token matches.
 - [ ] 2.2.8 In one short transaction, move the payment `created → processing` (version-guarded), insert the attempt with routing decision and a stable provider idempotency key, and mark it `submitted` with `submitted_at` before any network call.
@@ -345,23 +345,23 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 2.2; 1.2 schema revision (per-provider clearing accounts) · **Deliverable:** A confirmed success, its balanced journal, the audit transition and outbox completion commit together, and repeated results never post twice.
 
 **Tasks**
-- [ ] 2.3.1 Implement the posting service in `backend/internal/ledger/` that builds a draft journal, inserts entries, checks totals with overflow-safe int64 arithmetic, and marks the journal posted, all inside the caller's transaction handle.
-- [ ] 2.3.2 Define the success posting rule: debit `provider_clearing` for the executing provider, credit `merchant_payable`, same currency and amount as the payment.
-- [ ] 2.3.3 Seed or lazily create per-workspace, per-currency, per-provider ledger accounts with unique codes; reject posting to an account in a different currency or workspace.
-- [ ] 2.3.4 Use a deterministic posting key (`payment:{id}:success`) so the unique `(workspace_id, posting_key)` constraint rejects duplicates; treat a duplicate-key error as "already posted" and confirm the existing journal matches.
+- [x] 2.3.1 Implement the posting service in `backend/internal/ledger/` that builds a draft journal, inserts entries, checks totals with overflow-safe int64 arithmetic, and marks the journal posted, all inside the caller's transaction handle.
+- [x] 2.3.2 Define the success posting rule: debit `provider_clearing` for the executing provider, credit `merchant_payable`, same currency and amount as the payment.
+- [x] 2.3.3 Seed or lazily create per-workspace, per-currency, per-provider ledger accounts with unique codes; reject posting to an account in a different currency or workspace.
+- [x] 2.3.4 Use a deterministic posting key (`payment:{id}:success`) so the unique `(workspace_id, posting_key)` constraint rejects duplicates; treat a duplicate-key error as "already posted" and confirm the existing journal matches.
 - [ ] 2.3.5 Combine the success transition (`processing|unknown → succeeded`, version-guarded), attempt success, journal posting, audit transition and outbox completion into one transaction in `backend/internal/payment/`.
-- [ ] 2.3.6 Implement reversal journals: new journal with opposite sides and `reversal_of`, plus an application check that it exactly offsets the original; no edits to posted rows.
-- [ ] 2.3.7 Add a ledger invariant checker (`backend/internal/ledger/verify.go`) that confirms every posted journal balances, every succeeded payment has exactly one success journal, and no failed or canceled payment has one.
+- [x] 2.3.6 Implement reversal journals: new journal with opposite sides and `reversal_of`, plus an application check that it exactly offsets the original; no edits to posted rows.
+- [x] 2.3.7 Add a ledger invariant checker (`backend/internal/ledger/verify.go`) that confirms every posted journal balances, every succeeded payment has exactly one success journal, and no failed or canceled payment has one.
 - [ ] 2.3.8 Expose read-only `GET /v1/ledger/transactions` with cursor pagination and decimal-string amounts.
 - [ ] 2.3.9 Write integration tests covering duplicate success delivery, rollback mid-posting, mixed currency, unbalanced entries, int64 overflow, and attempts to update or delete posted rows.
 
 **Acceptance gate**
 - [ ] Delivering the same success result three times (including concurrently) produces one journal with two balanced entries.
 - [ ] Forcing an error after entries are inserted but before commit leaves no journal, no entries, and the payment unchanged.
-- [ ] Unbalanced, mixed-currency, single-entry and overflow-sum postings are rejected by both the service and the database triggers.
-- [ ] Updating or deleting a posted journal or entry fails at the database layer.
+- [x] Unbalanced, mixed-currency, single-entry and overflow-sum postings are rejected by both the service and the database triggers.
+- [x] Updating or deleting a posted journal or entry fails at the database layer.
 - [ ] The invariant checker passes after every scenario in the 2.2 and 2.4 test suites.
-- [ ] A reversal produces a linked journal; a second reversal of the same journal is rejected.
+- [x] A reversal produces a linked journal; a second reversal of the same journal is rejected.
 
 **E2E test** — `e2e/api/ledger-posting.spec.ts`
 - [ ] A succeeded payment has exactly one posted journal in `GET /v1/ledger/transactions`, with debits equal to credits in the payment's currency

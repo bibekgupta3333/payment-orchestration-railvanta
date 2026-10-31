@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -24,6 +23,8 @@ type Config struct {
 	Logger            *slog.Logger
 	PublicOrigin      string
 	RequestsPerMinute int
+	// Payments overrides the payment service (tests inject metrics or faults).
+	Payments *payment.Service
 }
 type FieldError struct {
 	Field   string `json:"field"`
@@ -40,10 +41,11 @@ type requestWindow struct {
 	until time.Time
 }
 type handler struct {
-	db      *gorm.DB
-	config  Config
-	mu      sync.Mutex
-	windows map[string]requestWindow
+	db       *gorm.DB
+	config   Config
+	payments *payment.Service
+	mu       sync.Mutex
+	windows  map[string]requestWindow
 }
 
 var safeID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -55,7 +57,11 @@ func NewHandler(db *gorm.DB, config Config) http.Handler {
 	if config.RequestsPerMinute <= 0 {
 		config.RequestsPerMinute = 120
 	}
-	return &handler{db: db, config: config, windows: make(map[string]requestWindow)}
+	payments := config.Payments
+	if payments == nil {
+		payments = payment.NewService(db, payment.Options{})
+	}
+	return &handler{db: db, config: config, payments: payments, windows: make(map[string]requestWindow)}
 }
 
 func requestID(value string) string {
@@ -194,9 +200,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
 		return
 	}
-	if r.Method == "POST" && r.URL.Path == "/v1/payments" {
-		h.validatePayment(w, r, principal, id)
-		return
+	if r.URL.Path == "/v1/payments" || strings.HasPrefix(r.URL.Path, "/v1/payments/") {
+		if h.servePayments(w, r, principal, id) {
+			return
+		}
 	}
 	if r.Method == "GET" && r.URL.Path == "/v1/session" {
 		writeJSON(w, 200, map[string]string{"workspace_id": principal.WorkspaceID, "role": principal.Role})
@@ -211,62 +218,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func plannedRoute(method, path string) bool {
 	if method == "GET" {
-		for _, prefix := range []string{"/v1/payments", "/v1/dashboard/", "/v1/providers/", "/v1/routing/rules", "/v1/ledger/", "/v1/reconciliation/", "/v1/events", "/v1/sandbox/simulations/"} {
+		for _, prefix := range []string{"/v1/dashboard/", "/v1/providers/", "/v1/routing/rules", "/v1/ledger/", "/v1/reconciliation/", "/v1/events", "/v1/sandbox/simulations/"} {
 			if path == prefix || strings.HasPrefix(path, prefix+"/") || strings.HasSuffix(prefix, "/") && strings.HasPrefix(path, prefix) {
 				return true
 			}
 		}
 	}
 	return method == "POST" && (path == "/v1/routing/evaluate" || path == "/v1/sandbox/simulations")
-}
-
-func (h *handler) validatePayment(w http.ResponseWriter, r *http.Request, principal auth.Principal, id string) {
-	key := r.Header.Get("Idempotency-Key")
-	if len(key) < 1 || len(key) > 255 {
-		fail(w, 400, "validation_error", "A 1–255 character Idempotency-Key is required", id, FieldError{Field: "Idempotency-Key", Message: "Required header"})
-		return
-	}
-	if r.Header.Get("Content-Type") != "application/json" && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json;") {
-		fail(w, 415, "unsupported_media_type", "Use application/json", id)
-		return
-	}
-	var input struct {
-		AmountMinor       string `json:"amount_minor"`
-		Currency          string `json:"currency"`
-		PaymentMethodID   string `json:"payment_method_id"`
-		MerchantReference string `json:"merchant_reference,omitempty"`
-	}
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
-		var max *http.MaxBytesError
-		if errors.As(err, &max) {
-			fail(w, 413, "body_too_large", "Request body exceeds the limit", id)
-			return
-		}
-		fail(w, 400, "validation_error", "Malformed request or invalid field types", id, FieldError{Field: "body", Message: "Use the documented request schema"})
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		fail(w, 400, "validation_error", "Exactly one JSON value is required", id)
-		return
-	}
-	if _, err := payment.ParseMinor(input.AmountMinor, input.Currency); err != nil {
-		fail(w, 400, "validation_error", "Invalid amount or currency", id, FieldError{Field: "amount_minor", Message: err.Error()})
-		return
-	}
-	if len(input.MerchantReference) > 255 {
-		fail(w, 400, "validation_error", "Merchant reference exceeds 255 characters", id)
-		return
-	}
-	var count int64
-	if err := h.db.WithContext(r.Context()).Table("payment_methods").Where("id = ? AND workspace_id = ?", input.PaymentMethodID, principal.WorkspaceID).Count(&count).Error; err != nil {
-		fail(w, 503, "unavailable", "Payment method lookup unavailable", id)
-		return
-	}
-	if count != 1 {
-		fail(w, 404, "not_found", "Payment method not found", id)
-		return
-	}
-	fail(w, 501, "not_implemented", "Payment creation is unavailable until M2 payment acceptance is implemented", id)
 }

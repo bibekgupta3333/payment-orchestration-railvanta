@@ -2,10 +2,10 @@ openapi: 3.0.3
 info:
   title: Railvanta Sandbox API
   version: 0.1.0
-  description: M1 implements authentication, workspace and payment-method reads, and
-    payment-intent validation. Payment execution and operational routes are explicitly
-    unavailable (501) until later WBS packages. Decimal-string money preserves exact
-    int64 minor units.
+  description: Implements authentication, workspace and payment-method reads, idempotent
+    payment acceptance (WBS 2.1) and workspace-scoped payment, attempt and list reads.
+    Payment execution and operational routes remain explicitly unavailable (501) until
+    later WBS packages. Decimal-string money preserves exact int64 minor units.
   license:
     name: Private project
 servers:
@@ -244,6 +244,8 @@ paths:
     get:
       operationId: listPayments
       summary: List workspace payments
+      description: Newest-first keyset pagination over the authenticated workspace's
+        payments. Pass next_cursor back as cursor; it is opaque. Optional status filter.
       tags:
       - Sandbox
       responses:
@@ -270,15 +272,12 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
+        '400': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+        '503': *id001
       parameters:
       - name: cursor
         in: query
@@ -291,6 +290,12 @@ paths:
           type: integer
           minimum: 1
           maximum: 100
+          default: 50
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/PaymentStatus'
       - name: X-Request-ID
         in: header
         required: false
@@ -305,23 +310,50 @@ paths:
           pattern: ^[A-Za-z0-9_-]{1,64}$
     post:
       operationId: createPayment
-      summary: Validate a sandbox payment intent
+      summary: Accept a sandbox payment
+      description: Idempotently accepts a payment. One short transaction reserves
+        (workspace, operation, Idempotency-Key), inserts the payment and its initial
+        audit transition, appends a payment.dispatch outbox command and stores this
+        202 response. Reusing the key with the same canonical request (amount, currency,
+        payment method, merchant reference) replays the stored body byte-for-byte with
+        Idempotent-Replayed true; a different request returns 409 idempotency_conflict.
+        Validation and authorization failures never reserve the key. The method must
+        belong to the workspace (else 404) and hold a provider token (else 422).
       tags:
       - Sandbox
       responses:
         default: *id001
-        '501': *id001
+        '202':
+          description: Accepted (or replayed); poll the Location for current state
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+            Location:
+              description: Relative URL of the accepted payment
+              schema:
+                type: string
+            Idempotent-Replayed:
+              description: Present and true when the stored response is replayed
+              schema:
+                type: string
+                enum:
+                - 'true'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400': *id001
         '401': *id001
         '403': *id001
         '404': *id001
-        '429': *id001
-        '400': *id001
+        '409': *id001
         '413': *id001
         '415': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+        '422': *id001
+        '429': *id001
+        '500': *id001
+        '503': *id001
       requestBody:
         required: true
         content:
@@ -362,6 +394,8 @@ paths:
     get:
       operationId: getPayment
       summary: Read a payment
+      description: Returns current state, independent of the original acceptance
+        snapshot. Another workspace's payment ID returns 404.
       tags:
       - Sandbox
       responses:
@@ -376,15 +410,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Payment'
-        '501': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+        '503': *id001
       parameters:
       - name: X-Request-ID
         in: header
@@ -407,6 +437,8 @@ paths:
     get:
       operationId: listAttempts
       summary: Read provider attempts
+      description: Attempts in attempt-number order. Empty until dispatch (WBS 2.2)
+        creates one. Another workspace's payment ID returns 404.
       tags:
       - Sandbox
       responses:
@@ -433,15 +465,11 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+        '503': *id001
       parameters:
       - name: X-Request-ID
         in: header
@@ -1220,6 +1248,15 @@ components:
       - amount_minor
       - currency
       - payment_method_id
+    PaymentStatus:
+      type: string
+      enum:
+      - created
+      - processing
+      - succeeded
+      - failed
+      - canceled
+      - unknown
     Payment:
       type: object
       additionalProperties: false
@@ -1228,21 +1265,27 @@ components:
         amount_minor: *id004
         currency: *id005
         payment_method_id: *id002
-        status:
+        merchant_reference:
           type: string
-          enum:
-          - created
-          - processing
-          - succeeded
-          - failed
-          - canceled
-          - unknown
+          maxLength: 255
+          nullable: true
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
       required:
       - id
       - amount_minor
       - currency
       - payment_method_id
+      - merchant_reference
       - status
+      - created_at
+      - updated_at
     Attempt:
       type: object
       additionalProperties: false
@@ -1250,6 +1293,9 @@ components:
         id: *id002
         payment_id: *id002
         provider_id: *id002
+        attempt_number:
+          type: integer
+          minimum: 1
         status:
           type: string
           enum:
@@ -1258,13 +1304,41 @@ components:
           - succeeded
           - failed
           - unknown
+        routing_rule_id:
+          type: string
+          format: uuid
+          nullable: true
         routing_reason: *id003
+        provider_reference:
+          type: string
+          nullable: true
+        error_code:
+          type: string
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
       required:
       - id
       - payment_id
       - provider_id
+      - attempt_number
       - status
+      - routing_rule_id
       - routing_reason
+      - provider_reference
+      - error_code
+      - submitted_at
+      - completed_at
+      - created_at
     MetricSummary:
       type: object
       additionalProperties: false
