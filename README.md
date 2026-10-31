@@ -90,7 +90,7 @@ Implemented reads include `/v1/workspace`, `/v1/workspaces/{id}`, `/v1/payment-m
 | `pnpm check` | Whole-repository pre-PR gate |
 | `pnpm test:e2e` | Cumulative black-box API and browser tests |
 
-The E2E harness builds the API, starts isolated loopback services on free ports, uses a temporary on-disk SQLite database and generated credentials, and tears processes down. It tests graceful restart, SIGKILL recovery, checksum refusal, auth, proxy path preservation, responsive navigation, themes, and accessibility. Assertions use HTTP/browser interfaces; offline fixture setup may modify a stopped test database to test persistence and corrupt-history refusal. It adds no test-control endpoints to Go.
+The E2E harness builds the API, starts isolated loopback services on free ports, uses a temporary on-disk SQLite database and generated credentials, and tears processes down. It tests graceful restart, SIGKILL recovery, checksum refusal, auth, proxy path preservation, responsive navigation, themes, and accessibility. Assertions use HTTP/browser interfaces; offline fixture setup may modify a stopped test database to test persistence and corrupt-history refusal. It adds no test-control endpoints to Go; harness-side read-only inspection of hidden rows (provider keys, mock charges, outbox) is described in `e2e/README.md`. Dispatcher and mock timing are configurable through `DISPATCHER_*`, `PROVIDER_TIMEOUT` and `MOCK_*` variables (see `backend/.env.example`).
 
 The workflow in `.github/workflows/ci.yml` installs dependencies and browsers, runs the checks and full E2E suite, and uploads Playwright reports. No PR or green CI run is claimed locally.
 
