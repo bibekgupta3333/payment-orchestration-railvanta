@@ -2,6 +2,7 @@
 node_modules/
 .pnpm-store/
 .next/
+*.tsbuildinfo
 out/
 dist/
 backend/bin/
