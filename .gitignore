@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+.next/
+*.tsbuildinfo
+out/
+dist/
+backend/bin/
+backend/data/
+coverage/
+
+# Test output
+playwright-report/
+test-results/
+blob-report/
+
+# Environment and secrets: commit only placeholder examples
+.env
+.env.*
+!.env.example
+
+# SQLite databases and WAL sidecars (the reference schema lives in docs/backend/schema.sql)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# OS / editor
+.DS_Store
+*.log

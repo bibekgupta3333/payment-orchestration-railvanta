@@ -1,0 +1,46 @@
+{
+  "name": "railvanta",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sandbox multi-rail payment orchestration platform (Go API + Next.js dashboard)",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:api": "go -C backend run ./cmd/api",
+    "dev:web": "pnpm --filter @railvanta/frontend --fail-if-no-match dev",
+    "build": "pnpm run build:api && pnpm run build:web",
+    "build:api": "go -C backend build ./...",
+    "build:web": "node scripts/build-web.mjs",
+    "lint": "pnpm run lint:api && pnpm run lint:web && pnpm run lint:openapi",
+    "lint:api": "make -C backend format-check vet lint",
+    "lint:web": "pnpm --filter @railvanta/frontend --fail-if-no-match lint",
+    "format": "pnpm run format:api && pnpm -r --if-present run format",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm run test:api && pnpm run test:web",
+    "test:api": "go -C backend test ./...",
+    "test:web": "pnpm --filter @railvanta/frontend --fail-if-no-match test",
+    "test:e2e": "pnpm --filter @railvanta/e2e --fail-if-no-match test",
+    "check": "node scripts/check-workspaces.mjs && pnpm run compose:config && pnpm run check:tracked && pnpm run lint && pnpm run check:generated && pnpm run typecheck && pnpm run test && pnpm run build",
+    "lint:openapi": "redocly lint backend/api/openapi.yaml",
+    "format:api": "make -C backend format",
+    "format:check": "make -C backend format-check && pnpm -r --if-present run format:check",
+    "generate:api": "node scripts/generate-api.mjs",
+    "check:generated": "node scripts/generate-api.mjs --check",
+    "check:tracked": "node scripts/check-tracked-files.mjs",
+    "deps:api": "go -C backend mod tidy",
+    "test:api:foundation": "go -C backend test ./internal/config ./internal/payment",
+    "compose:config": "docker compose config --quiet",
+    "compose:build": "docker compose build",
+    "compose:up": "docker compose up --build --detach --wait",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs --follow"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.0.0",
+    "openapi-typescript": "^7.10.0",
+    "prettier": "^3.6.0",
+    "typescript": "^5.9.0"
+  }
+}

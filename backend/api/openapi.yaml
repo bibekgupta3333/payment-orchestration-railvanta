@@ -1,0 +1,1495 @@
+openapi: 3.0.3
+info:
+  title: Railvanta Sandbox API
+  version: 0.1.0
+  description: M1 implements authentication, workspace and payment-method reads, and
+    payment-intent validation. Payment execution and operational routes are explicitly
+    unavailable (501) until later WBS packages. Decimal-string money preserves exact
+    int64 minor units.
+  license:
+    name: Private project
+servers:
+- url: http://localhost:8080
+  description: Local sandbox API (same-origin /v1 proxy in frontend)
+tags:
+- name: Sandbox
+  description: Authenticated sandbox operations
+security:
+- bearerAuth: []
+- sessionCookie: []
+paths:
+  /v1/workspace:
+    get:
+      operationId: getWorkspace
+      summary: Read authenticated workspace
+      tags:
+      - Sandbox
+      responses:
+        default: &id001
+          $ref: '#/components/responses/Error'
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/workspaces/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: &id002
+        type: string
+        format: uuid
+    get:
+      operationId: getWorkspaceByID
+      summary: Read an authorized workspace
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/session:
+    get:
+      operationId: getSession
+      summary: Read current workspace and role
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payment-methods:
+    get:
+      operationId: listPaymentMethods
+      summary: Read safe sandbox payment methods
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentMethod'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: &id003
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payment-methods/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getPaymentMethod
+      summary: Read one authorized method
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payments:
+    get:
+      operationId: listPayments
+      summary: List workspace payments
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payment'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+    post:
+      operationId: createPayment
+      summary: Validate a sandbox payment intent
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '400': *id001
+        '413': *id001
+        '415': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePayment'
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 255
+      - name: X-CSRF-Token
+        in: header
+        required: false
+        schema: *id003
+        description: Required with a valid Origin for cookie-authenticated writes.
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payments/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getPayment
+      summary: Read a payment
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payments/{id}/attempts:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: listAttempts
+      summary: Read provider attempts
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Attempt'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      summary: Read observed sandbox metrics
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricSummary'
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/dashboard/payment-volume:
+    get:
+      operationId: getPaymentVolume
+      summary: Read volume grouped by currency
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VolumePoint'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/providers/health:
+    get:
+      operationId: getProviderHealth
+      summary: Read provider observations
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProviderHealth'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/routing/rules:
+    get:
+      operationId: getRoutingRules
+      summary: Read routing rules
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RoutingRule'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/routing/evaluate:
+    post:
+      operationId: evaluateRouting
+      summary: Evaluate without moving money
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingDecision'
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '400': *id001
+        '413': *id001
+        '415': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoutingEvaluation'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/ledger/transactions:
+    get:
+      operationId: getLedgerTransactions
+      summary: Read immutable posted journals
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LedgerJournal'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/reconciliation/runs:
+    get:
+      operationId: getReconciliationRuns
+      summary: Read reconciliation runs
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReconciliationRun'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/reconciliation/discrepancies:
+    get:
+      operationId: getDiscrepancies
+      summary: Read recorded differences
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Discrepancy'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/events:
+    get:
+      operationId: getEvents
+      summary: Read sanitized event summaries
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema: *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/sandbox/simulations:
+    post:
+      operationId: createSimulation
+      summary: Run an implemented fault scenario
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Simulation'
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '400': *id001
+        '413': *id001
+        '415': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulationRequest'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/sandbox/simulations/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getSimulation
+      summary: Read a persisted simulation
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Simulation'
+        '501': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '422':
+          $ref: '#/components/responses/Error'
+      description: Contract for a later work package. The M1 server returns 501 not_implemented
+        after authentication and any implemented validation.
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/api-keys/current:
+    delete:
+      operationId: revokeCurrentAPIKey
+      summary: Revoke the authenticated operator API key
+      description: Only the API key presented on this request is revoked. Cookie authentication
+        cannot revoke an API key.
+      tags:
+      - Sandbox
+      security:
+      - bearerAuth: []
+      responses:
+        '204':
+          description: API key revoked
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: High-entropy prefix.secret API key; only hashes stored
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-railvanta_session
+      description: Secure HttpOnly host-only session. Cookie writes require Origin
+        and X-CSRF-Token.
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        code: *id003
+        message: *id003
+        request_id: *id003
+        field_errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              field: *id003
+              message: *id003
+            required:
+            - field
+            - message
+      required:
+      - code
+      - message
+      - request_id
+      - field_errors
+    Workspace:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        name: *id003
+        environment:
+          type: string
+          enum:
+          - sandbox
+      required:
+      - id
+      - name
+      - environment
+    Session:
+      type: object
+      additionalProperties: false
+      properties:
+        workspace_id: *id002
+        role:
+          type: string
+          enum:
+          - read
+          - operator
+      required:
+      - workspace_id
+      - role
+    PaymentMethod:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        rail:
+          type: string
+          enum:
+          - mock
+          - card
+          - ach
+        brand: *id003
+        last_four:
+          type: string
+          pattern: ^[0-9]{4}$
+      required:
+      - id
+      - rail
+      - brand
+      - last_four
+    CreatePayment:
+      type: object
+      additionalProperties: false
+      properties:
+        amount_minor: &id004
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          maxLength: 19
+          example: '25000'
+          description: Positive signed int64 minor units, encoded as a decimal string.
+            Server additionally enforces the int64 maximum 9223372036854775807. Currency
+            exponents govern display, not divisibility of minor units.
+        currency: &id005
+          type: string
+          enum:
+          - USD
+          - EUR
+          - GBP
+          - JPY
+          - KWD
+        payment_method_id: *id002
+        merchant_reference:
+          type: string
+          maxLength: 255
+      required:
+      - amount_minor
+      - currency
+      - payment_method_id
+    Payment:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        amount_minor: *id004
+        currency: *id005
+        payment_method_id: *id002
+        status:
+          type: string
+          enum:
+          - created
+          - processing
+          - succeeded
+          - failed
+          - canceled
+          - unknown
+      required:
+      - id
+      - amount_minor
+      - currency
+      - payment_method_id
+      - status
+    Attempt:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        payment_id: *id002
+        provider_id: *id002
+        status:
+          type: string
+          enum:
+          - created
+          - submitted
+          - succeeded
+          - failed
+          - unknown
+        routing_reason: *id003
+      required:
+      - id
+      - payment_id
+      - provider_id
+      - status
+      - routing_reason
+    MetricSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        data_source:
+          type: string
+          enum:
+          - observed
+          - simulated
+          - seeded
+        payment_count:
+          type: integer
+          minimum: 0
+        volumes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              currency: *id005
+              amount_minor: *id004
+            required:
+            - currency
+            - amount_minor
+      required:
+      - data_source
+      - payment_count
+      - volumes
+    VolumePoint:
+      type: object
+      additionalProperties: false
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+        currency: *id005
+        amount_minor: *id004
+      required:
+      - timestamp
+      - currency
+      - amount_minor
+    ProviderHealth:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        configured:
+          type: boolean
+        data_source: *id003
+        observation_count:
+          type: integer
+          minimum: 0
+      required:
+      - id
+      - configured
+      - data_source
+      - observation_count
+    RoutingRule:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        provider_id: *id002
+        currency: *id005
+        priority:
+          type: integer
+          minimum: 0
+        enabled:
+          type: boolean
+      required:
+      - id
+      - provider_id
+      - currency
+      - priority
+      - enabled
+    RoutingEvaluation:
+      type: object
+      additionalProperties: false
+      properties:
+        payment_method_id: *id002
+        amount_minor: *id004
+        currency: *id005
+      required:
+      - payment_method_id
+      - amount_minor
+      - currency
+    RoutingDecision:
+      type: object
+      additionalProperties: false
+      properties:
+        provider_id: *id002
+        rule_id: *id002
+        reason: *id003
+      required:
+      - provider_id
+      - rule_id
+      - reason
+    LedgerJournal:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        payment_id: *id002
+        currency: *id005
+        status:
+          type: string
+          enum:
+          - posted
+        entries:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              account_id: *id002
+              side:
+                type: string
+                enum:
+                - debit
+                - credit
+              amount_minor: *id004
+            required:
+            - account_id
+            - side
+            - amount_minor
+      required:
+      - id
+      - payment_id
+      - currency
+      - status
+      - entries
+    ReconciliationRun:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+      required:
+      - id
+      - status
+    Discrepancy:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        kind:
+          type: string
+          enum:
+          - missing_posting
+          - unknown_outcome
+          - amount_mismatch
+          - status_mismatch
+          - missing_at_provider
+        status:
+          type: string
+          enum:
+          - open
+          - investigating
+          - resolved
+      required:
+      - id
+      - kind
+      - status
+    Event:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        event_type: *id003
+        status: *id003
+        data_source: *id003
+      required:
+      - id
+      - event_type
+      - status
+      - data_source
+    SimulationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        scenario:
+          type: string
+          enum:
+          - success
+          - decline
+          - timeout_before_execution
+          - timeout_after_success
+          - duplicate_request
+          - duplicate_webhook
+          - reordered_events
+          - outage
+          - unknown_recovery
+          - duplicate_posting
+        payment:
+          $ref: '#/components/schemas/CreatePayment'
+      required:
+      - scenario
+      - payment
+    Simulation:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        status: *id003
+        payment_id: *id002
+      required:
+      - id
+      - status
+      - payment_id
+  responses:
+    Error:
+      description: Safe error envelope; code describes validation, authorization,
+        rate limits, missing resources or unimplemented capability.
+      headers:
+        X-Request-ID:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
