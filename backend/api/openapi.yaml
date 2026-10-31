@@ -3,7 +3,8 @@ info:
   title: Railvanta Sandbox API
   version: 0.1.0
   description: Implements authentication, workspace and payment-method reads, idempotent
-    payment acceptance (WBS 2.1) and workspace-scoped payment, attempt and list reads.
+    payment acceptance (WBS 2.1), workspace-scoped payment, attempt, history and list
+    reads, and observed dashboard metrics (WBS 3.1).
     Payment execution and operational routes remain explicitly unavailable (501) until
     later WBS packages. Decimal-string money preserves exact int64 minor units.
   license:
@@ -244,8 +245,10 @@ paths:
     get:
       operationId: listPayments
       summary: List workspace payments
-      description: Newest-first keyset pagination over the authenticated workspace's
-        payments. Pass next_cursor back as cursor; it is opaque. Optional status filter.
+      description: Keyset pagination over the authenticated workspace's payments,
+        newest first by default. Pass next_cursor back as cursor; it is opaque and
+        bound to the sort. Optional search and status, currency, rail, provider,
+        date and amount filters.
       tags:
       - Sandbox
       responses:
@@ -296,6 +299,75 @@ paths:
         required: false
         schema:
           $ref: '#/components/schemas/PaymentStatus'
+      - name: q
+        in: query
+        required: false
+        description: Exact payment ID or exact merchant_reference.
+        schema:
+          type: string
+          maxLength: 255
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - USD
+          - EUR
+          - GBP
+          - JPY
+          - KWD
+      - name: rail
+        in: query
+        required: false
+        description: Rail of the payment method.
+        schema:
+          type: string
+          enum:
+          - card
+          - ach
+          - mock
+      - name: provider_id
+        in: query
+        required: false
+        description: Payments with at least one attempt routed to this provider.
+        schema: *id002
+      - name: created_from
+        in: query
+        required: false
+        description: Inclusive lower bound; YYYY-MM-DD (UTC) or RFC 3339.
+        schema:
+          type: string
+      - name: created_to
+        in: query
+        required: false
+        description: Upper bound; a YYYY-MM-DD date includes that UTC day, an RFC 3339 timestamp is exclusive.
+        schema:
+          type: string
+      - name: amount_min
+        in: query
+        required: false
+        description: Inclusive minimum in minor units.
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - name: amount_max
+        in: query
+        required: false
+        description: Inclusive maximum in minor units.
+        schema:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+      - name: sort
+        in: query
+        required: false
+        description: Keyset order. A cursor is valid only for the sort that issued it.
+        schema:
+          type: string
+          enum:
+          - created_desc
+          - created_asc
+          default: created_desc
       - name: X-Request-ID
         in: header
         required: false
@@ -483,10 +555,58 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payments/{id}/history:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getPaymentHistory
+      summary: Read payment state history and durable events
+      description: Append-only state transitions, outbox events for the payment and
+        the masked idempotency key (at most the last four characters). Another
+        workspace's payment ID returns 404.
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentHistory'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '503': *id001
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/dashboard/summary:
     get:
       operationId: getDashboardSummary
       summary: Read observed sandbox metrics
+      description: Workspace-scoped metrics over payments created in the window.
+        Volumes are grouped per currency as exact decimal strings (never summed
+        across currencies). success_rate_percent and completion_latency_p95_ms
+        are null when no succeeded or failed payment was observed.
       tags:
       - Sandbox
       responses:
@@ -501,27 +621,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MetricSummary'
-        '501': *id001
+        '400': *id001
         '401': *id001
         '403': *id001
-        '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+        '503': *id001
       parameters:
-      - name: cursor
+      - name: window
         in: query
         required: false
-        schema: *id003
-      - name: limit
-        in: query
-        required: false
+        description: Observation window ending now; 24h uses hourly buckets, 7d and 30d daily buckets.
         schema:
-          type: integer
-          minimum: 1
-          maximum: 100
+          type: string
+          enum:
+          - 24h
+          - 7d
+          - 30d
+          default: 24h
       - name: X-Request-ID
         in: header
         required: false
@@ -538,6 +654,8 @@ paths:
     get:
       operationId: getPaymentVolume
       summary: Read volume grouped by currency
+      description: Accepted payment volume per time bucket and currency for the
+        workspace. Only non-empty buckets are returned; amounts are exact decimal strings.
       tags:
       - Sandbox
       responses:
@@ -554,6 +672,24 @@ paths:
                 type: object
                 additionalProperties: false
                 properties:
+                  data_source:
+                    $ref: '#/components/schemas/DataSource'
+                  window:
+                    $ref: '#/components/schemas/MetricWindow'
+                  bucket:
+                    type: string
+                    enum:
+                    - hour
+                    - day
+                  window_start:
+                    type: string
+                    format: date-time
+                  window_end:
+                    type: string
+                    format: date-time
+                  generated_at:
+                    type: string
+                    format: date-time
                   items:
                     type: array
                     items:
@@ -562,29 +698,31 @@ paths:
                     type: string
                     nullable: true
                 required:
+                - data_source
+                - window
+                - bucket
+                - window_start
+                - window_end
+                - generated_at
                 - items
                 - next_cursor
-        '501': *id001
+        '400': *id001
         '401': *id001
         '403': *id001
-        '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+        '503': *id001
       parameters:
-      - name: cursor
+      - name: window
         in: query
         required: false
-        schema: *id003
-      - name: limit
-        in: query
-        required: false
+        description: Observation window ending now; 24h uses hourly buckets, 7d and 30d daily buckets.
         schema:
-          type: integer
-          minimum: 1
-          maximum: 100
+          type: string
+          enum:
+          - 24h
+          - 7d
+          - 30d
+          default: 24h
       - name: X-Request-ID
         in: header
         required: false
@@ -1339,34 +1477,101 @@ components:
       - submitted_at
       - completed_at
       - created_at
+    DataSource:
+      type: string
+      enum:
+      - observed
+      - simulated
+      - seeded
+    MetricWindow:
+      type: string
+      enum:
+      - 24h
+      - 7d
+      - 30d
+    AggregateAmount:
+      type: string
+      pattern: ^(0|[1-9][0-9]*)$
+      description: Exact non-negative sum of minor units as a decimal string; may exceed int64.
+    CurrencyVolume:
+      type: object
+      additionalProperties: false
+      properties:
+        currency: *id005
+        amount_minor:
+          $ref: '#/components/schemas/AggregateAmount'
+        payment_count:
+          type: integer
+          minimum: 0
+      required:
+      - currency
+      - amount_minor
+      - payment_count
     MetricSummary:
       type: object
       additionalProperties: false
       properties:
         data_source:
+          $ref: '#/components/schemas/DataSource'
+        window:
+          $ref: '#/components/schemas/MetricWindow'
+        window_start:
           type: string
-          enum:
-          - observed
-          - simulated
-          - seeded
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        generated_at:
+          type: string
+          format: date-time
         payment_count:
           type: integer
           minimum: 0
+        status_counts:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
         volumes:
+          description: Accepted volume (all statuses) per currency.
           type: array
           items:
-            type: object
-            additionalProperties: false
-            properties:
-              currency: *id005
-              amount_minor: *id004
-            required:
-            - currency
-            - amount_minor
+            $ref: '#/components/schemas/CurrencyVolume'
+        succeeded_volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencyVolume'
+        terminal_count:
+          type: integer
+          minimum: 0
+          description: Succeeded plus failed payments in the window.
+        success_rate_percent:
+          type: string
+          nullable: true
+          pattern: ^[0-9]{1,3}\.[0-9]$
+          description: Succeeded / (succeeded + failed) with one decimal; null without observations.
+        completion_latency_p95_ms:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Nearest-rank p95 of acceptance-to-terminal time; null without observations.
+        completion_latency_samples:
+          type: integer
+          minimum: 0
       required:
       - data_source
+      - window
+      - window_start
+      - window_end
+      - generated_at
       - payment_count
+      - status_counts
       - volumes
+      - succeeded_volumes
+      - terminal_count
+      - success_rate_percent
+      - completion_latency_p95_ms
+      - completion_latency_samples
     VolumePoint:
       type: object
       additionalProperties: false
@@ -1374,12 +1579,92 @@ components:
         timestamp:
           type: integer
           format: int64
+          description: Bucket start in Unix milliseconds (UTC).
         currency: *id005
-        amount_minor: *id004
+        amount_minor:
+          $ref: '#/components/schemas/AggregateAmount'
+        payment_count:
+          type: integer
+          minimum: 0
       required:
       - timestamp
       - currency
       - amount_minor
+      - payment_count
+    PaymentHistory:
+      type: object
+      additionalProperties: false
+      properties:
+        payment_id: *id002
+        idempotency_key_masked:
+          type: string
+          nullable: true
+          maxLength: 8
+        transitions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              from_status:
+                type: string
+                nullable: true
+                enum:
+                - created
+                - processing
+                - succeeded
+                - failed
+                - canceled
+                - unknown
+                - null
+              to_status:
+                $ref: '#/components/schemas/PaymentStatus'
+              reason:
+                type: string
+              actor_reference:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+            required:
+            - from_status
+            - to_status
+            - reason
+            - actor_reference
+            - created_at
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id: *id002
+              event_type:
+                type: string
+              status:
+                type: string
+              attempts:
+                type: integer
+                minimum: 0
+              created_at:
+                type: string
+                format: date-time
+              delivered_at:
+                type: string
+                format: date-time
+                nullable: true
+            required:
+            - id
+            - event_type
+            - status
+            - attempts
+            - created_at
+            - delivered_at
+      required:
+      - payment_id
+      - idempotency_key_masked
+      - transitions
+      - events
     ProviderHealth:
       type: object
       additionalProperties: false

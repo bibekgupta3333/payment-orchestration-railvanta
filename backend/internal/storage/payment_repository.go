@@ -78,28 +78,71 @@ type PaymentCursor struct {
 	ID        string
 }
 
-// PaymentListFilter selects a newest-first page. Status is optional.
+// PaymentListFilter selects a page. Every field except Limit is optional.
+// Ascending switches the keyset order to oldest-first; cursors are directional.
 type PaymentListFilter struct {
-	Status string
-	After  *PaymentCursor
-	Limit  int
+	Status      string
+	After       *PaymentCursor
+	Limit       int
+	Query       string // exact payment ID or exact merchant_reference
+	Currency    string
+	Rail        string // payment method rail
+	ProviderID  string // any attempt routed to this provider
+	CreatedFrom *int64 // inclusive Unix milliseconds
+	CreatedTo   *int64 // exclusive Unix milliseconds
+	AmountMin   *int64 // inclusive minor units
+	AmountMax   *int64 // inclusive minor units
+	Ascending   bool
 }
 
-// ListPayments returns up to Limit payments ordered by (created_at, id) DESC,
-// using keyset pagination so concurrent inserts do not shift pages.
+// ListPayments returns up to Limit payments ordered by (created_at, id),
+// newest first unless Ascending, using keyset pagination so concurrent
+// inserts do not shift pages.
 func ListPayments(tx *gorm.DB, workspaceID string, filter PaymentListFilter) ([]Payment, error) {
 	query := tx.Where("workspace_id = ?", workspaceID)
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)
 	}
+	if filter.Query != "" {
+		query = query.Where("(id = ? OR merchant_reference = ?)", filter.Query, filter.Query)
+	}
+	if filter.Currency != "" {
+		query = query.Where("currency = ?", filter.Currency)
+	}
+	if filter.Rail != "" {
+		query = query.Where("payment_method_id IN (SELECT id FROM payment_methods WHERE workspace_id = ? AND rail = ?)", workspaceID, filter.Rail)
+	}
+	if filter.ProviderID != "" {
+		query = query.Where("id IN (SELECT payment_id FROM payment_attempts WHERE workspace_id = ? AND provider_id = ?)", workspaceID, filter.ProviderID)
+	}
+	if filter.CreatedFrom != nil {
+		query = query.Where("created_at >= ?", *filter.CreatedFrom)
+	}
+	if filter.CreatedTo != nil {
+		query = query.Where("created_at < ?", *filter.CreatedTo)
+	}
+	if filter.AmountMin != nil {
+		query = query.Where("amount_minor >= ?", *filter.AmountMin)
+	}
+	if filter.AmountMax != nil {
+		query = query.Where("amount_minor <= ?", *filter.AmountMax)
+	}
+	order := "created_at DESC, id DESC"
 	if filter.After != nil {
-		query = query.Where("(created_at < ? OR (created_at = ? AND id < ?))", filter.After.CreatedAt, filter.After.CreatedAt, filter.After.ID)
+		if filter.Ascending {
+			query = query.Where("(created_at > ? OR (created_at = ? AND id > ?))", filter.After.CreatedAt, filter.After.CreatedAt, filter.After.ID)
+		} else {
+			query = query.Where("(created_at < ? OR (created_at = ? AND id < ?))", filter.After.CreatedAt, filter.After.CreatedAt, filter.After.ID)
+		}
+	}
+	if filter.Ascending {
+		order = "created_at ASC, id ASC"
 	}
 	if filter.Limit <= 0 {
 		filter.Limit = 50
 	}
 	payments := []Payment{}
-	err := query.Order("created_at DESC, id DESC").Limit(filter.Limit).Find(&payments).Error
+	err := query.Order(order).Limit(filter.Limit).Find(&payments).Error
 	return payments, err
 }
 

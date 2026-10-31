@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/railvanta/railvanta/backend/internal/auth"
 	"github.com/railvanta/railvanta/backend/internal/payment"
@@ -143,21 +144,47 @@ func (h *handler) createPayment(w http.ResponseWriter, r *http.Request, principa
 	_, _ = w.Write(result.Body)
 }
 
-func encodeCursor(cursor storage.PaymentCursor) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(cursor.CreatedAt, 10) + "." + cursor.ID))
+const ascendingCursorPrefix = "asc:"
+
+func encodeCursor(cursor storage.PaymentCursor, ascending bool) string {
+	raw := strconv.FormatInt(cursor.CreatedAt, 10) + "." + cursor.ID
+	if ascending {
+		raw = ascendingCursorPrefix + raw
+	}
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
-func decodeCursor(value string) (*storage.PaymentCursor, bool) {
-	raw, err := base64.RawURLEncoding.DecodeString(value)
+func decodeCursor(value string, ascending bool) (*storage.PaymentCursor, bool) {
+	bytes, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return nil, false
 	}
-	created, paymentID, ok := strings.Cut(string(raw), ".")
+	raw := string(bytes)
+	if strings.HasPrefix(raw, ascendingCursorPrefix) != ascending {
+		return nil, false // a cursor is only valid for the sort that issued it
+	}
+	created, paymentID, ok := strings.Cut(strings.TrimPrefix(raw, ascendingCursorPrefix), ".")
 	at, err := strconv.ParseInt(created, 10, 64)
 	if !ok || err != nil || at < 0 || paymentID == "" || len(paymentID) > 64 {
 		return nil, false
 	}
 	return &storage.PaymentCursor{CreatedAt: at, ID: paymentID}, true
+}
+
+// parseListDate accepts an RFC 3339 timestamp or a YYYY-MM-DD UTC date. A bare
+// end date is inclusive, so it becomes the start of the following day.
+func parseListDate(value string, end bool) (int64, bool) {
+	if at, err := time.Parse(time.RFC3339, value); err == nil {
+		return at.UnixMilli(), true
+	}
+	day, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return 0, false
+	}
+	if end {
+		day = day.AddDate(0, 0, 1)
+	}
+	return day.UnixMilli(), true
 }
 
 func (h *handler) listPayments(w http.ResponseWriter, r *http.Request, principal auth.Principal, id string) {
@@ -178,10 +205,66 @@ func (h *handler) listPayments(w http.ResponseWriter, r *http.Request, principal
 		}
 		filter.Status = string(status)
 	}
+	switch query.Get("sort") {
+	case "", "created_desc":
+	case "created_asc":
+		filter.Ascending = true
+	default:
+		fields = append(fields, FieldError{Field: "sort", Message: "Use created_desc or created_asc"})
+	}
+	if value := query.Get("q"); value != "" {
+		if len(value) > 255 {
+			fields = append(fields, FieldError{Field: "q", Message: "At most 255 bytes"})
+		}
+		filter.Query = value
+	}
+	if value := query.Get("currency"); value != "" {
+		if payment.ValidateCurrency(value) != nil {
+			fields = append(fields, FieldError{Field: "currency", Message: "Use a supported upper-case currency code"})
+		}
+		filter.Currency = value
+	}
+	if value := query.Get("rail"); value != "" {
+		if value != "card" && value != "ach" && value != "mock" {
+			fields = append(fields, FieldError{Field: "rail", Message: "Use card, ach or mock"})
+		}
+		filter.Rail = value
+	}
+	if value := query.Get("provider_id"); value != "" {
+		if !safeID.MatchString(value) {
+			fields = append(fields, FieldError{Field: "provider_id", Message: "Use a provider ID"})
+		}
+		filter.ProviderID = value
+	}
+	for _, bound := range []struct {
+		name   string
+		end    bool
+		target **int64
+	}{{"created_from", false, &filter.CreatedFrom}, {"created_to", true, &filter.CreatedTo}} {
+		if value := query.Get(bound.name); value != "" {
+			at, ok := parseListDate(value, bound.end)
+			if !ok {
+				fields = append(fields, FieldError{Field: bound.name, Message: "Use YYYY-MM-DD or an RFC 3339 timestamp"})
+			}
+			*bound.target = &at
+		}
+	}
+	for _, bound := range []struct {
+		name   string
+		target **int64
+	}{{"amount_min", &filter.AmountMin}, {"amount_max", &filter.AmountMax}} {
+		if value := query.Get(bound.name); value != "" {
+			amount, err := payment.ParseAmount(value)
+			if err != nil {
+				fields = append(fields, FieldError{Field: bound.name, Message: "Use a positive integer decimal string of minor units"})
+			}
+			*bound.target = &amount
+		}
+	}
 	if value := query.Get("cursor"); value != "" {
-		cursor, ok := decodeCursor(value)
+		cursor, ok := decodeCursor(value, filter.Ascending)
 		if !ok {
-			fields = append(fields, FieldError{Field: "cursor", Message: "Use next_cursor from a previous page"})
+			fields = append(fields, FieldError{Field: "cursor", Message: "Use next_cursor from a previous page with the same sort"})
 		}
 		filter.After = cursor
 	}
@@ -200,7 +283,7 @@ func (h *handler) listPayments(w http.ResponseWriter, r *http.Request, principal
 	if len(payments) > pageSize {
 		payments = payments[:pageSize]
 		last := payments[len(payments)-1]
-		cursor := encodeCursor(storage.PaymentCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		cursor := encodeCursor(storage.PaymentCursor{CreatedAt: last.CreatedAt, ID: last.ID}, filter.Ascending)
 		next = &cursor
 	}
 	items := make([]payment.PaymentView, 0, len(payments))
