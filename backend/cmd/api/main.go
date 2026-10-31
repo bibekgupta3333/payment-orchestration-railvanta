@@ -16,6 +16,9 @@ import (
 
 	"github.com/railvanta/railvanta/backend/internal/auth"
 	"github.com/railvanta/railvanta/backend/internal/config"
+	"github.com/railvanta/railvanta/backend/internal/event"
+	"github.com/railvanta/railvanta/backend/internal/payment"
+	"github.com/railvanta/railvanta/backend/internal/provider/mock"
 	"github.com/railvanta/railvanta/backend/internal/storage"
 	httpapi "github.com/railvanta/railvanta/backend/internal/transport/http"
 )
@@ -49,6 +52,14 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			return fmt.Errorf("initialize demo fixtures: %w", err)
 		}
 	}
+	// The dispatcher starts only after migrations (storage.Open) and seeding.
+	providers := payment.ProviderSet{"mock": mock.New(store.DB, mock.Options{DelayedSuccessDelay: cfg.Dispatcher.MockDelayedSuccessDelay, TimeoutDelay: cfg.Dispatcher.MockTimeoutDelay})}
+	executor := payment.NewExecutor(store.DB, payment.ExecutorOptions{Providers: providers, ProviderTimeout: cfg.Dispatcher.ProviderTimeout, Logger: logger})
+	dispatcher := event.NewDispatcher(store.DB, event.Options{
+		PollInterval: cfg.Dispatcher.PollInterval, LeaseDuration: cfg.Dispatcher.LeaseDuration, DrainTimeout: cfg.Dispatcher.DrainTimeout,
+		MaxInFlight: cfg.Dispatcher.MaxInFlight, Logger: logger,
+	})
+	executor.Register(dispatcher)
 	apiListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen API: %w", err)
@@ -81,11 +92,12 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 		writeHealth(w, http.StatusOK)
 	})
-	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, RequestsPerMinute: 600}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, RequestsPerMinute: 600, Router: executor.Router(), OnAccepted: dispatcher.Notify}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 	health := &http.Server{Handler: healthMux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 	errorsCh := make(chan error, 2)
 	go func() { errorsCh <- api.Serve(apiListener) }()
 	go func() { errorsCh <- health.Serve(healthListener) }()
+	dispatcher.Start()
 	logger.Info("sandbox API ready", "http_addr", apiListener.Addr().String(), "health_addr", healthListener.Addr().String(), "demo_mode", cfg.DemoMode)
 	var serveErr error
 	select {
@@ -95,8 +107,15 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	draining.Store(true)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// Stop claiming and drain bounded in-flight work alongside HTTP shutdown;
+	// the deferred store.Close runs only after both have returned.
+	dispatcherErr := make(chan error, 1)
+	go func() { dispatcherErr <- dispatcher.Stop(shutdownCtx) }()
 	apiErr := api.Shutdown(shutdownCtx)
 	healthErr := health.Shutdown(shutdownCtx)
+	if err := <-dispatcherErr; err != nil {
+		logger.Warn("dispatcher stop", "error", err.Error())
+	}
 	if apiErr != nil {
 		_ = api.Close()
 	}

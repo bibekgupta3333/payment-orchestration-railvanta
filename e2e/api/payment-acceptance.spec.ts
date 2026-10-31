@@ -88,7 +88,8 @@ test("POST returns 202 with a payment ID and Location that GET resolves", async 
   });
   const attempts = await api.call("GET", `${location}/attempts`);
   expect(attempts.status()).toBe(200);
-  expect((await attempts.json()).items).toEqual([]);
+  // The dispatcher (WBS 2.2) may already have created the single attempt.
+  expect((await attempts.json()).items.length).toBeLessThanOrEqual(1);
 });
 
 test("same key and body replays byte-identically; a changed body returns 409", async ({

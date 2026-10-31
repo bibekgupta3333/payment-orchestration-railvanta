@@ -146,7 +146,7 @@ export interface paths {
     };
     /**
      * Read provider attempts
-     * @description Attempts in attempt-number order. Empty until dispatch (WBS 2.2) creates one. Another workspace's payment ID returns 404.
+     * @description Attempts in attempt-number order. Empty until the dispatcher claims the payment; then one attempt records the routed provider, rule and reason, submitted_at (set before the provider call) and completed_at (set when the attempt succeeds or fails; null while unknown). The provider idempotency key is never exposed. Another workspace's payment ID returns 404.
      */
     get: operations["listAttempts"];
     put?: never;
@@ -248,7 +248,7 @@ export interface paths {
     put?: never;
     /**
      * Evaluate without moving money
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Read-only. Returns the provider, rule and reason the dispatcher would choose for a payment with this method, amount and currency, using the same router as real dispatch (enabled provider with a token for the method, an enabled rule matching rail, currency and inclusive amount bounds, lowest priority first, and an executing adapter). Writes nothing and moves no money; requires operator role. 404 for a method outside the workspace; 422 no_eligible_provider when nothing matches.
      */
     post: operations["evaluateRouting"];
     delete?: never;
@@ -266,7 +266,7 @@ export interface paths {
     };
     /**
      * Read immutable posted journals
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Posted journals only (drafts are never visible), newest first by (created_at, id) with an opaque keyset cursor, scoped to the authenticated workspace. Optional payment_id filter. Amounts are decimal-string int64 minor units; each journal's debits equal its credits in its single currency. A payment success debits provider_clearing:{provider_id} and credits merchant_payable.
      */
     get: operations["getLedgerTransactions"];
     put?: never;
@@ -550,22 +550,38 @@ export interface components {
     RoutingDecision: {
       /** Format: uuid */
       provider_id: string;
+      /** @enum {string} */
+      provider_code: "mock" | "stripe" | "plaid";
       /** Format: uuid */
       rule_id: string;
+      priority: number;
       reason: string;
     };
     LedgerJournal: {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
-      payment_id: string;
+      payment_id: string | null;
       /** @enum {string} */
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
       /** @enum {string} */
       status: "posted";
+      posting_key: string;
+      /** Format: uuid */
+      reversal_of: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      posted_at: string;
       entries: {
         /** Format: uuid */
+        id: string;
+        /** Format: uuid */
         account_id: string;
+        /** @description merchant_payable or provider_clearing:{provider_id} */
+        account_code: string;
+        /** Format: uuid */
+        provider_id: string | null;
         /** @enum {string} */
         side: "debit" | "credit";
         /**
@@ -1134,7 +1150,7 @@ export interface operations {
       415: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1143,6 +1159,7 @@ export interface operations {
       query?: {
         cursor?: string;
         limit?: number;
+        payment_id?: string;
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1166,12 +1183,13 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

@@ -13,7 +13,36 @@ const (
 	OtherWorkspaceID = "00000000-0000-7000-8000-000000000002"
 	DemoMethodID     = "00000000-0000-7000-8000-000000000101"
 	OtherMethodID    = "00000000-0000-7000-8000-000000000102"
+	DemoProviderID   = "00000000-0000-7000-8000-000000000201"
+	OtherProviderID  = "00000000-0000-7000-8000-000000000202"
 )
+
+// ScenarioMethod is a seeded demo-workspace payment method whose mock token
+// reference selects one deterministic mock scenario (see provider/mock).
+type ScenarioMethod struct {
+	ID, TokenID, Scenario, LastFour string
+}
+
+// ScenarioMethods are seeded in the demo workspace so tests and E2E can pick a
+// mock outcome by method ID. IDs are stable; token references are
+// "mock_<scenario>_<method id>".
+var ScenarioMethods = []ScenarioMethod{
+	{"00000000-0000-7000-8000-000000000121", "00000000-0000-7000-8000-000000000321", "success", "1111"},
+	{"00000000-0000-7000-8000-000000000122", "00000000-0000-7000-8000-000000000322", "decline", "0002"},
+	{"00000000-0000-7000-8000-000000000123", "00000000-0000-7000-8000-000000000323", "delayed_success", "0003"},
+	{"00000000-0000-7000-8000-000000000124", "00000000-0000-7000-8000-000000000324", "timeout_before_execution", "0004"},
+	{"00000000-0000-7000-8000-000000000125", "00000000-0000-7000-8000-000000000325", "timeout_after_success", "0005"},
+	{"00000000-0000-7000-8000-000000000126", "00000000-0000-7000-8000-000000000326", "outage", "0006"},
+}
+
+// SeedCurrencies receive one priority-0 mock-rail routing rule per workspace.
+var SeedCurrencies = []string{"USD", "EUR", "GBP", "JPY", "KWD"}
+
+// RoutingRuleID returns the stable seeded rule ID for a workspace index (0
+// demo, 1 other) and currency index in SeedCurrencies.
+func RoutingRuleID(workspaceIndex, currencyIndex int) string {
+	return "00000000-0000-7000-8000-0000000007" + string(rune('0'+workspaceIndex)) + string(rune('1'+currencyIndex))
+}
 
 // DemoCredentials must be supplied explicitly by a loopback-only bootstrap.
 // Empty session fields skip session creation; API keys are required.
@@ -52,6 +81,26 @@ func SeedDemo(ctx context.Context, db *gorm.DB, credentials DemoCredentials) err
 				{"INSERT INTO providers(id,workspace_id,code,enabled,created_at) VALUES(?,?,'mock',1,?) ON CONFLICT(id) DO NOTHING", []any{provider, workspace, now}},
 				{"INSERT INTO payment_methods(id,workspace_id,rail,brand,last_four,created_at) VALUES(?,?,'mock','Mock','4242',?) ON CONFLICT(id) DO NOTHING", []any{method, workspace, now}},
 				{"INSERT INTO payment_method_tokens(id,workspace_id,method_id,provider_id,token_reference,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", []any{"00000000-0000-7000-8000-00000000030" + string(rune('1'+i)), workspace, method, provider, "mock_reference_" + method, now}},
+			}
+			for c, currency := range SeedCurrencies {
+				statements = append(statements, struct {
+					SQL  string
+					Args []any
+				}{"INSERT INTO routing_rules(id,workspace_id,provider_id,rail,currency,priority,min_amount_minor,max_amount_minor,enabled,version,created_at,updated_at) VALUES(?,?,?,'mock',?,0,1,NULL,1,1,?,?) ON CONFLICT DO NOTHING", []any{RoutingRuleID(i, c), workspace, provider, currency, now, now}})
+			}
+			if i == 0 {
+				for _, m := range ScenarioMethods {
+					statements = append(statements,
+						struct {
+							SQL  string
+							Args []any
+						}{"INSERT INTO payment_methods(id,workspace_id,rail,brand,last_four,created_at) VALUES(?,?,'mock',?,?,?) ON CONFLICT(id) DO NOTHING", []any{m.ID, workspace, "Mock " + m.Scenario, m.LastFour, now}},
+						struct {
+							SQL  string
+							Args []any
+						}{"INSERT INTO payment_method_tokens(id,workspace_id,method_id,provider_id,token_reference,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", []any{m.TokenID, workspace, m.ID, provider, "mock_" + m.Scenario + "_" + m.ID, now}},
+					)
+				}
 			}
 			for _, statement := range statements {
 				if err := tx.Exec(statement.SQL, statement.Args...).Error; err != nil {

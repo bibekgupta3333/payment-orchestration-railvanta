@@ -1,7 +1,7 @@
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
@@ -118,6 +118,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     DEMO_OTHER_WORKSPACE_KEY: current.otherKey,
     DEMO_SESSION_TOKEN: current.sessionToken,
     DEMO_CSRF_TOKEN: current.csrfToken,
+    // Fast dispatch for black-box specs; a long delayed-success window lets
+    // dispatch.spec kill the API while an attempt is submitted.
+    DISPATCHER_POLL_INTERVAL: "50ms",
+    DISPATCHER_LEASE: "2s",
+    DISPATCHER_DRAIN_TIMEOUT: "1s",
+    PROVIDER_TIMEOUT: "30s",
+    MOCK_DELAYED_SUCCESS_DELAY: "8s",
+    MOCK_TIMEOUT_DELAY: "200ms",
   };
   function launchApi(env = environment): ChildProcess {
     const child = spawn(binary, [], {
@@ -187,6 +195,42 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       await startApi();
     }
   }
+  // Read-only inspection of rows the API never exposes (provider idempotency
+  // keys, mock charges, outbox rows) for one payment.
+  function inspect(paymentId: string): Record<string, unknown> {
+    const script = `
+import json, sqlite3, sys
+d = sqlite3.connect("file:" + sys.argv[1] + "?mode=ro", uri=True, timeout=10)
+d.row_factory = sqlite3.Row
+pid = sys.argv[2]
+attempts = [dict(r) for r in d.execute("SELECT id, provider_id, provider_idempotency_key, status FROM payment_attempts WHERE payment_id=? ORDER BY attempt_number", (pid,))]
+keys = [a["provider_idempotency_key"] for a in attempts] + ["rv_" + pid + "_" + str(n) for n in range(1, 4)]
+charges = [dict(r) for r in d.execute("SELECT provider_id, provider_idempotency_key, status FROM mock_provider_charges WHERE provider_idempotency_key IN (%s)" % ",".join("?" * len(keys)), keys)]
+outbox = [dict(r) for r in d.execute("SELECT event_type, status, attempts FROM outbox_events WHERE payment_id=? ORDER BY created_at, id", (pid,))]
+journals = d.execute("SELECT count(*) FROM ledger_journals WHERE payment_id=?", (pid,)).fetchone()[0]
+print(json.dumps({"attempts": attempts, "charges": charges, "outbox": outbox, "journals": journals}))
+d.close()`;
+    return JSON.parse(
+      execFileSync("python3", ["-c", script, database, paymentId], {
+        encoding: "utf8",
+      }),
+    ) as Record<string, unknown>;
+  }
+  // Re-delivers a payment's dispatch command, as if its completion had been
+  // lost, so the running dispatcher processes it again.
+  function redeliver(paymentId: string): void {
+    execFileSync("python3", [
+      "-c",
+      `import sqlite3,sys; d=sqlite3.connect(sys.argv[1], timeout=10); d.execute("UPDATE outbox_events SET status='pending', delivered_at=NULL, available_at=0 WHERE payment_id=? AND event_type='payment.dispatch'", (sys.argv[2],)); d.commit(); d.close()`,
+      database,
+      paymentId,
+    ]);
+  }
+  async function readBody(request: IncomingMessage): Promise<string> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    return Buffer.concat(chunks).toString("utf8");
+  }
   const control = createServer(async (request, response) => {
     const incoming = Buffer.from(request.headers.authorization ?? "");
     const expected = Buffer.from(`Bearer ${current.controlToken}`);
@@ -223,6 +267,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
         };
       } else if (request.url === "/logs") {
         body = { logs };
+      } else if (request.url === "/inspect" || request.url === "/redeliver") {
+        const { paymentId } = JSON.parse(await readBody(request)) as {
+          paymentId?: unknown;
+        };
+        if (typeof paymentId !== "string" || !/^[0-9a-f-]{36}$/.test(paymentId))
+          throw new Error("paymentId must be a UUID");
+        if (request.url === "/redeliver") redeliver(paymentId);
+        else body = inspect(paymentId);
       } else {
         response.writeHead(404).end();
         return;

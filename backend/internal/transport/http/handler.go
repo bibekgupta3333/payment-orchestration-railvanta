@@ -25,6 +25,12 @@ type Config struct {
 	RequestsPerMinute int
 	// Payments overrides the payment service (tests inject metrics or faults).
 	Payments *payment.Service
+	// Router answers POST /v1/routing/evaluate. Pass the dispatcher's
+	// Executor.Router() so evaluation matches real dispatch.
+	Router payment.Router
+	// OnAccepted, when set, runs after a new payment is accepted (for example
+	// to wake the dispatcher). It must not block.
+	OnAccepted func()
 }
 type FieldError struct {
 	Field   string `json:"field"`
@@ -205,6 +211,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if r.Method == "POST" && r.URL.Path == "/v1/routing/evaluate" {
+		h.evaluateRouting(w, r, principal, id)
+		return
+	}
+	if r.Method == "GET" && r.URL.Path == "/v1/ledger/transactions" {
+		h.listLedgerTransactions(w, r, principal, id)
+		return
+	}
 	if r.Method == "GET" && r.URL.Path == "/v1/session" {
 		writeJSON(w, 200, map[string]string{"workspace_id": principal.WorkspaceID, "role": principal.Role})
 		return
@@ -224,5 +238,5 @@ func plannedRoute(method, path string) bool {
 			}
 		}
 	}
-	return method == "POST" && (path == "/v1/routing/evaluate" || path == "/v1/sandbox/simulations")
+	return method == "POST" && path == "/v1/sandbox/simulations"
 }

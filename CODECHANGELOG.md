@@ -22,6 +22,64 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add outbox dispatcher, mock execution, atomic success posting and ledger reads
+
+**WBS:** 2.2.6–2.2.13, 2.2 acceptance gate and E2E, 2.3.5, 2.3.8, 2.3.9, 2.3 acceptance (partial) and E2E (partial) · **PR/commit:** uncommitted
+
+**Changed**
+- `backend/internal/event/outbox.go`, `dispatcher.go`, `metrics.go`, `doc.go` — `Enqueue` (dedup with `ON CONFLICT DO NOTHING`), `ClaimDue` (compare-and-swap on id/status/previous `lease_owner`, fresh 32-byte `crypto/rand` token, bounded `lease_until`, reclaims expired leases), and token-checked `Renew`/`Complete`/`Release`/`Fail` (`ErrLeaseLost`). `Dispatcher` claims only registered types and renews leases every lease/3. It retries with full-jitter backoff or `RetryAfter`, parks a row after 10 acquisitions, and has `Start`, `Notify`, `RunOnce` (tests) and bounded `Stop` drain-then-cancel. Lag/claim metrics.
+- `backend/internal/payment/dispatch.go` — `Executor.Handle` for `payment.dispatch`. The prepare transaction routes, guards, moves `created → processing`, and inserts attempt `rv_{payment}_{n}` as `submitted` with `submitted_at`. The `Submit` call runs outside every transaction under `PROVIDER_TIMEOUT`. A new busy-retried transaction records the outcome. Unroutable payments: `created → processing → failed` with no attempt. A reclaimed stale `submitted` attempt goes to `unknown` plus lookup and is never resubmitted. Test hooks `AfterPrepare`/`BeforeRecord`.
+- `backend/internal/payment/outcome.go` — `ApplySuccess` (2.3.5: guarded payment and attempt success, `ledger.PostPaymentSuccess`, audit, outbox completion in one transaction), `ApplyDecline`, `ApplyUnknown` (schedules `payment.lookup`, payload `LookupCommand`, dedup `payment.lookup:{attempt_id}`), `ErrLateOutcome`, `GuardNewAttempt`/`ErrUnsafeFailover` (2.2.11).
+- `backend/internal/payment/router.go` — `Router.Decide`, shared by evaluation and dispatch. It excludes providers with no adapter.
+- `backend/internal/payment/execution_metrics.go` — attempts started, outcomes by provider, unknown count, stale reclaims, no-route, blocked failovers, `completed_at − submitted_at` histogram.
+- `backend/internal/storage/attempt_repository.go` — `InsertAttempt`, `GetAttempt`, status-guarded `UpdateAttemptStatus`, `FindMethodToken`, `FindProvider`.
+- `backend/internal/ledger/read.go` — `ListPosted`: workspace-scoped posted journals with keyset pagination and entries joined to account code and provider.
+- `backend/internal/transport/http/routing.go`, `ledger.go`, `handler.go`, `payments.go` — `POST /v1/routing/evaluate` (read-only; 400/403/404/415/422 `no_eligible_provider`) and `GET /v1/ledger/transactions` (`cursor`, `limit`, `payment_id`; decimal-string amounts). `Config.Router` and `Config.OnAccepted` (wakes the dispatcher). Both routes are removed from the 501 list.
+- `backend/internal/config/config.go`, `config_test.go`, `backend/.env.example` — `DISPATCHER_POLL_INTERVAL`, `DISPATCHER_LEASE`, `DISPATCHER_DRAIN_TIMEOUT`, `DISPATCHER_MAX_IN_FLIGHT`, `PROVIDER_TIMEOUT`, `MOCK_DELAYED_SUCCESS_DELAY` and `MOCK_TIMEOUT_DELAY`, with bounds.
+- `backend/cmd/api/main.go` — builds the mock adapter, executor and dispatcher after migrations and seeding, and starts it. On shutdown it stops claiming and drains (bounded) alongside the HTTP shutdown, then closes the database.
+- `backend/internal/auth/seed.go` — demo seed adds scenario methods `…0121`–`…0126` (tokens `…0321`–`…0326`, `mock_<scenario>_<id>`) and one priority-0 `mock` routing rule per currency per workspace (`…0701`–`…0705`, `…0711`–`…0715`). Existing IDs are unchanged.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — evaluate and ledger operations documented as implemented. `RoutingDecision` adds `provider_code` and `priority`. `LedgerJournal` adds `posting_key`, `reversal_of`, timestamps, and entry `id`, `account_code` and `provider_id`.
+- `backend/tests/dispatch_helpers_test.go`, `dispatch_test.go`, `ledger_posting_test.go` — 16 new top-level file-backed WAL integration tests: every scenario's states, plus `ledger.Check`, audit and metrics. Also covered:
+  - a write succeeds during a blocked submit;
+  - two dispatchers on separate connections give 20 claims, 20 attempts and 20 charges;
+  - 16 concurrent `ClaimDue` calls give one winner;
+  - an expired lease cannot renew, complete or release, and a stale owner's late success rolls back after a reclaim;
+  - timeout-after-success with a second eligible provider plus redelivery gives no second-provider attempt or charge;
+  - guard unit cases;
+  - a crash before record leads to reclaim, `unknown`, and a same-key resubmit with one charge;
+  - evaluate leaves all table hashes unchanged and matches dispatch;
+  - lifecycle drain;
+  - 3× sequential plus 3× concurrent success delivery, and 3 concurrent first deliveries, each give one journal;
+  - rollback after entries are inserted leaves all tables unchanged;
+  - a late success after failed is rejected;
+  - the ledger endpoint (int64 max, debit/credit accounts, workspace scope, pagination, 400s).
+- `e2e/api/dispatch.spec.ts`, `e2e/api/ledger-posting.spec.ts`, `e2e/support/payments.ts` (new); `e2e/support/global-setup.ts`, `state.ts` — fast dispatcher env, scenario fixtures, harness control ops `inspectPayment` (read-only SQLite URI) and `redeliverDispatch`. `e2e/api/payment-acceptance.spec.ts` now allows 0–1 attempts right after acceptance, because dispatch now runs. `e2e/api/database.spec.ts` expects the seeded scenario methods.
+- `docs/backend/flows.md` — implemented dispatch contract, outcome table, lookup command, guard, lifecycle, config and metrics. `docs/wbs.md` — verified boxes ticked and status updated. `e2e/README.md`, `README.md` — harness inspection and timing knobs.
+
+**Verification**
+- `go -C backend test -race -count=3 -v ./tests/` — pass: all 28 top-level tests (12 earlier plus 16 new) passed on each of 3 runs.
+- `pnpm check` — exit 0: golangci-lint 0 issues, all Go packages ok, Vitest 23 passed, build passed, generated contracts current.
+- `pnpm test:e2e` — **35 passed, 0 failed**: 9 new (5 dispatch, 4 ledger-posting) plus all 26 earlier. The first full run failed 2. `database.spec` expected only one seeded method; it now lists the scenario methods. A ledger assertion used the other-workspace key, which `auth-contract.spec` revokes earlier in the run; it now uses the reader key, and cross-workspace isolation is covered in Go.
+- `pnpm lint:openapi` — valid (1 existing warning); `pnpm generate:api` — regenerated.
+
+**Notes:**
+- Not verified: "canceled payments have no journal" (no cancel endpoint until 2.4) and "invariant checker passes after the 2.4 suite".
+- `payment.lookup` rows stay `pending` until the 2.4 worker registers a handler.
+- An `unknown` attempt keeps `completed_at` NULL until it is resolved.
+- E2E cannot exercise a second provider, because providers are unique per `(workspace, code)` and only the mock adapter exists. The cross-provider guard is proven in Go with a second adapter under code `stripe`.
+- Metrics are in-process only; there is no exporter.
+
+## 2026-10-31 — Ignore agent worktrees and generated Next.js types in the docs hook
+
+**WBS:** process · **PR/commit:** feat/m2-m4-payment-correctness
+
+**Changed**
+- `.gitignore` — ignores `.claude/worktrees/`, where isolated agents run.
+- `.claude/hooks/require-docs.sh` — skips `frontend/next-env.d.ts`, which `next dev` and `next build` rewrite.
+
+**Verification**
+- Hook run by hand with only these files changed → allowed.
+
 ## 2026-10-31 — Add idempotent payment acceptance and payment reads
 
 **WBS:** 2.1.1–2.1.12, 2.1 acceptance gate, 2.1 E2E · **PR/commit:** uncommitted

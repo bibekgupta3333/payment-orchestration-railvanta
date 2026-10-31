@@ -3,9 +3,11 @@ info:
   title: Railvanta Sandbox API
   version: 0.1.0
   description: Implements authentication, workspace and payment-method reads, idempotent
-    payment acceptance (WBS 2.1) and workspace-scoped payment, attempt and list reads.
-    Payment execution and operational routes remain explicitly unavailable (501) until
-    later WBS packages. Decimal-string money preserves exact int64 minor units.
+    payment acceptance (WBS 2.1), workspace-scoped payment, attempt and list reads,
+    read-only routing evaluation (WBS 2.2) and posted ledger journals (WBS 2.3). Accepted
+    payments are executed asynchronously by the in-process outbox dispatcher against
+    the deterministic mock provider. Other operational routes remain explicitly unavailable
+    (501) until later WBS packages. Decimal-string money preserves exact int64 minor units.
   license:
     name: Private project
 servers:
@@ -437,8 +439,11 @@ paths:
     get:
       operationId: listAttempts
       summary: Read provider attempts
-      description: Attempts in attempt-number order. Empty until dispatch (WBS 2.2)
-        creates one. Another workspace's payment ID returns 404.
+      description: Attempts in attempt-number order. Empty until the dispatcher claims
+        the payment; then one attempt records the routed provider, rule and reason,
+        submitted_at (set before the provider call) and completed_at (set when the attempt
+        succeeds or fails; null while unknown). The provider idempotency key is never
+        exposed. Another workspace's payment ID returns 404.
       tags:
       - Sandbox
       responses:
@@ -741,7 +746,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RoutingDecision'
-        '501': *id001
+        '503': *id001
         '401': *id001
         '403': *id001
         '404': *id001
@@ -751,8 +756,12 @@ paths:
         '415': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+      description: Read-only. Returns the provider, rule and reason the dispatcher would
+        choose for a payment with this method, amount and currency, using the same router
+        as real dispatch (enabled provider with a token for the method, an enabled rule matching
+        rail, currency and inclusive amount bounds, lowest priority first, and an executing
+        adapter). Writes nothing and moves no money; requires operator role. 404 for a method
+        outside the workspace; 422 no_eligible_provider when nothing matches.
       requestBody:
         required: true
         content:
@@ -802,15 +811,19 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
+        '400': *id001
+        '503': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented
-        after authentication and any implemented validation.
+      description: Posted journals only (drafts are never visible), newest first by
+        (created_at, id) with an opaque keyset cursor, scoped to the authenticated workspace.
+        Optional payment_id filter. Amounts are decimal-string int64 minor units; each
+        journal's debits equal its credits in its single currency. A payment success debits
+        provider_clearing:{provider_id} and credits merchant_payable.
       parameters:
       - name: cursor
         in: query
@@ -823,6 +836,13 @@ paths:
           type: integer
           minimum: 1
           maximum: 100
+          default: 50
+      - name: payment_id
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 64
       - name: X-Request-ID
         in: header
         required: false
@@ -1430,23 +1450,48 @@ components:
       additionalProperties: false
       properties:
         provider_id: *id002
+        provider_code:
+          type: string
+          enum:
+          - mock
+          - stripe
+          - plaid
         rule_id: *id002
+        priority:
+          type: integer
+          minimum: 0
         reason: *id003
       required:
       - provider_id
+      - provider_code
       - rule_id
+      - priority
       - reason
     LedgerJournal:
       type: object
       additionalProperties: false
       properties:
         id: *id002
-        payment_id: *id002
+        payment_id:
+          type: string
+          format: uuid
+          nullable: true
         currency: *id005
         status:
           type: string
           enum:
           - posted
+        posting_key: *id003
+        reversal_of:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        posted_at:
+          type: string
+          format: date-time
         entries:
           type: array
           minItems: 2
@@ -1454,7 +1499,15 @@ components:
             type: object
             additionalProperties: false
             properties:
+              id: *id002
               account_id: *id002
+              account_code:
+                type: string
+                description: merchant_payable or provider_clearing:{provider_id}
+              provider_id:
+                type: string
+                format: uuid
+                nullable: true
               side:
                 type: string
                 enum:
@@ -1462,7 +1515,10 @@ components:
                 - credit
               amount_minor: *id004
             required:
+            - id
             - account_id
+            - account_code
+            - provider_id
             - side
             - amount_minor
       required:
@@ -1470,6 +1526,10 @@ components:
       - payment_id
       - currency
       - status
+      - posting_key
+      - reversal_of
+      - created_at
+      - posted_at
       - entries
     ReconciliationRun:
       type: object

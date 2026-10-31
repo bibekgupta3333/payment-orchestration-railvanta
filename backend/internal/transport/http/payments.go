@@ -133,6 +133,9 @@ func (h *handler) createPayment(w http.ResponseWriter, r *http.Request, principa
 		fail(w, 500, "internal_error", "Payment acceptance failed; retry with the same key", id)
 		return
 	}
+	if !result.Replayed && h.config.OnAccepted != nil {
+		h.config.OnAccepted()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Location", "/v1/payments/"+result.PaymentID)

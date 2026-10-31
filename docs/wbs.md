@@ -83,8 +83,8 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 1.3 | API and auth contract | 1.1 | M1 | Auth source added; generated types and runtime tests pending |
 | 1.4 | UI shell | 1.1 | M1 | Source/tests added; formatting, build and browser checks pending |
 | 2.1 | Payment acceptance | 1.2, 1.3 | M2 | Done (verified 2026-10-31) |
-| 2.2 | Routing and mock execution | 2.1 | M2 | Not started |
-| 2.3 | Atomic ledger posting | 2.2 | M2 | Not started |
+| 2.2 | Routing and mock execution | 2.1 | M2 | Done (verified 2026-10-31; uncommitted) |
+| 2.3 | Atomic ledger posting | 2.2 | M2 | Tasks implemented; canceled-payment E2E and the 2.4 invariant gate pending |
 | 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Not started |
 | 3.1 | Payment-facing screens | 1.4, 2.1 | M3 | Not started |
 | 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Not started |
@@ -315,31 +315,31 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [x] 2.2.3 Add deterministic scenarios to the mock: success, decline, delayed success, timeout before execution, timeout after success, and outage; select the scenario from persisted simulation input, never from wall-clock randomness.
 - [x] 2.2.4 Make the mock honor its idempotency contract: resubmitting the same key returns the original charge instead of executing again.
 - [x] 2.2.5 Implement routing in `backend/internal/routing/`: eligible providers = providers holding a token for the method ∩ enabled rules matching rail, currency and amount bounds, ordered by priority; return the chosen provider, rule ID and a human-readable reason.
-- [ ] 2.2.6 Implement `POST /v1/routing/evaluate` as a read-only evaluation that writes nothing and has no money-moving effect.
-- [ ] 2.2.7 Implement the outbox dispatcher in `backend/internal/event/dispatcher.go`: claim due rows with a compare-and-swap update, a fresh unpredictable lease token in `lease_owner`, and a bounded `lease_until`; renew and complete only when the token matches.
-- [ ] 2.2.8 In one short transaction, move the payment `created → processing` (version-guarded), insert the attempt with routing decision and a stable provider idempotency key, and mark it `submitted` with `submitted_at` before any network call.
-- [ ] 2.2.9 Call the provider outside every transaction with a request deadline; then persist the outcome in a new transaction using a status-predicate guarded update and set `completed_at`.
-- [ ] 2.2.10 Map outcomes: `Succeeded` hands off to ledger posting (2.3); `Declined` sets attempt and payment `failed`; `Ambiguous` or a timeout sets both to `unknown` and schedules a same-provider lookup outbox command.
-- [ ] 2.2.11 Ensure no code path submits an `unknown` or stale `submitted` payment to a different provider; add a guard and a test asserting it.
-- [ ] 2.2.12 Start and stop the dispatcher with the API lifecycle in `backend/cmd/api/`: stop claiming on shutdown, drain bounded in-flight work, close the database.
-- [ ] 2.2.13 Emit metrics for dispatcher lag, attempt latency (`completed_at − submitted_at`), outcomes by provider, and unknown-outcome count.
+- [x] 2.2.6 Implement `POST /v1/routing/evaluate` as a read-only evaluation that writes nothing and has no money-moving effect.
+- [x] 2.2.7 Implement the outbox dispatcher in `backend/internal/event/dispatcher.go`: claim due rows with a compare-and-swap update, a fresh unpredictable lease token in `lease_owner`, and a bounded `lease_until`; renew and complete only when the token matches.
+- [x] 2.2.8 In one short transaction, move the payment `created → processing` (version-guarded), insert the attempt with routing decision and a stable provider idempotency key, and mark it `submitted` with `submitted_at` before any network call.
+- [x] 2.2.9 Call the provider outside every transaction with a request deadline; then persist the outcome in a new transaction using a status-predicate guarded update and set `completed_at`.
+- [x] 2.2.10 Map outcomes: `Succeeded` hands off to ledger posting (2.3); `Declined` sets attempt and payment `failed`; `Ambiguous` or a timeout sets both to `unknown` and schedules a same-provider lookup outbox command.
+- [x] 2.2.11 Ensure no code path submits an `unknown` or stale `submitted` payment to a different provider; add a guard and a test asserting it.
+- [x] 2.2.12 Start and stop the dispatcher with the API lifecycle in `backend/cmd/api/`: stop claiming on shutdown, drain bounded in-flight work, close the database.
+- [x] 2.2.13 Emit metrics for dispatcher lag, attempt latency (`completed_at − submitted_at`), outcomes by provider, and unknown-outcome count.
 
 **Acceptance gate**
-- [ ] Each mock scenario produces the documented payment and attempt states in a file-backed SQLite integration test.
-- [ ] A test proves no database transaction is open while the provider call runs (for example, a concurrent write succeeds during a blocked mock submit).
-- [ ] Two dispatchers racing on the same outbox row result in exactly one claim and one attempt.
-- [ ] A dispatcher whose lease expired cannot complete or renew the row after another owner reclaims it.
-- [ ] A timeout-after-success leaves the payment `unknown`, the attempt keeping its provider idempotency key, and zero attempts at any other provider.
-- [ ] Resubmitting under the same provider key creates one `mock_provider_charges` row.
-- [ ] `POST /v1/routing/evaluate` leaves the database byte-for-byte unchanged and reports the same provider and reason as a real dispatch for the same input.
+- [x] Each mock scenario produces the documented payment and attempt states in a file-backed SQLite integration test.
+- [x] A test proves no database transaction is open while the provider call runs (for example, a concurrent write succeeds during a blocked mock submit).
+- [x] Two dispatchers racing on the same outbox row result in exactly one claim and one attempt.
+- [x] A dispatcher whose lease expired cannot complete or renew the row after another owner reclaims it.
+- [x] A timeout-after-success leaves the payment `unknown`, the attempt keeping its provider idempotency key, and zero attempts at any other provider.
+- [x] Resubmitting under the same provider key creates one `mock_provider_charges` row.
+- [x] `POST /v1/routing/evaluate` leaves the database byte-for-byte unchanged *(verified as identical row counts and SHA-256 content hashes of every table)* and reports the same provider and reason as a real dispatch for the same input.
 
 **E2E test** — `e2e/api/dispatch.spec.ts`
-- [ ] A payment with the seeded success mock method reaches `succeeded`; its attempt shows the provider, the routing reason and `submitted_at`/`completed_at`
-- [ ] The decline mock method ends in `failed`, with no further attempts
-- [ ] `POST /v1/routing/evaluate` returns the provider and reason without creating a payment or attempt
-- [ ] Using the delayed-success method, `killApi()` while the attempt is `submitted` and then restarting does not submit a second charge (the attempt's provider key is unchanged and the mock records one charge)
-- [ ] An `unknown` attempt is never retried with a different provider
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] A payment with the seeded success mock method reaches `succeeded`; its attempt shows the provider, the routing reason and `submitted_at`/`completed_at`
+- [x] The decline mock method ends in `failed`, with no further attempts
+- [x] `POST /v1/routing/evaluate` returns the provider and reason without creating a payment or attempt
+- [x] Using the delayed-success method, `killApi()` while the attempt is `submitted` and then restarting does not submit a second charge (the attempt's provider key is unchanged and the mock records one charge)
+- [x] An `unknown` attempt is never retried with a different provider
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 2.3 Atomic ledger posting — backend
 **Depends on:** 2.2; 1.2 schema revision (per-provider clearing accounts) · **Deliverable:** A confirmed success, its balanced journal, the audit transition and outbox completion commit together, and repeated results never post twice.
@@ -349,26 +349,26 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [x] 2.3.2 Define the success posting rule: debit `provider_clearing` for the executing provider, credit `merchant_payable`, same currency and amount as the payment.
 - [x] 2.3.3 Seed or lazily create per-workspace, per-currency, per-provider ledger accounts with unique codes; reject posting to an account in a different currency or workspace.
 - [x] 2.3.4 Use a deterministic posting key (`payment:{id}:success`) so the unique `(workspace_id, posting_key)` constraint rejects duplicates; treat a duplicate-key error as "already posted" and confirm the existing journal matches.
-- [ ] 2.3.5 Combine the success transition (`processing|unknown → succeeded`, version-guarded), attempt success, journal posting, audit transition and outbox completion into one transaction in `backend/internal/payment/`.
+- [x] 2.3.5 Combine the success transition (`processing|unknown → succeeded`, version-guarded), attempt success, journal posting, audit transition and outbox completion into one transaction in `backend/internal/payment/`.
 - [x] 2.3.6 Implement reversal journals: new journal with opposite sides and `reversal_of`, plus an application check that it exactly offsets the original; no edits to posted rows.
 - [x] 2.3.7 Add a ledger invariant checker (`backend/internal/ledger/verify.go`) that confirms every posted journal balances, every succeeded payment has exactly one success journal, and no failed or canceled payment has one.
-- [ ] 2.3.8 Expose read-only `GET /v1/ledger/transactions` with cursor pagination and decimal-string amounts.
-- [ ] 2.3.9 Write integration tests covering duplicate success delivery, rollback mid-posting, mixed currency, unbalanced entries, int64 overflow, and attempts to update or delete posted rows.
+- [x] 2.3.8 Expose read-only `GET /v1/ledger/transactions` with cursor pagination and decimal-string amounts.
+- [x] 2.3.9 Write integration tests covering duplicate success delivery, rollback mid-posting, mixed currency, unbalanced entries, int64 overflow, and attempts to update or delete posted rows.
 
 **Acceptance gate**
-- [ ] Delivering the same success result three times (including concurrently) produces one journal with two balanced entries.
-- [ ] Forcing an error after entries are inserted but before commit leaves no journal, no entries, and the payment unchanged.
+- [x] Delivering the same success result three times (including concurrently) produces one journal with two balanced entries.
+- [x] Forcing an error after entries are inserted but before commit leaves no journal, no entries, and the payment unchanged.
 - [x] Unbalanced, mixed-currency, single-entry and overflow-sum postings are rejected by both the service and the database triggers.
 - [x] Updating or deleting a posted journal or entry fails at the database layer.
-- [ ] The invariant checker passes after every scenario in the 2.2 and 2.4 test suites.
+- [ ] The invariant checker passes after every scenario in the 2.2 and 2.4 test suites. *(2.2 part verified: every 2.2/2.3 integration test calls `ledger.Check`; the 2.4 suite does not exist yet.)*
 - [x] A reversal produces a linked journal; a second reversal of the same journal is rejected.
 
 **E2E test** — `e2e/api/ledger-posting.spec.ts`
-- [ ] A succeeded payment has exactly one posted journal in `GET /v1/ledger/transactions`, with debits equal to credits in the payment's currency
-- [ ] The debit goes to that provider's clearing account and the credit to merchant payable
-- [ ] A re-delivered success result (a repeated dispatcher completion) leaves exactly one journal
-- [ ] Failed and canceled payments have no journal
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] A succeeded payment has exactly one posted journal in `GET /v1/ledger/transactions`, with debits equal to credits in the payment's currency
+- [x] The debit goes to that provider's clearing account and the credit to merchant payable
+- [x] A re-delivered success result (a repeated dispatcher completion) leaves exactly one journal
+- [ ] Failed and canceled payments have no journal *(failed verified in `ledger-posting.spec.ts`; canceled needs the 2.4 cancellation endpoint)*
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 2.4 Recovery and cancellation — backend
 **Depends on:** 2.2, 2.3 · **Deliverable:** Unknown outcomes and crash leftovers resolve only against the original provider, and cancellation safely races dispatch.
