@@ -33,7 +33,7 @@ Use Vitest and React Testing Library for component tests, Playwright for end-to-
 
 ## Commit & Pull Request Guidelines
 
-Add an entry to `CODECHANGELOG.md` for every change: WBS items, files changed, and the actual verification commands and results.
+Add an entry to `CODECHANGELOG.md` for every change: WBS items, files changed, and the actual verification commands and results. A Claude Code `Stop`/`SubagentStop` hook (`.claude/hooks/require-docs.sh`) blocks an agent from finishing while non-doc files changed without a changelog entry; update affected docs (`docs/wbs.md`, `docs/*`, `README.md`) at the same time.
 
 There is no commit history or established message convention. Use concise, imperative subjects such as `Add payment state transitions`. Keep changes focused. PRs should describe behavior, reference relevant requirements or issues, include validation results, and attach screenshots for UI changes.
 

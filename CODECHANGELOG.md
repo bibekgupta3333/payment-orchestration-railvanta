@@ -22,6 +22,18 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Require docs/changelog updates via Claude Code hooks
+
+**WBS:** process · **PR/commit:** uncommitted
+
+**Changed**
+- `.claude/settings.json` — `Stop` and `SubagentStop` hooks run `.claude/hooks/require-docs.sh`.
+- `.claude/hooks/require-docs.sh` — if files outside `docs/` and `*.md` changed but `CODECHANGELOG.md` did not, blocks the agent from finishing and asks for a changelog entry plus updates to the affected docs. Skips re-runs when `stop_hook_active` is set, so it can't loop.
+- `AGENTS.md` — documents the hook.
+
+**Verification**
+- Script run by hand: code changed without a changelog edit → `decision: block` listing the files. `stop_hook_active: true` → allowed. Code and changelog both changed → allowed.
+
 ## 2026-10-31 — Resolve dependencies and run the full M1 verification
 
 **WBS:** 1.1–1.4, 5.2 (prep) · **PR/commit:** #1 (uncommitted follow-up)
