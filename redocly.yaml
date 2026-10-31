@@ -1,0 +1,10 @@
+extends:
+  - minimal
+rules:
+  no-unresolved-refs: error
+  struct: error
+  operation-operationId: error
+  operation-operationId-unique: error
+  security-defined: error
+  # M1 deliberately documents planned operations whose current response is 501.
+  operation-2xx-response: off
