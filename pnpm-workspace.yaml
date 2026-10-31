@@ -1,0 +1,10 @@
+# JavaScript/TypeScript workspaces. The Go backend (backend/) is not an npm
+# package; root scripts drive it with `go -C backend ...`.
+packages:
+  - frontend   # @railvanta/frontend — Next.js dashboard (WBS 1.1)
+  - e2e        # @railvanta/e2e — Playwright API + browser end-to-end suite (WBS 1.1)
+  - packages/* # shared TS packages, e.g. a client generated from OpenAPI (WBS 1.3)
+
+# Keep running a Go script independent of JS dependency installation. CI and
+# contributors install explicitly with the lockfile before running checks.
+verifyDepsBeforeRun: false
