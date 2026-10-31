@@ -23,7 +23,8 @@ export const fixtures = {
 
 export function state(): HarnessState {
   const file = process.env.RAILVANTA_E2E_STATE;
-  if (!file) throw new Error("Playwright global setup did not initialize the harness");
+  if (!file)
+    throw new Error("Playwright global setup did not initialize the harness");
   return JSON.parse(readFileSync(file, "utf8")) as HarnessState;
 }
 
@@ -34,7 +35,8 @@ async function control(operation: string): Promise<Record<string, unknown>> {
     headers: { Authorization: `Bearer ${current.controlToken}` },
     signal: AbortSignal.timeout(40_000),
   });
-  if (!response.ok) throw new Error(`Harness ${operation} failed: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`Harness ${operation} failed: ${await response.text()}`);
   return (await response.json()) as Record<string, unknown>;
 }
 

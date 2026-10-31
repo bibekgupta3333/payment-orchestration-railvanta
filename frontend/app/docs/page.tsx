@@ -2,5 +2,52 @@ import Link from "next/link";
 import { Badge, UnavailableState } from "@/components/ui";
 
 export default function DocsPage() {
-  return <div className="public-page"><header className="public-header"><Link href="/" className="brand">◇ Railvanta</Link><nav aria-label="Public navigation"><Link href="/dashboard">Dashboard</Link><Badge>Sandbox</Badge></nav></header><main id="main-content" className="docs-content" tabIndex={-1}><p className="eyebrow">Developer documentation</p><h1>API foundation</h1><p>The Go service exposes workspace-scoped authentication and validation. Payment execution is a future milestone.</p><section className="card"><h2>Request safety</h2><ul className="prose-list"><li>Use decimal strings for minor-unit amounts, never floating-point money.</li><li>Payment creation will require an idempotency key retained across transport retries.</li><li>An unknown provider outcome must be resolved against the original provider.</li><li>Use API credentials only on the server. This UI never collects raw payment credentials.</li></ul></section><UnavailableState title="Payment examples are not executable yet">The versioned contract is maintained in backend/api/openapi.yaml. Authenticated payment execution will be implemented in M2; capture, refunds, external webhooks, and live funds are unavailable.</UnavailableState></main><footer className="public-footer">Sandbox only / No real funds</footer></div>;
+  return (
+    <div className="public-page">
+      <header className="public-header">
+        <Link href="/" className="brand">
+          ◇ Railvanta
+        </Link>
+        <nav aria-label="Public navigation">
+          <Link href="/dashboard">Dashboard</Link>
+          <Badge>Sandbox</Badge>
+        </nav>
+      </header>
+      <main id="main-content" className="docs-content" tabIndex={-1}>
+        <p className="eyebrow">Developer documentation</p>
+        <h1>API foundation</h1>
+        <p>
+          The Go service exposes workspace-scoped authentication and validation.
+          Payment execution is a future milestone.
+        </p>
+        <section className="card">
+          <h2>Request safety</h2>
+          <ul className="prose-list">
+            <li>
+              Use decimal strings for minor-unit amounts, never floating-point
+              money.
+            </li>
+            <li>
+              Payment creation will require an idempotency key retained across
+              transport retries.
+            </li>
+            <li>
+              An unknown provider outcome must be resolved against the original
+              provider.
+            </li>
+            <li>
+              Use API credentials only on the server. This UI never collects raw
+              payment credentials.
+            </li>
+          </ul>
+        </section>
+        <UnavailableState title="Payment examples are not executable yet">
+          The versioned contract is maintained in backend/api/openapi.yaml.
+          Authenticated payment execution will be implemented in M2; capture,
+          refunds, external webhooks, and live funds are unavailable.
+        </UnavailableState>
+      </main>
+      <footer className="public-footer">Sandbox only / No real funds</footer>
+    </div>
+  );
 }

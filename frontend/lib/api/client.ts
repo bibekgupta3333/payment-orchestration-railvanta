@@ -23,9 +23,13 @@ export async function apiRequest<T>(
   schema: z.ZodType<T>,
   options: RequestInit = {},
 ): Promise<T> {
-  if (!path.startsWith("/v1/") || path.includes("\\")) throw new Error("Invalid API path");
+  if (!path.startsWith("/v1/") || path.includes("\\"))
+    throw new Error("Invalid API path");
   const url = new URL(path, "https://railvanta.invalid");
-  if (url.origin !== "https://railvanta.invalid" || !url.pathname.startsWith("/v1/")) {
+  if (
+    url.origin !== "https://railvanta.invalid" ||
+    !url.pathname.startsWith("/v1/")
+  ) {
     throw new Error("Invalid API path");
   }
   const headers = new Headers(options.headers);
@@ -39,17 +43,26 @@ export async function apiRequest<T>(
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const parsed = errorEnvelopeSchema.safeParse(payload);
-    throw new ApiError(response.status, parsed.success ? parsed.data : {
-      code: "invalid_error_response",
-      message: "The service returned an unexpected response.",
-      request_id: response.headers.get("x-request-id") ?? "unavailable",
-      field_errors: [],
-    });
+    throw new ApiError(
+      response.status,
+      parsed.success
+        ? parsed.data
+        : {
+            code: "invalid_error_response",
+            message: "The service returned an unexpected response.",
+            request_id: response.headers.get("x-request-id") ?? "unavailable",
+            field_errors: [],
+          },
+    );
   }
   return schema.parse(payload);
 }
 
 export function shouldRetryRead(failureCount: number, error: unknown): boolean {
-  if (error instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(error.status)) return false;
+  if (
+    error instanceof ApiError &&
+    [400, 401, 403, 404, 409, 422].includes(error.status)
+  )
+    return false;
   return failureCount < 2;
 }

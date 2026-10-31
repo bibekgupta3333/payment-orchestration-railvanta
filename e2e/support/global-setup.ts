@@ -18,15 +18,19 @@ async function freePort(): Promise<number> {
     server.listen(0, "127.0.0.1", accept);
   });
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("No ephemeral port");
-  await new Promise<void>((accept, reject) => server.close((error) => error ? reject(error) : accept()));
+  if (!address || typeof address === "string")
+    throw new Error("No ephemeral port");
+  await new Promise<void>((accept, reject) =>
+    server.close((error) => (error ? reject(error) : accept())),
+  );
   if (allocatedPorts.has(address.port)) return freePort();
   allocatedPorts.add(address.port);
   return address.port;
 }
 
 function signal(child: ChildProcess, value: NodeJS.Signals): void {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null)
+    return;
   try {
     if (process.platform !== "win32") process.kill(-child.pid, value);
     else child.kill(value);
@@ -35,24 +39,43 @@ function signal(child: ChildProcess, value: NodeJS.Signals): void {
   }
 }
 
-async function stop(child: ChildProcess | undefined, hard = false): Promise<void> {
-  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
-  const exited = new Promise<void>((accept) => child.once("exit", () => accept()));
+async function stop(
+  child: ChildProcess | undefined,
+  hard = false,
+): Promise<void> {
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null)
+    return;
+  const exited = new Promise<void>((accept) =>
+    child.once("exit", () => accept()),
+  );
   signal(child, hard ? "SIGKILL" : "SIGTERM");
-  await Promise.race([exited, pause(8_000, undefined, { ref: false }).then(() => signal(child, "SIGKILL"))]);
+  await Promise.race([
+    exited,
+    pause(8_000, undefined, { ref: false }).then(() =>
+      signal(child, "SIGKILL"),
+    ),
+  ]);
   if (child.exitCode === null && child.signalCode === null) await exited;
 }
 
-async function ready(url: string, child: ChildProcess, logs: () => string): Promise<void> {
+async function ready(
+  url: string,
+  child: ChildProcess,
+  logs: () => string,
+): Promise<void> {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error(`Service exited before readiness (${child.exitCode ?? child.signalCode}): ${logs()}`);
+      throw new Error(
+        `Service exited before readiness (${child.exitCode ?? child.signalCode}): ${logs()}`,
+      );
     }
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
       if (response.ok) return;
-    } catch { /* A refused connection is expected during startup. */ }
+    } catch {
+      /* A refused connection is expected during startup. */
+    }
     await pause(100);
   }
   throw new Error(`Service readiness timed out: ${logs()}`);
@@ -103,9 +126,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stdout?.on("data", (data: Buffer) => { logs = (logs + data.toString()).slice(-100_000); });
-    child.stderr?.on("data", (data: Buffer) => { logs = (logs + data.toString()).slice(-100_000); });
-    child.on("error", (error) => { logs += error.message; });
+    child.stdout?.on("data", (data: Buffer) => {
+      logs = (logs + data.toString()).slice(-100_000);
+    });
+    child.stderr?.on("data", (data: Buffer) => {
+      logs = (logs + data.toString()).slice(-100_000);
+    });
+    child.on("error", (error) => {
+      logs += error.message;
+    });
     return child;
   }
   async function startApi(): Promise<void> {
@@ -113,30 +142,47 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await ready(`${current.healthOrigin}/health/ready`, api, () => logs);
   }
   function sqlite(script: string): string {
-    return execFileSync("python3", ["-c", script, database], { encoding: "utf8" }).trim();
+    return execFileSync("python3", ["-c", script, database], {
+      encoding: "utf8",
+    }).trim();
   }
-  async function isolatedStartupFailure(kind: "production" | "checksum-drift"): Promise<number> {
+  async function isolatedStartupFailure(
+    kind: "production" | "checksum-drift",
+  ): Promise<number> {
     await stop(api);
     let checksum = "";
     if (kind === "checksum-drift") {
-      checksum = sqlite("import sqlite3,sys; d=sqlite3.connect(sys.argv[1]); print(d.execute('SELECT checksum FROM schema_migrations WHERE version=1').fetchone()[0]); d.execute(\"UPDATE schema_migrations SET checksum=? WHERE version=1\",('0'*64,)); d.commit(); d.close()");
+      checksum = sqlite(
+        "import sqlite3,sys; d=sqlite3.connect(sys.argv[1]); print(d.execute('SELECT checksum FROM schema_migrations WHERE version=1').fetchone()[0]); d.execute(\"UPDATE schema_migrations SET checksum=? WHERE version=1\",('0'*64,)); d.commit(); d.close()",
+      );
     }
     let failing: ChildProcess | undefined;
     try {
-      failing = launchApi(kind === "production" ? { ...environment, APP_ENV: "production" } : environment);
+      failing = launchApi(
+        kind === "production"
+          ? { ...environment, APP_ENV: "production" }
+          : environment,
+      );
       const code = await Promise.race([
         new Promise<number>((accept, reject) => {
           failing?.once("error", reject);
           failing?.once("exit", (value) => accept(value ?? 1));
         }),
-        pause(10_000).then(() => { throw new Error("Invalid startup did not terminate"); }),
+        pause(10_000).then(() => {
+          throw new Error("Invalid startup did not terminate");
+        }),
       ]);
       if (code === 0) throw new Error("Invalid startup returned success");
       return code;
     } finally {
       await stop(failing, true);
       if (kind === "checksum-drift") {
-        execFileSync("python3", ["-c", "import sqlite3,sys; d=sqlite3.connect(sys.argv[1]); d.execute('UPDATE schema_migrations SET checksum=? WHERE version=1',(sys.argv[2],)); d.commit(); d.close()", database, checksum]);
+        execFileSync("python3", [
+          "-c",
+          "import sqlite3,sys; d=sqlite3.connect(sys.argv[1]); d.execute('UPDATE schema_migrations SET checksum=? WHERE version=1',(sys.argv[2],)); d.commit(); d.close()",
+          database,
+          checksum,
+        ]);
       }
       await startApi();
     }
@@ -144,7 +190,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const control = createServer(async (request, response) => {
     const incoming = Buffer.from(request.headers.authorization ?? "");
     const expected = Buffer.from(`Bearer ${current.controlToken}`);
-    if (request.method !== "POST" || incoming.length !== expected.length || !timingSafeEqual(incoming, expected)) {
+    if (
+      request.method !== "POST" ||
+      incoming.length !== expected.length ||
+      !timingSafeEqual(incoming, expected)
+    ) {
       response.writeHead(403).end();
       return;
     }
@@ -156,26 +206,46 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       } else if (request.url === "/durability-fixture") {
         await stop(api);
         try {
-          sqlite(`import sqlite3,sys; d=sqlite3.connect(sys.argv[1]); d.execute("PRAGMA foreign_keys=ON"); d.execute("INSERT INTO payment_methods(id,workspace_id,rail,brand,last_four,created_at) VALUES('00000000-0000-7000-8000-000000000199','00000000-0000-7000-8000-000000000001','mock','Durability fixture','9999',17)"); d.commit(); d.close()`);
-        } finally { await startApi(); }
-      } else if (request.url === "/production" || request.url === "/checksum-drift") {
-        body = { exitCode: await isolatedStartupFailure(request.url.slice(1) as "production" | "checksum-drift") };
+          sqlite(
+            `import sqlite3,sys; d=sqlite3.connect(sys.argv[1]); d.execute("PRAGMA foreign_keys=ON"); d.execute("INSERT INTO payment_methods(id,workspace_id,rail,brand,last_four,created_at) VALUES('00000000-0000-7000-8000-000000000199','00000000-0000-7000-8000-000000000001','mock','Durability fixture','9999',17)"); d.commit(); d.close()`,
+          );
+        } finally {
+          await startApi();
+        }
+      } else if (
+        request.url === "/production" ||
+        request.url === "/checksum-drift"
+      ) {
+        body = {
+          exitCode: await isolatedStartupFailure(
+            request.url.slice(1) as "production" | "checksum-drift",
+          ),
+        };
       } else if (request.url === "/logs") {
         body = { logs };
       } else {
         response.writeHead(404).end();
         return;
       }
-      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+      response
+        .writeHead(200, { "Content-Type": "application/json" })
+        .end(JSON.stringify(body));
     } catch (error) {
-      response.writeHead(500).end(error instanceof Error ? error.message : "Harness operation failed");
+      response
+        .writeHead(500)
+        .end(
+          error instanceof Error ? error.message : "Harness operation failed",
+        );
     }
   });
   async function cleanup(): Promise<void> {
     await stop(web);
     await stop(api);
     await new Promise<void>((accept) => {
-      if (!control.listening) { accept(); return; }
+      if (!control.listening) {
+        accept();
+        return;
+      }
       control.close(() => accept());
       control.closeAllConnections();
     });
@@ -183,26 +253,55 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   }
   try {
     execFileSync("go", ["-C", "backend", "build", "-o", binary, "./cmd/api"], {
-      cwd: root, env: process.env, stdio: "pipe", timeout: 180_000,
+      cwd: root,
+      env: process.env,
+      stdio: "pipe",
+      timeout: 180_000,
     });
     await startApi();
     // Scaffold API specs exercise the /v1 proxy, so they also need Next.js.
-    web = spawn("pnpm", ["--filter", "@railvanta/frontend", "exec", "next", "dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(webPort)], {
-      cwd: root,
-      env: { ...process.env, API_INTERNAL_ORIGIN: current.apiOrigin, NEXT_TELEMETRY_DISABLED: "1" },
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"],
+    web = spawn(
+      "pnpm",
+      [
+        "--filter",
+        "@railvanta/frontend",
+        "exec",
+        "next",
+        "dev",
+        "--webpack",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        String(webPort),
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          API_INTERNAL_ORIGIN: current.apiOrigin,
+          NEXT_TELEMETRY_DISABLED: "1",
+        },
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    web.stdout?.on("data", (data: Buffer) => {
+      webLogs = (webLogs + data.toString()).slice(-30_000);
     });
-    web.stdout?.on("data", (data: Buffer) => { webLogs = (webLogs + data.toString()).slice(-30_000); });
-    web.stderr?.on("data", (data: Buffer) => { webLogs = (webLogs + data.toString()).slice(-30_000); });
-    web.on("error", (error) => { webLogs += error.message; });
+    web.stderr?.on("data", (data: Buffer) => {
+      webLogs = (webLogs + data.toString()).slice(-30_000);
+    });
+    web.on("error", (error) => {
+      webLogs += error.message;
+    });
     await ready(current.webOrigin, web, () => webLogs);
     await new Promise<void>((accept, reject) => {
       control.once("error", reject);
       control.listen(0, "127.0.0.1", accept);
     });
     const address = control.address();
-    if (!address || typeof address === "string") throw new Error("No control address");
+    if (!address || typeof address === "string")
+      throw new Error("No control address");
     current.controlOrigin = `http://127.0.0.1:${address.port}`;
     const stateFile = join(directory, "state.json");
     writeFileSync(stateFile, JSON.stringify(current), { mode: 0o600 });
