@@ -22,6 +22,33 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add routing and simulation UI with a backend-driven simulator
+
+**WBS:** 3.2.1–3.2.12, 3.2 acceptance gate (all but the 375px tab check and CI) and E2E · **PR/commit:** worktree branch, not yet merged
+
+**Changed**
+- `backend/migrations/0003_simulation_runs.sql` (new), `backend/internal/storage/models.go`, `simulation_repository.go` (new) — `simulation_runs` gains `injected_fault`, `invariants_json`, `fingerprint`, `failure_reason`, `updated_at`; repository to insert, read and compare-and-set a run.
+- `backend/internal/simulation/` (new) — scenario catalog, `Runner` and the invariant checker. A run accepts a payment through `payment.Service.Accept` with a seeded mock method, and the live dispatcher and recovery worker execute it. The runner only observes persisted rows. After the end state it replays the ledger success posting twice (duplicate ledger post scenario), then stores six invariants with evidence (one payment per key, one balanced journal, no cross-provider attempt after unknown, no terminal regression, at most one succeeded charge, expected outcome) plus an end-state fingerprint. A seed fixes the amount, so a re-run gives the same fingerprint. A run interrupted by a restart resumes when read.
+- `backend/internal/provider/health.go` (new) — windowed success rate, p95 and error counts from attempt `submitted_at`/`completed_at`; no data gives `no_observations`, fewer than 5 observations gives `insufficient_data`.
+- `backend/internal/transport/http/routing_rules.go`, `providers.go`, `simulations.go` (new), `routing.go`, `handler.go` (minimal hooks) — `GET /v1/routing/rules`; evaluation now returns the matched rule, capability checks, candidates and an optional `payment_id` that blocks failover when an attempt is unresolved (`failover_blocked`); 422 `no_eligible_provider` lists each provider's reason in `field_errors`; `GET /v1/providers`, `/v1/providers/{id}`, `/v1/providers/health`; `GET /v1/sandbox/scenarios`; `POST /v1/sandbox/simulations` (202) and `GET /v1/sandbox/simulations/{id}`. These routes are no longer 501.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — new paths and schemas. `RoutingRule`, `RoutingDecision`, `RoutingEvaluation`, `SimulationRequest`, `Simulation` and `ProviderHealth` changed shape.
+- `frontend/app/dashboard/{routing,providers,providers/[id],simulator}/page.tsx`, `frontend/components/{routing,provider-views,simulator}/`, `frontend/lib/hooks/routing.ts`, `frontend/lib/api/routing-schemas.ts`, `frontend/app/globals.css` — read-only rule table with disabled create/edit/reorder ("requires rule mutation contract"), evaluator path, providers list and detail (Mock "Simulated", Stripe/Plaid "Not configured", health badge only with evidence), simulator with the persistent "SIMULATED / SANDBOX ONLY" banner, polling timeline with manual refresh, one-time `aria-live` acceptance announcement, seven inspector tabs, scenario list from the backend with unimplemented scenarios disabled.
+- `backend/tests/simulation_test.go`, `backend/internal/provider/health_test.go` (new), `frontend/tests/components/routing-simulator.test.tsx` (new), `e2e/ui/simulator.spec.ts`, `e2e/ui/routing.spec.ts` (new), `e2e/ui/shell.spec.ts` (the three pages are no longer placeholders).
+- `docs/wbs.md` — 3.2 tasks, gate and E2E ticked, except the two gate items listed under Notes.
+
+**Verification**
+- `go -C backend test -race -count=1 ./...` — pass, all packages (new: 8 scenario subtests, gate, same-seed determinism, 422 rejection, invariant-violation detection, evaluate and failover, rules and health in `backend/tests`; 2 in `internal/provider`).
+- `make -C backend format-check vet lint` — 0 issues.
+- `pnpm check` — exit 0 (Vitest 68 passed, 10 new; lint, generated contracts, typecheck and build clean).
+- `pnpm test:e2e` — 58 passed, 0 failed (9 new: 5 in `routing.spec.ts`, 4 in `simulator.spec.ts`, plus every earlier spec).
+- `pnpm lint:openapi` — valid (1 existing warning); `pnpm generate:api` regenerated.
+
+**Notes**
+- `duplicate_webhook` and `reordered_events` are listed but disabled and return 422 `scenario_not_implemented` naming "Webhook inbox and signature verification (WBS 4.3)".
+- `unknown_recovery` and `timeout_after_success` use the same seeded mock method; they differ in what they assert and show. `timeout_before_execution` and `outage` end `unknown`, with the run complete once recovery has looked up at least once and the answer stayed unknown.
+- Not verified: the 375px labelled-scroll-region and keyboard check for the timeline and inspector with a live run, a screen-reader pass on the acceptance announcement (only the static `aria-live` text is asserted), and CI. Those gate items stay open in the WBS.
+- Provider health for Mock is computed from attempts the simulator and dev payments create, and is labelled "Simulated data".
+
 ## 2026-10-31 — Merge the WBS 3.1 payment screens into the M2 backend
 
 **WBS:** 3.1, 2.2–2.4 · **PR/commit:** feat/m2-m4-payment-correctness
