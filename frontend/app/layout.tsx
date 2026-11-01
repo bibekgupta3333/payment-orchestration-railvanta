@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     template: "%s | Railvanta",
   },
   description:
-    "A sandbox for explainable payment routing, idempotency, and financial correctness. Foundation build; no real funds.",
+    "A sandbox for explainable payment routing, idempotency, and financial correctness. Sandbox only; no real funds.",
 };
 
 export default function RootLayout({

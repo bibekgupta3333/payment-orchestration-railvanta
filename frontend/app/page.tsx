@@ -21,9 +21,9 @@ const flow: { step: string; detail: string; available: boolean }[] = [
   { step: "Browser", detail: "Next.js dashboard", available: true },
   { step: "API", detail: "Go · same-origin /v1", available: true },
   { step: "Accept once", detail: "Idempotency-Key", available: true },
-  { step: "Route", detail: "Rule engine dispatch", available: false },
-  { step: "Mock provider", detail: "Deterministic sandbox", available: false },
-  { step: "Journal", detail: "Balanced ledger posting", available: false },
+  { step: "Route", detail: "Rule engine dispatch", available: true },
+  { step: "Mock provider", detail: "Deterministic sandbox", available: true },
+  { step: "Journal", detail: "Balanced ledger posting", available: true },
 ];
 
 const capabilities: {
@@ -52,17 +52,35 @@ const capabilities: {
   {
     title: "Explainable routing",
     description: "Provider selection with a recorded reason for every attempt.",
-    available: false,
+    available: true,
   },
   {
     title: "Ledger journals",
     description: "Balanced, immutable double-entry postings per payment.",
-    available: false,
+    available: true,
   },
   {
     title: "Reconciliation",
     description:
-      "Unknown outcomes resolved from provider evidence, never blind retries.",
+      "Compares provider records, payments and journals; discrepancies are recorded with evidence, never silently adjusted.",
+    available: true,
+  },
+  {
+    title: "Recovery of unknown outcomes",
+    description:
+      "A lost provider response ends in a lookup at the original provider, never a retry elsewhere.",
+    available: true,
+  },
+  {
+    title: "Failure playground",
+    description:
+      "Run duplicate-request, lost-response and settlement-mismatch scenarios and see the backend's evidence.",
+    available: true,
+  },
+  {
+    title: "Stripe and Plaid adapters",
+    description:
+      "Real provider integrations are not built; the sandbox uses a deterministic mock provider.",
     available: false,
   },
 ];
@@ -118,7 +136,7 @@ export default function Home() {
           <div className="section-title">
             <span className="eyebrow">Architecture</span>
             <span className="text-label">
-              Available now · Planned steps are marked
+              Sandbox build · Planned items are marked
             </span>
           </div>
           <h2 id="architecture-title">Every outcome has an explanation.</h2>

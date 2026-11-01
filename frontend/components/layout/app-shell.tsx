@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Navigation />
         <div className="sidebar-note">
           <span className="availability-dot" aria-hidden="true" />
-          Foundation build
+          Sandbox build
           <p>
             Sandbox infrastructure.
             <br />

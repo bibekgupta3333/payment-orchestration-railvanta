@@ -2,6 +2,19 @@
 
 A record of every change to code, configuration or design docs, newest first. Each entry says what changed, which [WBS](docs/wbs.md) item it serves, and what was actually run to verify it. Only record results you observed. If a check was skipped or failed, say so.
 
+## 2026-11-01 — Update stale "Planned" labels on the landing page and sidebar
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/app/page.tsx` — the architecture strip (Route, Mock provider, Journal) and the capability cards (Explainable routing, Ledger journals, Reconciliation) still said "Planned" from the first milestone although all of it is built and verified. They now read Available; added cards for recovery of unknown outcomes and the failure playground; added a "Stripe and Plaid adapters" card that stays Planned because no real provider exists. Reconciliation's description now says what it does (evidence-only comparison) instead of repeating the recovery text.
+- `frontend/components/layout/app-shell.tsx`, `frontend/app/layout.tsx`, `docs/frontend/wireframes.md` — "Foundation build" is now "Sandbox build" / "Sandbox only".
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` — pass; eslint and prettier on the three files — clean.
+- Vitest `shell.test.tsx` and `playground.test.tsx` — 10 tests passed.
+- `e2e/ui/shell.spec.ts` still expects a visible "Planned" badge on the landing page; the Stripe and Plaid card keeps it true. That spec was not re-run.
+
 ## 2026-11-01 — Integrate the demo playground and verify it on the Docker stack
 
 **WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
