@@ -1,6 +1,6 @@
 # Data Model and Entity Diagram
 
-The [reference DDL](schema.sql) mirrors the two embedded SQL migrations in `backend/migrations/`. The startup runner installs 23 STRICT tables, including migration history. The M1 schema revisions are authorized by the implementation request; payment execution and orchestration remain later work.
+The [reference DDL](schema.sql) mirrors the five embedded SQL migrations in `backend/migrations/` (0001–0005; see [ADR 0002](../decisions/0002-forward-only-additive-migrations.md)). The startup runner installs 24 STRICT tables: 23 from the migrations plus `schema_migrations`, which the runner creates itself. Verified by building a database from the migrations and from `schema.sql` and diffing `sqlite_master`: identical tables, indexes and triggers, and identical columns (recorded in the [code changelog](../../CODECHANGELOG.md)). All tables below are implemented and written by the application; the only unused schema values are noted in the table.
 
 ## Entity relationships
 
@@ -33,6 +33,7 @@ erDiagram
     providers ||--o{ webhook_inbox : sends
     payments |o--o{ outbox_events : emits
     workspaces ||--o{ reconciliation_runs : schedules
+    reconciliation_discrepancies ||--o{ reconciliation_resolution_events : records
     reconciliation_runs ||--o{ reconciliation_discrepancies : identifies
     payments |o--o{ reconciliation_discrepancies : concerns
 
@@ -109,12 +110,12 @@ The diagram shows principal relationships. Workspace foreign keys also exist on 
 | `payments`, `payment_attempts` | Logical payment versus individual provider interaction. Persist the selected rule reference and decision reason on the attempt. Unique attempt number per payment and unique provider idempotency key. At most one unresolved attempt per payment. |
 | `payment_state_transitions` | Append-only application audit, written in the same transaction as a state change. SQL validates status vocabulary, prevents changes after terminal states, and protects immutable amount/currency/workspace/method fields. The initial audit allows NULL `from_status` only for `created`; audit rows cannot be updated or deleted. The application still validates the complete legal transition graph. |
 | `idempotency_records` | Unique `(workspace_id, operation, key)` plus canonical request SHA-256, accepted payment reference, and completed HTTP response. |
-| `ledger_accounts`, `ledger_journals`, `ledger_entries` | Account classification, immutable posted journals, and debit/credit lines. Unique workspace posting key prevents duplicate settlement postings. |
+| `ledger_accounts`, `ledger_journals`, `ledger_entries` | Account classification, immutable posted journals, and debit/credit lines. Unique workspace posting key prevents duplicate settlement postings. Accounts in use: `merchant_payable` (liability) and one `provider_clearing:{provider_id}` asset account per provider and currency. |
 | `webhook_inbox` | Unique provider event ID and payload hash, with duplicate count and last-delivery timestamp. Migration `0005` adds the event type, related payment and attempt, a processing `outcome` (`applied` or `ignored`) with a reason, `signature_status` (`not_applicable`, `verified`, `rejected`; only `not_applicable` is ever written for mock events), and the investigation fields `investigation_flag`, `conflicting_payload_hash` and `conflict_count`. Triggers make identity and payload immutable, forbid deletes, and keep counters and the investigation flag monotonic. Real signature verification remains an adapter responsibility; mock deliveries are not cryptographically verified. |
-| `outbox_events` | Durable commands/events, due time, error and retry metadata. SQL requires a nonempty lease owner and expiry exactly while processing; the dispatcher must still compare ownership tokens. |
-| `reconciliation_runs`, `reconciliation_discrepancies` | Idempotent run key and discrepancy fingerprint per run; constrained discrepancy vocabulary and required human resolution metadata. |
+| `outbox_events` | Durable commands/events, due time, error and retry metadata. Types in use: `payment.dispatch`, `payment.lookup` (handled) and `payment.late_outcome` (no handler; see [ADR 0004](../decisions/0004-late-outcomes-as-outbox-rows.md)). SQL requires a nonempty lease owner and expiry exactly while processing; the dispatcher compares the random lease token on renew, complete, release and fail. |
+| `reconciliation_runs`, `reconciliation_discrepancies`, `reconciliation_resolution_events` | Idempotent run key (`workspace_id, run_key`) and discrepancy fingerprint per run; constrained discrepancy vocabulary. Migration `0004` adds run counts (`compared`, `matched`, `unmatched`, `mismatch`, `evidence_consumed`) and `requested_by`, an append-only status history (one row per change, with note and actor), and triggers that make evidence immutable, discrepancies and runs undeletable, `resolved` final, and resolution require a non-blank note, resolver and timestamp. Discrepancies are inserted `open`. |
 | `users`, `workspace_members`, `sessions`, `api_keys` | Workspace roles, expiring hashed sessions with CSRF hashes, and hashed API keys with a visible unique prefix. Session foreign keys require matching membership. |
-| `mock_provider_charges`, `simulation_runs` | Durable mock evidence keyed by provider idempotency key, and persisted scenario/seed/input/result records. Only the mock adapter may own charge writes; that execution service is future work. |
+| `mock_provider_charges`, `simulation_runs` | Durable mock evidence keyed by provider idempotency key (with the scenario chosen at first submit, see [ADR 0003](../decisions/0003-mock-scenario-by-token-prefix.md)), and persisted scenario/seed/input/result records. Only the `provider/mock` package writes charges; reconciliation reads them through it. Migration `0003` adds the injected fault, invariant results (`invariants_json`), a state fingerprint, a failure reason and `updated_at` to runs, plus a workspace listing index. |
 | `schema_migrations` | Ordered version, filename, SHA-256 checksum, and application timestamp. Startup rejects checksum drift or a database with incompatible history. |
 
 ## Payment lifecycle
@@ -127,7 +128,7 @@ For a simplified sandbox successful payment, debit the executing provider's `pro
 
 The application creates a draft journal, inserts all entries, validates totals using checked arithmetic, and marks the journal posted in one transaction. SQL triggers additionally require at least two balanced lines before posting and reject insertion, modification, or deletion of posted entries and journals. Composite foreign keys prohibit mixed currency or cross-workspace entries. Aggregation overflow fails posting rather than rounding.
 
-Corrections use a new journal with opposite sides and `reversal_of`; the application verifies that the reversal exactly offsets the original. SQL limits each original to one full reversal but does not validate the reversal's economic meaning. Consumers query only posted journals. Do not commit drafts from failed operations.
+Corrections use a new journal with opposite sides and `reversal_of`; the application verifies that the reversal exactly offsets the original. `ledger.Reverse` is implemented and tested, but no API endpoint invokes it: **reversal, capture and refunds are not exposed**. SQL limits each original to one full reversal but does not validate the reversal's economic meaning. Consumers query only posted journals. Do not commit drafts from failed operations.
 
 SQL does not implement authentication decisions, the complete legal state-transition graph, routing capability checks, request canonicalization, event signature verification, lease ownership comparisons, or exactly-once provider execution. These remain application invariants with tests. Embedded database file access must be restricted to the API process and controlled backup tooling.
 
