@@ -6,6 +6,8 @@
 services:
   api:
     environment:
+      # Same loopback-only, sandbox-only opt-in as docker-compose.yml (kept explicit here).
+      SANDBOX_PUBLIC_ACCESS: "true"
       # Fast dispatcher so a payment leaves "pending" within a blink.
       DISPATCHER_POLL_INTERVAL: 50ms
       DISPATCHER_LEASE: 2s

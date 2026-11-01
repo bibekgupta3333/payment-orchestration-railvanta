@@ -2052,6 +2052,91 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/sandbox/status:
+    get:
+      operationId: getSandboxStatus
+      summary: Whether public sandbox access is enabled (public)
+      description: Public, no credentials. Reports whether one-click visitor sessions are enabled
+        (SANDBOX_PUBLIC_ACCESS). Never returns secrets or identifiers. Not cacheable.
+      tags:
+      - Sandbox
+      security: []
+      responses:
+        '200':
+          description: Current public sandbox access status
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxStatus'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/sandbox/session:
+    post:
+      operationId: createSandboxSession
+      summary: Start a throwaway visitor session (public, opt-in)
+      description: When public sandbox access is enabled, creates a throwaway operator visitor in the shared
+        demo workspace and sets the HttpOnly __Host-railvanta_session cookie and the readable railvanta_csrf
+        cookie (echo it as X-CSRF-Token on writes). Needs no credentials but the Origin header must equal the
+        configured public origin (403 csrf_rejected). The request body is ignored. Disabled servers answer
+        403 sandbox_access_disabled. Limits are 30 new sessions per remote address per hour (429 with
+        Retry-After) and 500 live visitor sessions in total (503 sandbox_busy with Retry-After). Sessions
+        last 12 hours. Sandbox only; no real funds.
+      tags:
+      - Sandbox
+      security: []
+      responses:
+        '201':
+          description: Session created; cookies set. The response is not cacheable.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+            Set-Cookie:
+              description: __Host-railvanta_session (Secure, HttpOnly, SameSite=Strict) and railvanta_csrf
+                (Secure, SameSite=Strict, readable by script)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxSession'
+        '403':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteSandboxSession
+      summary: Sign out a visitor session
+      description: Deletes the caller's visitor session and clears both cookies. Needs the session cookie,
+        Origin and X-CSRF-Token. The seeded demo session and API-key callers are not visitor sessions and
+        answer 403 without effect.
+      tags:
+      - Sandbox
+      security:
+      - sessionCookie: []
+      responses:
+        '204':
+          description: Visitor session deleted and cookies cleared
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/api-keys/current:
     delete:
       operationId: revokeCurrentAPIKey
@@ -3680,6 +3765,49 @@ components:
       required:
       - name
       - role
+    SandboxStatus:
+      type: object
+      additionalProperties: false
+      properties:
+        public_access:
+          type: boolean
+        workspace_name:
+          type: string
+          description: Present only when public_access is true
+        session_ttl_hours:
+          type: integer
+      required:
+      - public_access
+      - session_ttl_hours
+    SandboxSession:
+      type: object
+      additionalProperties: false
+      properties:
+        workspace:
+          type: object
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            environment:
+              type: string
+          required:
+          - id
+          - name
+          - environment
+        role:
+          type: string
+          enum:
+          - operator
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - workspace
+      - role
+      - expires_at
     APIKeyCreated:
       type: object
       additionalProperties: false

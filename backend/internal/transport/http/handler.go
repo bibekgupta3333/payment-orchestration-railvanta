@@ -32,6 +32,9 @@ type Config struct {
 	// OnAccepted, when set, runs after a new payment is accepted (for example
 	// to wake the dispatcher). It must not block.
 	OnAccepted func()
+	// PublicSandboxAccess enables POST /v1/sandbox/session (one-click visitor
+	// sessions in the shared demo workspace). Off by default; sandbox only.
+	PublicSandboxAccess bool
 }
 type FieldError struct {
 	Field   string `json:"field"`
@@ -54,6 +57,8 @@ type handler struct {
 	sims     *simulation.Runner
 	mu       sync.Mutex
 	windows  map[string]requestWindow
+	// sessionWindows is the per-IP public-sandbox session limiter (guarded by mu).
+	sessionWindows map[string]sessionWindow
 }
 
 var safeID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -138,6 +143,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if h.servePublicSandbox(w, r, id) {
+		return
+	}
 	principal, err := auth.Authenticate(r.Context(), h.db, r)
 	if err != nil {
 		fail(w, 401, "unauthorized", "Valid credentials are required", id)
@@ -150,6 +158,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if write && !auth.CheckCSRF(r, principal, h.config.PublicOrigin) {
 		fail(w, 403, "csrf_rejected", "Valid origin and CSRF token are required", id)
+		return
+	}
+	if h.serveSandboxSession(w, r, principal, id) {
 		return
 	}
 	if r.Method == "DELETE" && r.URL.Path == "/v1/api-keys/current" {

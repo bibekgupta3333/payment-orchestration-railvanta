@@ -681,6 +681,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Whether public sandbox access is enabled (public)
+     * @description Public, no credentials. Reports whether one-click visitor sessions are enabled (SANDBOX_PUBLIC_ACCESS). Never returns secrets or identifiers. Not cacheable.
+     */
+    get: operations["getSandboxStatus"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox/session": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start a throwaway visitor session (public, opt-in)
+     * @description When public sandbox access is enabled, creates a throwaway operator visitor in the shared demo workspace and sets the HttpOnly __Host-railvanta_session cookie and the readable railvanta_csrf cookie (echo it as X-CSRF-Token on writes). Needs no credentials but the Origin header must equal the configured public origin (403 csrf_rejected). The request body is ignored. Disabled servers answer 403 sandbox_access_disabled. Limits are 30 new sessions per remote address per hour (429 with Retry-After) and 500 live visitor sessions in total (503 sandbox_busy with Retry-After). Sessions last 12 hours. Sandbox only; no real funds.
+     */
+    post: operations["createSandboxSession"];
+    /**
+     * Sign out a visitor session
+     * @description Deletes the caller's visitor session and clears both cookies. Needs the session cookie, Origin and X-CSRF-Token. The seeded demo session and API-key callers are not visitor sessions and answer 403 without effect.
+     */
+    delete: operations["deleteSandboxSession"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/api-keys/current": {
     parameters: {
       query?: never;
@@ -1344,6 +1388,23 @@ export interface components {
       role: "read" | "operator";
       /** @description Defaults to 24. */
       expires_in_hours?: number;
+    };
+    SandboxStatus: {
+      public_access: boolean;
+      /** @description Present only when public_access is true */
+      workspace_name?: string;
+      session_ttl_hours: number;
+    };
+    SandboxSession: {
+      workspace: {
+        id: string;
+        name: string;
+        environment: string;
+      };
+      /** @enum {string} */
+      role: "operator";
+      /** Format: date-time */
+      expires_at: string;
     };
     APIKeyCreated: {
       key: components["schemas"]["APIKey"];
@@ -2860,6 +2921,78 @@ export interface operations {
       409: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getSandboxStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Current public sandbox access status */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxStatus"];
+        };
+      };
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  createSandboxSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session created; cookies set. The response is not cacheable. */
+      201: {
+        headers: {
+          "X-Request-ID"?: string;
+          /** @description __Host-railvanta_session (Secure, HttpOnly, SameSite=Strict) and railvanta_csrf (Secure, SameSite=Strict, readable by script) */
+          "Set-Cookie"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxSession"];
+        };
+      };
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  deleteSandboxSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Visitor session deleted and cookies cleared */
+      204: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

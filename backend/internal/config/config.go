@@ -17,7 +17,10 @@ type Config struct {
 	SQLitePath   string
 	PublicOrigin string
 	DemoMode     bool
-	Dispatcher   Dispatcher
+	// PublicSandboxAccess (SANDBOX_PUBLIC_ACCESS, default false) lets anyone who
+	// reaches the API mint a throwaway operator session in the demo workspace.
+	PublicSandboxAccess bool
+	Dispatcher          Dispatcher
 }
 
 // Dispatcher holds outbox dispatcher and mock provider timing. Defaults suit
@@ -59,6 +62,12 @@ func Load(getenv func(string) string) (Config, error) {
 		c.DemoMode, err = strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, errors.New("DEMO_MODE must be true or false")
+		}
+	}
+	if raw := getenv("SANDBOX_PUBLIC_ACCESS"); raw != "" {
+		c.PublicSandboxAccess, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("SANDBOX_PUBLIC_ACCESS must be true or false")
 		}
 	}
 	if c.DemoMode && !Loopback(c.HTTPAddr) {

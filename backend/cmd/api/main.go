@@ -117,13 +117,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 		writeHealth(w, http.StatusOK)
 	})
-	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, RequestsPerMinute: 600, Router: executor.Router(), OnAccepted: dispatcher.Notify}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, PublicSandboxAccess: cfg.PublicSandboxAccess, RequestsPerMinute: 600, Router: executor.Router(), OnAccepted: dispatcher.Notify}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 	health := &http.Server{Handler: healthMux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 	errorsCh := make(chan error, 2)
 	go func() { errorsCh <- api.Serve(apiListener) }()
 	go func() { errorsCh <- health.Serve(healthListener) }()
 	dispatcher.Start()
-	logger.Info("sandbox API ready", "http_addr", apiListener.Addr().String(), "health_addr", healthListener.Addr().String(), "demo_mode", cfg.DemoMode)
+	logger.Info("sandbox API ready", "http_addr", apiListener.Addr().String(), "health_addr", healthListener.Addr().String(), "demo_mode", cfg.DemoMode, "public_sandbox_access", cfg.PublicSandboxAccess)
 	var serveErr error
 	select {
 	case <-ctx.Done():

@@ -16,6 +16,10 @@ services:
       SQLITE_PATH: /var/lib/railvanta/railvanta.db
       PUBLIC_APP_ORIGIN: http://localhost:${RAILVANTA_PORT:-3000}
       DEMO_MODE: "false"
+      # One-click visitor sessions in the shared demo workspace (POST /v1/sandbox/session).
+      # Safe only because the proxy is loopback-only and this is a sandbox with no real
+      # funds: anyone who can reach it gets operator rights. Never enable on a shared host.
+      SANDBOX_PUBLIC_ACCESS: "true"
     expose:
       - "8080"
     volumes:
