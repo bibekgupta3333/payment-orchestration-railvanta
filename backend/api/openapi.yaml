@@ -1172,48 +1172,58 @@ paths:
           pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/events:
     get:
-      operationId: getEvents
-      summary: Read sanitized event summaries
+      operationId: listEvents
+      summary: List webhook inbox and outbox events
+      description: Newest-first feed that merges the webhook inbox and the outbox for the authenticated
+        workspace. Safe fields only; raw payloads, lease tokens, errors and idempotency keys are never
+        returned. Mock events are simulated and carry no signature (signature_status not_applicable).
+        q matches a payment ID, an event ID or a provider event ID.
       tags:
       - Sandbox
-      responses:
-        default: *id001
-        '200':
-          description: Successful response
-          headers:
-            X-Request-ID:
-              schema:
-                type: string
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Event'
-                  next_cursor:
-                    type: string
-                    nullable: true
-                required:
-                - items
-                - next_cursor
-        '501': *id001
-        '401': *id001
-        '403': *id001
-        '404': *id001
-        '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
       parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - inbox
+          - outbox
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - pending
+          - processing
+          - processed
+          - delivered
+          - failed
+          - applied
+          - ignored
+          - investigation
+      - name: created_from
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: created_to
+        in: query
+        required: false
+        schema:
+          type: string
       - name: cursor
         in: query
         required: false
-        schema: *id005
+        schema:
+          type: string
       - name: limit
         in: query
         required: false
@@ -1227,12 +1237,184 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
-      - name: X-Correlation-ID
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/events/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^(whk|obx)_[A-Za-z0-9_-]{1,64}$
+    get:
+      operationId: getEvent
+      summary: Read one event with a redacted payload summary
+      description: Returns provider event ID, processing status and outcome, duplicate and conflict counts,
+        the stored payload hashes, the related payment and its attempts, and an allow-listed payload summary.
+        Other workspaces' events return 404.
+      tags:
+      - Sandbox
+      parameters:
+      - name: X-Request-ID
         in: header
         required: false
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/sandbox/webhooks/mock:
+    post:
+      operationId: receiveMockWebhook
+      summary: Sandbox-only inbound mock provider event
+      description: Operator-only sandbox route that feeds the webhook inbox so duplicate, changed-payload
+        and reordered deliveries can be exercised. Mock events are not signed (signature_status
+        not_applicable). The first delivery of an event ID is processed through status-guarded transitions
+        and answers 202. A byte-identical repeat increments duplicate_count and answers 200 with no further
+        effect. The same event ID with a different payload answers 409 event_payload_conflict, is flagged for
+        investigation and is never applied or stored over the first payload. An event that does not match
+        the recorded state (for example a failure after success) is recorded as ignored and never moves
+        a terminal payment.
+      tags:
+      - Sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MockWebhookEvent'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      responses:
+        '200':
+          description: Duplicate delivery counted; nothing applied
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReceipt'
+        '202':
+          description: First delivery recorded and processed
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReceipt'
+        '409':
+          $ref: '#/components/responses/Error'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/settings:
+    get:
+      operationId: getSettings
+      summary: Read workspace settings
+      description: Read-only workspace name, fixed sandbox environment, role and provider configuration
+        status. Requires a live workspace membership on every read and never returns key material, tokens
+        or provider credentials.
+      tags:
+      - Sandbox
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/sandbox/simulations:
     post:
       operationId: createSimulation
@@ -1929,15 +2111,366 @@ components:
       type: object
       additionalProperties: false
       properties:
-        id: *id002
-        event_type: *id005
-        status: *id005
-        data_source: *id005
+        id:
+          type: string
+          pattern: ^(whk|obx)_[A-Za-z0-9_-]{1,64}$
+        source:
+          type: string
+          enum:
+          - inbox
+          - outbox
+        event_type:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - processing
+          - processed
+          - delivered
+          - failed
+        outcome:
+          type: string
+          nullable: true
+          enum:
+          - applied
+          - ignored
+          - null
+        outcome_reason:
+          type: string
+          nullable: true
+        provider_event_id:
+          type: string
+          nullable: true
+        payment_id:
+          type: string
+          nullable: true
+        duplicate_count:
+          type: integer
+          minimum: 0
+        needs_investigation:
+          type: boolean
+        signature_status:
+          type: string
+          enum:
+          - not_applicable
+          - verified
+          - rejected
+        data_source:
+          type: string
+          enum:
+          - simulated
+        created_at:
+          type: string
+          format: date-time
+        last_received_at:
+          type: string
+          format: date-time
       required:
       - id
+      - source
       - event_type
       - status
+      - outcome
+      - outcome_reason
+      - provider_event_id
+      - payment_id
+      - duplicate_count
+      - needs_investigation
+      - signature_status
       - data_source
+      - created_at
+      - last_received_at
+    EventPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        next_cursor:
+          type: string
+          nullable: true
+      required:
+      - items
+      - next_cursor
+    EventDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          pattern: ^(whk|obx)_[A-Za-z0-9_-]{1,64}$
+        source:
+          type: string
+          enum:
+          - inbox
+          - outbox
+        event_type:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - processing
+          - processed
+          - delivered
+          - failed
+        outcome:
+          type: string
+          nullable: true
+          enum:
+          - applied
+          - ignored
+          - null
+        outcome_reason:
+          type: string
+          nullable: true
+        provider_event_id:
+          type: string
+          nullable: true
+        payment_id:
+          type: string
+          nullable: true
+        duplicate_count:
+          type: integer
+          minimum: 0
+        needs_investigation:
+          type: boolean
+        signature_status:
+          type: string
+          enum:
+          - not_applicable
+          - verified
+          - rejected
+        data_source:
+          type: string
+          enum:
+          - simulated
+        created_at:
+          type: string
+          format: date-time
+        last_received_at:
+          type: string
+          format: date-time
+        provider_id:
+          type: string
+          nullable: true
+        payload_hash:
+          type: string
+          nullable: true
+          description: SHA-256 of the first delivery's body (inbox events only)
+        conflicting_payload_hash:
+          type: string
+          nullable: true
+          description: SHA-256 of the most recent body that reused this event ID with different content
+        conflict_count:
+          type: integer
+          minimum: 0
+        delivery_attempts:
+          type: integer
+          minimum: 0
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+        payment_status:
+          type: string
+          nullable: true
+        attempts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              attempt_number:
+                type: integer
+              provider_id:
+                type: string
+              status:
+                type: string
+            required:
+            - id
+            - attempt_number
+            - provider_id
+            - status
+        payload_summary:
+          type: object
+          additionalProperties: false
+          properties:
+            fields:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                properties:
+                  name:
+                    type: string
+                  value:
+                    type: string
+                required:
+                - name
+                - value
+            redacted_count:
+              type: integer
+              minimum: 0
+          required:
+          - fields
+          - redacted_count
+      required:
+      - id
+      - source
+      - event_type
+      - status
+      - outcome
+      - outcome_reason
+      - provider_event_id
+      - payment_id
+      - duplicate_count
+      - needs_investigation
+      - signature_status
+      - data_source
+      - created_at
+      - last_received_at
+      - provider_id
+      - payload_hash
+      - conflicting_payload_hash
+      - conflict_count
+      - delivery_attempts
+      - processed_at
+      - payment_status
+      - attempts
+      - payload_summary
+    MockWebhookEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+        type:
+          type: string
+          enum:
+          - payment.succeeded
+          - payment.failed
+          - payment.processing
+        payment_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+        attempt_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+        provider_reference:
+          type: string
+          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+      required:
+      - event_id
+      - type
+      - payment_id
+    WebhookReceipt:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+          pattern: ^whk_[A-Za-z0-9_-]{1,64}$
+        provider_event_id:
+          type: string
+        result:
+          type: string
+          enum:
+          - processed
+          - duplicate
+        outcome:
+          type: string
+          nullable: true
+          enum:
+          - applied
+          - ignored
+          - null
+        outcome_reason:
+          type: string
+          nullable: true
+        duplicate_count:
+          type: integer
+          minimum: 0
+        signature_status:
+          type: string
+          enum:
+          - not_applicable
+          - verified
+          - rejected
+      required:
+      - event_id
+      - provider_event_id
+      - result
+      - outcome
+      - outcome_reason
+      - duplicate_count
+      - signature_status
+    Settings:
+      type: object
+      additionalProperties: false
+      properties:
+        workspace:
+          $ref: '#/components/schemas/Workspace'
+        role:
+          type: string
+          enum:
+          - read
+          - operator
+        providers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              code:
+                type: string
+                enum:
+                - mock
+                - stripe
+                - plaid
+              label:
+                type: string
+              status:
+                type: string
+                enum:
+                - enabled
+                - disabled
+                - not_configured
+            required:
+            - code
+            - label
+            - status
+        capabilities:
+          type: object
+          additionalProperties: false
+          properties:
+            api_key_management:
+              type: string
+              enum:
+              - unavailable
+            role_management:
+              type: string
+              enum:
+              - unavailable
+            live_activation:
+              type: string
+              enum:
+              - unavailable
+          required:
+          - api_key_management
+          - role_management
+          - live_activation
+      required:
+      - workspace
+      - role
+      - providers
+      - capabilities
     SimulationRequest:
       type: object
       additionalProperties: false
