@@ -2,7 +2,7 @@
 
 Deliverable hierarchy, milestones and deferred scope. Dependencies are completion gates, not calendar estimates.
 
-**Current status:** source for M1 work packages 1.1–1.4 is added. Full dependency-backed verification, generated contracts, merge gates, and CI remain pending. The [WBS](wbs.md) records these packages as in progress. Reach a verified M1 before moving to M2, the durable mock payment and ledger.
+**Current status:** M1–M5 source is integrated on `feat/m5-m6-verification-delivery` and verified locally (see [Recorded results](#recorded-results)); the optional Kubernetes work (M6) is partly verified. GitHub Actions has not run, so every CI gate is open. Release documentation (5.4) is in progress: measurements, limitations and the case study are written; the [WBS](wbs.md) has the exact state of each box.
 
 ## Deliverable hierarchy
 
@@ -65,6 +65,23 @@ Record completed work packages and their actual verification results in the [WBS
 ## Recorded results
 
 Only actual runs are recorded here. Nothing below is a projection.
+
+### Local (WBS 5.4.5 measurements on the integrated M1-M5 tree)
+
+- Date: 2026-11-01 UTC. Commit: `5b33a29` (`feat/m5-m6-verification-delivery`). Environment: Apple M4 Pro, macOS 26.4 (Darwin 25.4), arm64, Go 1.26.2, Node v22.18.0, pnpm 11.3.0; native processes, temporary SQLite, mock provider. Full methodology, caveats and tables: [measurements.md](measurements.md).
+
+| Measurement | Result |
+| --- | --- |
+| `go -C backend test -race -count=1 ./... -v` | exit 0; 12 packages ok; 260 PASS lines (134 top-level), 0 FAIL, 0 SKIP |
+| `pnpm test:web` | 8 files, 95 tests passed |
+| `CI=1 pnpm run test:e2e:ci` | 88 passed, 5 skipped (container-only `ops` specs), 0 failed (3.3 min) |
+| Case-study spec files, run together | 51 passed, 0 failed; central demo alone 1 passed; `node scripts/measure-central-demo.mjs` PASS |
+| `node scripts/measure-latency.mjs 200` acceptance (1 / 8 / 32 clients) | p50 1.3 / 3.9 / 11.7 ms, p95 2.5 (sequential) / 10.5 / 30.7 ms, p99 2.9 (sequential) / 13.5 / 38.1 ms |
+| Time to `succeeded` (server-side), idle / burst of 200 at 32 clients | p50 1 ms / 1148 ms, p95 2 ms / 2257 ms |
+| Same idempotency key at 2 / 8 / 32 concurrent requests (5 rounds each) | 1 payment, 1 charge, 1 journal every round |
+| `node scripts/measure-recovery.mjs` | success, decline, delayed success (2003 ms), timeout after success (205 ms, resolved by lookup) reach a terminal state; timeout before execution and outage stay `unknown` with 0 charges and 0 journals through 30 s and 15 s windows |
+
+Local, single machine, single SQLite writer, mock provider: these are not capacity or cross-environment claims, and the 100-repeat same-key gate was not run. Limits and unverified items: [known-limitations.md](known-limitations.md).
 
 ### Local (WBS 5.1 Playwright and CI work)
 

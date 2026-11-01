@@ -25,6 +25,10 @@ Design and reference documentation for the Railvanta sandbox. Start with the [pr
 | **Operations** | |
 | [Deployment](operations/deployment.md) | Deployment stages, configuration, startup, health, backup and restore |
 | [Kubernetes](operations/kubernetes.md) | Optional cluster resources, storage, security and lifecycle |
+| **Release evidence (WBS 5.4)** | |
+| [Measurements](measurements.md) | Recorded latency, recovery outcomes and test counts, with date, commit and environment |
+| [Known limitations](known-limitations.md) | Single writer, no HA, mock only, deferred capabilities, unverified items |
+| [Case study](case-study.md) | Design choices, lessons, and demo scenarios mapped to passing specs |
 
 Diagrams use Mermaid. Wireframes are plain text.
 
