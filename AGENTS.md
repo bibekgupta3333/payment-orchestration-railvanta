@@ -2,9 +2,9 @@
 
 ## Project Structure & Module Organization
 
-Read `idea.md` for the Railvanta product and engineering brief. Design docs are in `docs/` (index: `docs/README.md`), grouped into `backend/`, `frontend/`, and `operations/`; the reference schema is `docs/backend/schema.sql`. Source exists in `backend/`, `frontend/`, and `e2e/`, with CI tooling under `.github/` and `scripts/`; M1 is merged and M2–M4 are on `feat/m2-m4-payment-correctness`. Read `README.md` and `CODECHANGELOG.md` before claiming a gate has passed. Log every change in `CODECHANGELOG.md` and track work in `docs/wbs.md`.
+Read `idea.md` for the Railvanta product and engineering brief. Design docs are in `docs/` (index: `docs/README.md`), grouped into `backend/`, `frontend/`, and `operations/`; the reference schema is `docs/backend/schema.sql`. Source exists in `backend/`, `frontend/`, and `e2e/`, with CI tooling under `.github/` and `scripts/`; Read `README.md` and `CODECHANGELOG.md` before claiming a gate has passed. Log every change in `CODECHANGELOG.md` and track work in `docs/wbs.md`.
 
-The selected design uses Next.js in `frontend/` and a Go/GORM/SQLite backend in `backend/`. Follow the package boundaries in `docs/architecture.md`. Keep infrastructure in `infrastructure/` and architecture decisions in `docs/decisions/`. The scaffold exists; later payment execution and infrastructure features remain planned.
+The selected design uses Next.js in `frontend/` and a Go/GORM/SQLite backend in `backend/`. Follow the package boundaries in `docs/architecture.md`. Keep infrastructure in `infrastructure/` and architecture decisions in `docs/decisions/`. Payment execution against the sandbox mock provider, the ledger and the dashboard are implemented; real providers, high availability and cloud infrastructure remain out of scope (see `README.md` and `docs/wbs.md`).
 
 ## Build, Test, and Development Commands
 
@@ -17,11 +17,13 @@ The repo is a pnpm monorepo (`pnpm-workspace.yaml`: `frontend`, `e2e`, `packages
 - `APP_ENV=sandbox pnpm dev:api` / `pnpm dev:web`: run the Go API / Next.js dev server. See the root README for the proxy and loopback demo configuration.
 - `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm format`: whole-repo build and checks.
 - `pnpm test` (`test:api` + `test:web`): Go tests and frontend unit tests.
-- `pnpm test:e2e`: Playwright black-box suite in `e2e/` against a freshly started API (and Next.js for UI specs).
+- `pnpm test:e2e` / `pnpm test:e2e:ci`: Playwright black-box suite in `e2e/` against a freshly started API (and Next.js for UI specs); `:ci` disables retries. With `E2E_BASE_URL` set (Compose stack from `docker-compose.yml` + `docker-compose.e2e.yml`) it runs in container mode and also runs `e2e/ops`.
+- `pnpm test:e2e:quickstart`: opt-in and slow; re-runs the README quickstart (between its `quickstart:` markers) in a fresh temporary clone, then the smoke and central-demo specs. Needs network.
+- `pnpm check:docs`: every `/docs` example validates against `backend/api/openapi.yaml`; `pnpm lint:openapi` lints the contract.
 - `pnpm check`: tracked-file policy, lint, generated contracts, typecheck, tests and build; run before every PR.
-- `pnpm compose:config`: validate the Compose definition.
+- `pnpm compose:config`: validate the Compose definition (also part of `pnpm check`).
 - `pnpm compose:up` / `pnpm compose:down`: build/start or stop separate API/frontend images and the proxy; the SQLite volume is retained.
-- Docker Compose is the required container runtime. Verify image builds/startup/persistence separately from YAML validation; backup/restore remains WBS 5.2 work.
+- Docker Compose is the required container runtime. Verify image builds/startup/persistence separately from YAML validation. Backup, restore, drill and secret-scan scripts (`scripts/backup-db.sh`, `restore-backup.sh`, `restore-drill.sh`, `secret-scan.sh`) are described in `docs/operations/deployment.md`; `scripts/validate-k8s.sh` checks the optional Kubernetes manifests.
 
 ## Coding Style & Naming Conventions
 

@@ -40,6 +40,28 @@ A record of every change to code, configuration or design docs, newest first. Ea
 - Not run: `pnpm check` and any Go/Vitest/Playwright suites (documentation only; no code changed); Mermaid diagrams were not rendered, only reviewed against the code; wireframes were compared at feature level, not pixel level.
 
 **Notes:** `docs/operations/deployment.md` still carries a few "proposed"/"pending" phrases (outside this change's ownership). The simulator catalog still lists `duplicate_webhook`/`reordered_events` as waiting for WBS 4.3, which is merged; documented in the flows doc and ADR 0005, code unchanged.
+## 2026-10-31 — Rewrite README quickstart, sync AGENTS.md, add opt-in quickstart E2E
+
+**WBS:** 5.4.1, 5.4.2, 5.4.4 · **PR/commit:** d2ae421 and a follow-up on the 5.4 README worktree branch
+
+**Changed**
+- `README.md` — rewritten: prerequisites, a marked quickstart block (`<!-- quickstart:start/end -->`: frozen install, Chromium, `pnpm check`), full E2E, native demo-mode walkthrough (generated credentials, curl payment, browser session cookies), Compose sandbox, container E2E, backup/restore pointers, command table, OpenAPI link. Removed stale status lines (M2-M4 "on a branch", "dependency files could not be generated", "container workflow has not run", handwritten-lockfile text).
+- `AGENTS.md` — command list matches `package.json` (`test:e2e:ci`, `test:e2e:quickstart`, `check:docs`, `lint:openapi`, container E2E mode, backup scripts); removed "backup/restore remains WBS 5.2 work" and "payment execution planned".
+- `e2e/docs/quickstart.spec.ts`, `e2e/playwright.quickstart.config.ts` (no globalSetup; the default config's `testMatch` does not include `docs/`), root `package.json` script `test:e2e:quickstart` — opt-in (`RUN_QUICKSTART=1`, set by the script); clones the repo to a temp dir, runs the README quickstart commands as written, then the smoke and central-demo specs; `QUICKSTART_CHILD` prevents recursion; the clone is deleted afterwards.
+- `docs/wbs.md` — ticked 5.4.1, 5.4.2, 5.4.4.
+
+**Verification (fresh clone of the commit; macOS arm64, Node 22.18, Go 1.26.2, Docker 28.5)**
+- `pnpm test:e2e:quickstart` — 1 passed in 1.5 min: `pnpm install --frozen-lockfile`, `playwright install chromium`, `pnpm check` (Go tests ok, Vitest 95 passed, lint, `check:docs`, builds), smoke `api/scaffold.spec.ts` 3 passed, central demo 1 passed; temp clone removed.
+- Separate clone: `pnpm test:e2e` — 88 passed, 5 skipped (container-only), 0 failed, 3.3 min.
+- Native demo walkthrough (README commands): API and Next.js started, `/v1/payment-methods` via the proxy, `POST /v1/payments` for 2500 USD returned `created` then `succeeded`.
+- `pnpm compose:up` (59 s, warm layer cache): web 200, `/v1/workspace` without credentials 401; `pnpm compose:down`.
+- Container E2E on a fresh volume (`COMPOSE_PROJECT_NAME` and `RAILVANTA_DATA_VOLUME` isolated): 92 passed, 1 skipped, 0 failed, 4.0 min. A first attempt on a volume reused from `compose:up` had 91 passed, 1 skipped and 1 failed (failing spec not captured), so the README requires a fresh volume.
+- `pnpm check:docs` passed inside `pnpm check`: `/docs` examples validate against `backend/api/openapi.yaml`.
+- Not verified: another machine/OS or a cold Go/pnpm cache; the DevTools cookie step for the browser demo session was not performed by hand; GitHub Actions.
+
+**Notes:** the compose data volume name is fixed (`railvanta_railvanta-data`), so `COMPOSE_PROJECT_NAME` alone does not isolate stacks; my first container run removed that default volume with `down -v`. The acceptance gate (clean machine) stays open.
+
+---
 
 ## 2026-11-01 — Merge WBS 5.2 container delivery and 5.3 Kubernetes manifests
 

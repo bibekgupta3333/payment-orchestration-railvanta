@@ -95,7 +95,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Tests and Playwright specs done (5.1.1–5.1.9); CI workflow written but unrun (5.1.10–5.1.11), so CI-based gates are open |
 | 5.2 | Container delivery and recovery | 5.1 | M5 | Built, run and drilled locally (2026-11-01); CI digest recording and CI secret scan unverified until GitHub runs |
 | 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | Built and validated locally in k3d; egress NetworkPolicy enforcement, CI, digest pinning and in-cluster backup drill open |
-| 5.4 | Release documentation | 5.2; 5.3 if used | M5 | Not started |
+| 5.4 | Release documentation | 5.2; 5.3 if used | M5 | In progress (5.4.1, 5.4.2, 5.4.4 done) |
 
 ## 1. Foundation and contracts (M1)
 
@@ -698,10 +698,10 @@ Images, Compose, health probes, graceful shutdown, API-owned backup/restore/chec
 **Depends on:** 5.2; 5.3 if used · **Deliverable:** Tested README and docs describing implemented behavior, known limits and measured results.
 
 **Tasks**
-- [ ] 5.4.1 Write root `README.md` with prerequisites, local dev, Compose, test, lint and format commands, each run on a clean checkout
-- [ ] 5.4.2 Update `AGENTS.md` build/test command section to the real scripts
+- [x] 5.4.1 Write root `README.md` with prerequisites, local dev, Compose, test, lint and format commands, each run on a clean checkout
+- [x] 5.4.2 Update `AGENTS.md` build/test command section to the real scripts
 - [x] 5.4.3 Update `docs/architecture.md`, `docs/backend/*` and `docs/frontend/*` from "planned" to implemented behavior; mark remaining gaps explicitly
-- [ ] 5.4.4 Publish the OpenAPI contract and confirm `/docs` examples match it
+- [x] 5.4.4 Publish the OpenAPI contract and confirm `/docs` examples match it
 - [ ] 5.4.5 Record measured latency, recovery outcomes and test counts with the date, commit and environment they were measured in
 - [ ] 5.4.6 Write a known-limitations section: single SQLite writer, no HA, mock provider only, no real funds, deferred capabilities
 - [ ] 5.4.7 Document the backup/restore runbook with the date of the last successful drill
