@@ -458,7 +458,7 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [x] 3.2.8 Have the backend check each run's invariants: one payment per key, one balanced journal, no cross-provider attempt after `unknown`, and no regression of a terminal state. Store pass/fail with evidence in `simulation_runs`.
 - [x] 3.2.9 Build the simulator page at `frontend/app/dashboard/simulator/page.tsx`: configuration form, execution timeline, and inspector tabs (Request, Response, Routing, Attempts, Events, Journal, Invariants) under a persistent "SIMULATED / SANDBOX ONLY" badge.
 - [x] 3.2.10 Drive the timeline by polling the backend with a manual refresh, announcing run acceptance once through `aria-live`; it shows no made-up progress animation, and invariants stay "pending" until the backend returns evidence.
-- [x] 3.2.11 Fetch the scenario list from the backend so that unimplemented scenarios render disabled with the missing dependency named.
+- [x] 3.2.11 Fetch the scenario list from the backend so that unimplemented scenarios render disabled with the missing dependency named. Note: since the WBS 4.3 follow-up all ten scenarios are implemented (`duplicate_webhook` and `reordered_events` deliver real events through the webhook inbox), so none render disabled today; the disabled path remains for future catalog entries.
 - [x] 3.2.12 Add Go integration tests (file-backed SQLite) for evaluate-has-no-side-effects and for each simulation scenario's invariant results.
 
 **Acceptance gate**

@@ -29,9 +29,6 @@ const (
 	DuplicatePosting       = "duplicate_posting"
 )
 
-// WebhookDependency names what the webhook scenarios wait for.
-const WebhookDependency = "Webhook inbox and signature verification (WBS 4.3)"
-
 // Scenario describes one catalog entry.
 type Scenario struct {
 	ID          string
@@ -61,10 +58,10 @@ var Catalog = []Scenario{
 		Implemented: true, InjectedFault: "response lost after the provider executed the charge", MockScenario: "timeout_after_success", ExpectedStatus: payment.StatusSucceeded},
 	{ID: DuplicateRequest, Label: "Duplicate request", Description: "The same Idempotency-Key is submitted concurrently. One payment results and every replay returns it.",
 		Implemented: true, InjectedFault: "the create request is sent three times with one Idempotency-Key", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
-	{ID: DuplicateWebhook, Label: "Duplicate webhook", Description: "A provider webhook is delivered twice.",
-		Implemented: false, MissingDependency: WebhookDependency, InjectedFault: "duplicate webhook delivery"},
-	{ID: ReorderedEvents, Label: "Reordered events", Description: "Provider events arrive out of order.",
-		Implemented: false, MissingDependency: WebhookDependency, InjectedFault: "reordered webhook delivery"},
+	{ID: DuplicateWebhook, Label: "Duplicate webhook", Description: "After the payment succeeds, the same provider event is delivered several times (3 to 5, from the seed) through the real webhook inbox. One inbox row counts the repeats and no second financial effect occurs.",
+		Implemented: true, InjectedFault: "the same provider webhook event is delivered repeatedly", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
+	{ID: ReorderedEvents, Label: "Reordered events", Description: "After the payment succeeds, a stale processing event and a contradicting late failure arrive through the real webhook inbox. The terminal state holds and the late failure is kept for reconciliation.",
+		Implemented: true, InjectedFault: "stale and contradicting provider events arrive after the terminal state", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
 	{ID: Outage, Label: "Provider outage", Description: "The provider is unavailable. Submission and lookups fail, the payment stays unknown, and no other provider is tried.",
 		Implemented: true, InjectedFault: "provider unavailable for submit and lookup", MockScenario: "outage", ExpectedStatus: payment.StatusUnknown},
 	{ID: UnknownRecovery, Label: "Unknown-outcome recovery", Description: "An unknown outcome is resolved by the recovery worker through a lookup at the original provider with the stored key.",
@@ -98,4 +95,31 @@ func SeedAmount(seed string) int64 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(seed))
 	return 1000 + int64(h.Sum32()%90000)
+}
+
+// WebhookRepeats derives how many times the duplicate_webhook event is
+// delivered (3 to 5) from the seed.
+func WebhookRepeats(seed string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte("webhook:" + seed))
+	return 3 + int(h.Sum32()%3)
+}
+
+// WebhookPlan is one provider event the simulator delivers through the inbox.
+type WebhookPlan struct {
+	EventID    string `json:"event_id"`
+	Type       string `json:"type"`
+	Deliveries int    `json:"deliveries"`
+}
+
+// PlanWebhooks returns the deterministic event plan for a webhook scenario.
+func PlanWebhooks(scenario, runID, seed string) []WebhookPlan {
+	id := func(n int) string { return fmt.Sprintf("sim_%s_evt_%d", runID, n) }
+	switch scenario {
+	case DuplicateWebhook:
+		return []WebhookPlan{{id(1), payment.WebhookSucceeded, WebhookRepeats(seed)}}
+	case ReorderedEvents:
+		return []WebhookPlan{{id(1), payment.WebhookSucceeded, 1}, {id(2), payment.WebhookProcessing, 1}, {id(3), payment.WebhookFailed, 1}}
+	}
+	return nil
 }

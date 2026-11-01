@@ -191,6 +191,7 @@ type SimulationView struct {
 	Attempts      []payment.AttemptView   `json:"attempts"`
 	Transitions   []SimulationTransition  `json:"transitions"`
 	Events        []SimulationEvent       `json:"events"`
+	Webhooks      []SimulationWebhook     `json:"webhooks"`
 	Journals      []LedgerJournalView     `json:"journals"`
 	Invariants    []simulation.Invariant  `json:"invariants"`
 	Timeline      []SimulationTimelineRow `json:"timeline"`
@@ -246,6 +247,19 @@ type SimulationEvent struct {
 	DeliveredAt *string `json:"delivered_at"`
 }
 
+// SimulationWebhook is one webhook inbox row received for the payment.
+type SimulationWebhook struct {
+	ID              string  `json:"id"`
+	ProviderEventID string  `json:"provider_event_id"`
+	EventType       string  `json:"event_type"`
+	Status          string  `json:"status"`
+	Outcome         *string `json:"outcome"`
+	OutcomeReason   *string `json:"outcome_reason"`
+	DuplicateCount  int64   `json:"duplicate_count"`
+	SignatureStatus string  `json:"signature_status"`
+	ReceivedAt      string  `json:"received_at"`
+}
+
 // SimulationTimelineRow is one dated fact, sorted oldest first.
 type SimulationTimelineRow struct {
 	At     string `json:"at"`
@@ -274,7 +288,7 @@ func (h *handler) simulationView(r *http.Request, run storage.SimulationRun) (Si
 		},
 		Routing:     SimulationRoutingView{Decisions: []SimulationRouting{}},
 		Attempts:    []payment.AttemptView{},
-		Transitions: []SimulationTransition{}, Events: []SimulationEvent{}, Journals: []LedgerJournalView{},
+		Transitions: []SimulationTransition{}, Events: []SimulationEvent{}, Webhooks: []SimulationWebhook{}, Journals: []LedgerJournalView{},
 		Invariants: simulation.PendingInvariants(),
 	}
 	if run.InjectedFault != nil {
@@ -360,6 +374,25 @@ func (h *handler) simulationView(r *http.Request, run storage.SimulationRun) (Si
 				add(*e.DeliveredAt, "event", e.EventType+" delivered", "Handled after "+strconv.FormatInt(e.Attempts, 10)+" delivery attempt(s)")
 			}
 			view.Events = append(view.Events, ev)
+		}
+		var inbox []storage.WebhookInbox
+		if err := db.Where("workspace_id = ? AND payment_id = ?", ws, paymentID).Order("received_at, id").Find(&inbox).Error; err != nil {
+			return SimulationView{}, err
+		}
+		for _, row := range inbox {
+			view.Webhooks = append(view.Webhooks, SimulationWebhook{
+				ID: inboxPrefix + row.ID, ProviderEventID: row.ProviderEventID, EventType: row.EventType, Status: row.Status,
+				Outcome: row.Outcome, OutcomeReason: row.OutcomeReason, DuplicateCount: row.DuplicateCount,
+				SignatureStatus: row.SignatureStatus, ReceivedAt: payment.FormatTimestamp(row.ReceivedAt),
+			})
+			detail := "Inbox row " + row.Status
+			if row.Outcome != nil {
+				detail += ", outcome " + *row.Outcome
+				if row.OutcomeReason != nil {
+					detail += " (" + *row.OutcomeReason + ")"
+				}
+			}
+			add(row.ReceivedAt, "webhook", row.EventType+" received", detail+"; repeats "+strconv.FormatInt(row.DuplicateCount, 10))
 		}
 		journals, err := ledger.ListPosted(db, ws, ledger.JournalFilter{PaymentID: paymentID, Limit: 20})
 		if err != nil {
