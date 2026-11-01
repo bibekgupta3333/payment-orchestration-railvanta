@@ -198,6 +198,17 @@ type WebhookInbox struct {
 	LastReceivedAt  int64   `gorm:"column:last_received_at"`
 	ReceivedAt      int64   `gorm:"column:received_at"`
 	ProcessedAt     *int64  `gorm:"column:processed_at"`
+
+	// Added by migration 0005.
+	EventType              string  `gorm:"column:event_type"`
+	PaymentID              *string `gorm:"column:payment_id"`
+	AttemptID              *string `gorm:"column:attempt_id"`
+	SignatureStatus        string  `gorm:"column:signature_status"`
+	Outcome                *string `gorm:"column:outcome"`
+	OutcomeReason          *string `gorm:"column:outcome_reason"`
+	InvestigationFlag      int64   `gorm:"column:investigation_flag"`
+	ConflictingPayloadHash *string `gorm:"column:conflicting_payload_hash"`
+	ConflictCount          int64   `gorm:"column:conflict_count"`
 }
 
 func (WebhookInbox) TableName() string { return "webhook_inbox" }

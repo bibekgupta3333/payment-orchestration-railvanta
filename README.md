@@ -2,7 +2,7 @@
 
 Sandbox payment infrastructure built with Go, GORM, SQLite, Next.js, and Tailwind CSS. See the [project brief](idea.md), [architecture](docs/architecture.md), and [WBS](docs/wbs.md).
 
-M1 source now includes the API scaffold, versioned storage, authentication/validation boundary, frontend shell, and test/CI harness. Dependency-backed compilation, browser tests, and CI still require verification. Payment execution, routing, ledger posting services, and provider integrations belong to later milestones. The UI deliberately shows unavailable states for those capabilities.
+M1 (scaffold, storage, auth, UI shell, CI) is merged. M2–M4 are implemented on branch `feat/m2-m4-payment-correctness` and verified locally: idempotent payment acceptance, the leased outbox dispatcher and deterministic mock provider, atomic balanced ledger posting, recovery by lookup against the original provider, cancellation, the payment/routing/simulator/ledger/reconciliation/events/docs/settings screens. Locally, `pnpm check` and the full `pnpm test:e2e` suite pass; CI on that branch, container runtime recovery (WBS 5.2) and the final end-to-end gate (WBS 5.1) are still open. Only the sandbox mock provider exists; no real funds move.
 
 ## Prerequisites and installation
 

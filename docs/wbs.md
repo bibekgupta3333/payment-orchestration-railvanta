@@ -90,8 +90,8 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Tasks and E2E done (2026-10-31); 375px tab check and CI gates pending |
 | 4.1 | Ledger explorer | 2.3, 3.1 | M4 | Implemented; verification recorded in CODECHANGELOG (2026-10-31) |
 | 4.2 | Reconciliation | 2.4, 4.1 | M4 | Implemented; keyboard-navigation and reconciliation empty/error-state gates unchecked (2026-10-31) |
-| 4.3 | Events and audit | 2.4, 1.3 | M4 | Not started |
-| 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Not started |
+| 4.3 | Events and audit | 2.4, 1.3 | M4 | Implemented and verified locally; empty-state and keyboard checks at 375/1440 pending |
+| 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Implemented; CI run, bundle check, dark-theme contrast and 375/1440 gate items pending |
 | 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Not started |
 | 5.2 | Container delivery and recovery | 5.1 | M5 | Image/Compose source added; runtime and recovery gates pending |
 | 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | Not started |
@@ -547,61 +547,61 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 2.4, 1.3 · **Deliverable:** Durable inbox deduplication, an append-only payment audit, and a read-only event explorer.
 
 **Tasks**
-- [ ] 4.3.1 Add a migration for `webhook_inbox.duplicate_count` and `last_received_at`; on a duplicate delivery, increment the count instead of inserting again.
-- [ ] 4.3.2 Record a duplicate event ID whose payload hash differs as an investigation item (a flag plus the stored hash), never as a silent overwrite.
-- [ ] 4.3.3 Make inbox processing apply payment and attempt transitions guarded by status; out-of-order events must never move a terminal state backwards.
-- [ ] 4.3.4 Enforce that `payment_state_transitions` is append-only (trigger) and readable as a timeline for each payment.
-- [ ] 4.3.5 Implement `GET /v1/events` combining inbox and outbox records, with filters for payment or correlation ID, state and date, and cursor pagination.
-- [ ] 4.3.6 Implement `GET /v1/events/{id}` returning only safe fields: provider event ID, processing status, duplicate count, related payment and attempts, and a redacted payload summary.
-- [ ] 4.3.7 Mark mock events "Signature: Not applicable"; only a backend-recorded verification may show "Verified" or "Rejected".
-- [ ] 4.3.8 Build the events page at `frontend/app/dashboard/events/page.tsx` with filters in the URL, a Refresh button, a source and updated-time label, and a duplicate column fed by `duplicate_count`.
-- [ ] 4.3.9 Build event detail without rendering raw JSON as HTML; show an "Open trace" link only when a trace destination is configured.
-- [ ] 4.3.10 Add Go tests covering duplicate webhooks (count increments, single effect), changed-hash duplicates (flagged), reordered events (no regression), and attempts to delete audit rows (rejected).
+- [x] 4.3.1 Add a migration for `webhook_inbox.duplicate_count` and `last_received_at`; on a duplicate delivery, increment the count instead of inserting again.
+- [x] 4.3.2 Record a duplicate event ID whose payload hash differs as an investigation item (a flag plus the stored hash), never as a silent overwrite.
+- [x] 4.3.3 Make inbox processing apply payment and attempt transitions guarded by status; out-of-order events must never move a terminal state backwards.
+- [x] 4.3.4 Enforce that `payment_state_transitions` is append-only (trigger) and readable as a timeline for each payment.
+- [x] 4.3.5 Implement `GET /v1/events` combining inbox and outbox records, with filters for payment or correlation ID, state and date, and cursor pagination.
+- [x] 4.3.6 Implement `GET /v1/events/{id}` returning only safe fields: provider event ID, processing status, duplicate count, related payment and attempts, and a redacted payload summary.
+- [x] 4.3.7 Mark mock events "Signature: Not applicable"; only a backend-recorded verification may show "Verified" or "Rejected".
+- [x] 4.3.8 Build the events page at `frontend/app/dashboard/events/page.tsx` with filters in the URL, a Refresh button, a source and updated-time label, and a duplicate column fed by `duplicate_count`.
+- [x] 4.3.9 Build event detail without rendering raw JSON as HTML; show an "Open trace" link only when a trace destination is configured.
+- [x] 4.3.10 Add Go tests covering duplicate webhooks (count increments, single effect), changed-hash duplicates (flagged), reordered events (no regression), and attempts to delete audit rows (rejected).
 
 **Acceptance gate**
-- [ ] N duplicate deliveries produce one inbox row with `duplicate_count = N-1` and exactly one financial effect.
-- [ ] A late `failed` event after `succeeded` leaves the payment `succeeded`, and the event is recorded as ignored.
-- [ ] Rows in `payment_state_transitions` cannot be updated or deleted (the database rejects it).
-- [ ] No secrets, tokens, full idempotency keys or raw payloads appear in API responses or the DOM.
-- [ ] Mock events never claim cryptographic verification.
+- [x] N duplicate deliveries produce one inbox row with `duplicate_count = N-1` and exactly one financial effect.
+- [x] A late `failed` event after `succeeded` leaves the payment `succeeded`, and the event is recorded as ignored.
+- [x] Rows in `payment_state_transitions` cannot be updated or deleted (the database rejects it).
+- [x] No secrets, tokens, full idempotency keys or raw payloads appear in API responses or the DOM.
+- [x] Mock events never claim cryptographic verification.
 - [ ] The events list and detail pass checks for loading, empty and error states and keyboard access, at both 375px and 1440px.
 
 **E2E test** — `e2e/ui/events.spec.ts`
-- [ ] The duplicate-webhook scenario shows a duplicate count of 2 on the events page, and there is exactly one ledger posting
-- [ ] Reordered events never move a terminal payment back to an earlier state (checked through the payment's state history)
-- [ ] An event detail page shows only safe fields, links to its payment and correlation ID, and never claims a signature on mock events
-- [ ] The audit timeline on payment detail matches the API's transition history
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] The duplicate-webhook scenario shows a duplicate count of 2 on the events page, and there is exactly one ledger posting
+- [x] Reordered events never move a terminal payment back to an earlier state (checked through the payment's state history)
+- [x] An event detail page shows only safe fields, links to its payment and correlation ID, and never claims a signature on mock events
+- [x] The audit timeline on payment detail matches the API's transition history
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 4.4 Docs and settings UI — frontend
 **Depends on:** 3.1, 1.3 · **Deliverable:** Developer docs that match the OpenAPI contract, and a settings page exposing only supported actions.
 
 **Tasks**
-- [ ] 4.4.1 Build the docs page at `frontend/app/docs/page.tsx`, server-rendered, with sections for getting started, authentication, payments, idempotency, webhooks, routing, errors and limitations.
-- [ ] 4.4.2 Generate or verify the request/response examples (cURL, TypeScript, Go) from the OpenAPI document, using placeholder credentials and sandbox paths only.
-- [ ] 4.4.3 Document retry safety: reuse the same key after a timeout, use a new key for a new intent, and an `unknown` outcome means poll rather than retry or switch provider.
-- [ ] 4.4.4 Separate supported endpoints from roadmap items (capture, refunds, rule editing are marked planned).
-- [ ] 4.4.5 Add copy buttons that announce success or failure through `aria-live`, and collapsible section navigation for mobile.
-- [ ] 4.4.6 Build the settings page at `frontend/app/dashboard/settings/page.tsx` with theme selection (System/Light/Dark, stored locally), the workspace name, and environment shown as fixed "Sandbox".
-- [ ] 4.4.7 Show provider configuration as read-only (Mock enabled, Stripe and Plaid not configured); API key, role and live-activation controls are shown as unavailable.
-- [ ] 4.4.8 Enforce workspace membership on every settings read in the API; never return secret values.
-- [ ] 4.4.9 Add a CI check that the docs examples validate against the OpenAPI schema.
-- [ ] 4.4.10 Add component tests for the theme toggle, the unavailable states, and copy announcements.
+- [x] 4.4.1 Build the docs page at `frontend/app/docs/page.tsx`, server-rendered, with sections for getting started, authentication, payments, idempotency, webhooks, routing, errors and limitations.
+- [x] 4.4.2 Generate or verify the request/response examples (cURL, TypeScript, Go) from the OpenAPI document, using placeholder credentials and sandbox paths only.
+- [x] 4.4.3 Document retry safety: reuse the same key after a timeout, use a new key for a new intent, and an `unknown` outcome means poll rather than retry or switch provider.
+- [x] 4.4.4 Separate supported endpoints from roadmap items (capture, refunds, rule editing are marked planned).
+- [x] 4.4.5 Add copy buttons that announce success or failure through `aria-live`, and collapsible section navigation for mobile.
+- [x] 4.4.6 Build the settings page at `frontend/app/dashboard/settings/page.tsx` with theme selection (System/Light/Dark, stored locally), the workspace name, and environment shown as fixed "Sandbox".
+- [x] 4.4.7 Show provider configuration as read-only (Mock enabled, Stripe and Plaid not configured); API key, role and live-activation controls are shown as unavailable.
+- [x] 4.4.8 Enforce workspace membership on every settings read in the API; never return secret values.
+- [x] 4.4.9 Add a CI check that the docs examples validate against the OpenAPI schema.
+- [x] 4.4.10 Add component tests for the theme toggle, the unavailable states, and copy announcements.
 
 **Acceptance gate**
 - [ ] Every code example on `/docs` passes validation against the current OpenAPI document in CI.
 - [ ] No secrets or real credentials appear in the docs, the settings page or the frontend bundle (CI checks the bundle).
-- [ ] The settings page has no fake key generation, membership management or live-activation buttons.
+- [x] The settings page has no fake key generation, membership management or live-activation buttons.
 - [ ] Requests for another workspace's settings are rejected.
 - [ ] The theme choice persists locally and both themes meet contrast requirements.
 - [ ] Docs and settings work at 375px and 1440px, are keyboard-navigable, and axe reports no serious or critical violations.
 
 **E2E test** — `e2e/ui/docs-settings.spec.ts`
-- [ ] Every example on `/docs` runs against the live sandbox API and returns the documented response
-- [ ] The settings page offers only supported actions (theme); live activation and key generation are absent or shown as unavailable
-- [ ] The theme choice persists across reload, and the Sandbox badge stays visible in both themes
-- [ ] Secret values never appear in page HTML or network responses
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] Every example on `/docs` runs against the live sandbox API and returns the documented response
+- [x] The settings page offers only supported actions (theme); live activation and key generation are absent or shown as unavailable
+- [x] The theme choice persists across reload, and the Sandbox badge stays visible in both themes
+- [x] Secret values never appear in page HTML or network responses
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ## 5. Verification and delivery (M5–M6)
 

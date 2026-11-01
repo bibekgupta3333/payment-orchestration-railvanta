@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Read `idea.md` for the Railvanta product and engineering brief. Design docs are in `docs/` (index: `docs/README.md`), grouped into `backend/`, `frontend/`, and `operations/`; the reference schema is `docs/backend/schema.sql`. M1 source now exists in `backend/`, `frontend/`, and `e2e/`, with CI tooling under `.github/` and `scripts/`. Full dependency-backed verification is pending; read `README.md` and `CODECHANGELOG.md` before claiming a gate has passed. Log every change in `CODECHANGELOG.md` and track work in `docs/wbs.md`.
+Read `idea.md` for the Railvanta product and engineering brief. Design docs are in `docs/` (index: `docs/README.md`), grouped into `backend/`, `frontend/`, and `operations/`; the reference schema is `docs/backend/schema.sql`. Source exists in `backend/`, `frontend/`, and `e2e/`, with CI tooling under `.github/` and `scripts/`; M1 is merged and M2–M4 are on `feat/m2-m4-payment-correctness`. Read `README.md` and `CODECHANGELOG.md` before claiming a gate has passed. Log every change in `CODECHANGELOG.md` and track work in `docs/wbs.md`.
 
 The selected design uses Next.js in `frontend/` and a Go/GORM/SQLite backend in `backend/`. Follow the package boundaries in `docs/architecture.md`. Keep infrastructure in `infrastructure/` and architecture decisions in `docs/decisions/`. The scaffold exists; later payment execution and infrastructure features remain planned.
 

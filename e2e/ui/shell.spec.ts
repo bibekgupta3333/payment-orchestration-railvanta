@@ -94,6 +94,7 @@ for (const width of [375, 1440]) {
           "/dashboard/simulator",
           "/dashboard/ledger",
           "/dashboard/reconciliation",
+          "/dashboard/events",
           "/dashboard/settings",
           "/docs",
         ].includes(route)

@@ -1,0 +1,132 @@
+/* Docs, events and settings styles (WBS 4.3, 4.4). */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+.docs-layout .docs-content {
+  margin: 0;
+  padding: 50px 0;
+  max-width: 860px;
+  min-width: 0;
+}
+.docs-nav {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  padding-top: 50px;
+}
+.docs-nav summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.docs-nav ol {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.docs-nav li {
+  margin: 8px 0;
+}
+.docs-content section {
+  scroll-margin-top: 16px;
+}
+.docs-content section > h2 {
+  margin-top: 40px;
+}
+.docs-example {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 20px 0;
+  min-width: 0;
+}
+.docs-example h3 {
+  margin-top: 0;
+}
+.docs-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.docs-more {
+  margin-top: 12px;
+}
+.docs-more summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  margin: 12px 0;
+}
+.event-list-cards {
+  display: none;
+}
+.definition-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.definition-grid dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.definition-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.flag-investigate {
+  color: #b54708;
+  font-weight: 600;
+}
+.dark .flag-investigate {
+  color: #fdb022;
+}
+.unavailable-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 800px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 0 16px;
+  }
+  .docs-nav {
+    position: static;
+    padding: 16px 0 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .docs-layout .docs-content {
+    padding: 20px 0;
+  }
+  .event-table-wrap {
+    display: none;
+  }
+  .event-list-cards {
+    display: grid;
+    gap: 12px;
+  }
+  .definition-grid {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .definition-grid dd {
+    margin-bottom: 10px;
+  }
+}

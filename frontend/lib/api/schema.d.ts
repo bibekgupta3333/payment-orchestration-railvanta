@@ -519,10 +519,72 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read sanitized event summaries
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * List webhook inbox and outbox events
+     * @description Newest-first feed that merges the webhook inbox and the outbox for the authenticated workspace. Safe fields only; raw payloads, lease tokens, errors and idempotency keys are never returned. Mock events are simulated and carry no signature (signature_status not_applicable). q matches a payment ID, an event ID or a provider event ID.
      */
-    get: operations["getEvents"];
+    get: operations["listEvents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/events/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read one event with a redacted payload summary
+     * @description Returns provider event ID, processing status and outcome, duplicate and conflict counts, the stored payload hashes, the related payment and its attempts, and an allow-listed payload summary. Other workspaces' events return 404.
+     */
+    get: operations["getEvent"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox/webhooks/mock": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Sandbox-only inbound mock provider event
+     * @description Operator-only sandbox route that feeds the webhook inbox so duplicate, changed-payload and reordered deliveries can be exercised. Mock events are not signed (signature_status not_applicable). The first delivery of an event ID is processed through status-guarded transitions and answers 202. A byte-identical repeat increments duplicate_count and answers 200 with no further effect. The same event ID with a different payload answers 409 event_payload_conflict, is flagged for investigation and is never applied or stored over the first payload. An event that does not match the recorded state (for example a failure after success) is recorded as ignored and never moves a terminal payment.
+     */
+    post: operations["receiveMockWebhook"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read workspace settings
+     * @description Read-only workspace name, fixed sandbox environment, role and provider configuration status. Requires a live workspace membership on every read and never returns key material, tokens or provider credentials.
+     */
+    get: operations["getSettings"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1101,11 +1163,117 @@ export interface components {
       } | null;
     };
     Event: {
-      /** Format: uuid */
       id: string;
+      /** @enum {string} */
+      source: "inbox" | "outbox";
       event_type: string;
-      status: string;
-      data_source: string;
+      /** @enum {string} */
+      status: "pending" | "processing" | "processed" | "delivered" | "failed";
+      /** @enum {string|null} */
+      outcome: "applied" | "ignored" | null;
+      outcome_reason: string | null;
+      provider_event_id: string | null;
+      payment_id: string | null;
+      duplicate_count: number;
+      needs_investigation: boolean;
+      /** @enum {string} */
+      signature_status: "not_applicable" | "verified" | "rejected";
+      /** @enum {string} */
+      data_source: "simulated";
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      last_received_at: string;
+    };
+    EventPage: {
+      items: components["schemas"]["Event"][];
+      next_cursor: string | null;
+    };
+    EventDetail: {
+      id: string;
+      /** @enum {string} */
+      source: "inbox" | "outbox";
+      event_type: string;
+      /** @enum {string} */
+      status: "pending" | "processing" | "processed" | "delivered" | "failed";
+      /** @enum {string|null} */
+      outcome: "applied" | "ignored" | null;
+      outcome_reason: string | null;
+      provider_event_id: string | null;
+      payment_id: string | null;
+      duplicate_count: number;
+      needs_investigation: boolean;
+      /** @enum {string} */
+      signature_status: "not_applicable" | "verified" | "rejected";
+      /** @enum {string} */
+      data_source: "simulated";
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      last_received_at: string;
+      provider_id: string | null;
+      /** @description SHA-256 of the first delivery's body (inbox events only) */
+      payload_hash: string | null;
+      /** @description SHA-256 of the most recent body that reused this event ID with different content */
+      conflicting_payload_hash: string | null;
+      conflict_count: number;
+      delivery_attempts: number;
+      /** Format: date-time */
+      processed_at: string | null;
+      payment_status: string | null;
+      attempts: {
+        id: string;
+        attempt_number: number;
+        provider_id: string;
+        status: string;
+      }[];
+      payload_summary: {
+        fields: {
+          name: string;
+          value: string;
+        }[];
+        redacted_count: number;
+      };
+    };
+    MockWebhookEvent: {
+      event_id: string;
+      /** @enum {string} */
+      type: "payment.succeeded" | "payment.failed" | "payment.processing";
+      payment_id: string;
+      attempt_id?: string;
+      provider_reference?: string;
+    };
+    WebhookReceipt: {
+      event_id: string;
+      provider_event_id: string;
+      /** @enum {string} */
+      result: "processed" | "duplicate";
+      /** @enum {string|null} */
+      outcome: "applied" | "ignored" | null;
+      outcome_reason: string | null;
+      duplicate_count: number;
+      /** @enum {string} */
+      signature_status: "not_applicable" | "verified" | "rejected";
+    };
+    Settings: {
+      workspace: components["schemas"]["Workspace"];
+      /** @enum {string} */
+      role: "read" | "operator";
+      providers: {
+        /** @enum {string} */
+        code: "mock" | "stripe" | "plaid";
+        label: string;
+        /** @enum {string} */
+        status: "enabled" | "disabled" | "not_configured";
+      }[];
+      capabilities: {
+        /** @enum {string} */
+        api_key_management: "unavailable";
+        /** @enum {string} */
+        role_management: "unavailable";
+        /** @enum {string} */
+        live_activation: "unavailable";
+      };
     };
     SimulationRequest: {
       /** @enum {string} */
@@ -2253,15 +2421,27 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
-  getEvents: {
+  listEvents: {
     parameters: {
       query?: {
+        q?: string;
+        source?: "inbox" | "outbox";
+        state?:
+          | "pending"
+          | "processing"
+          | "processed"
+          | "delivered"
+          | "failed"
+          | "applied"
+          | "ignored"
+          | "investigation";
+        created_from?: string;
+        created_to?: string;
         cursor?: string;
         limit?: number;
       };
       header?: {
         "X-Request-ID"?: string;
-        "X-Correlation-ID"?: string;
       };
       path?: never;
       cookie?: never;
@@ -2275,18 +2455,122 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            items: components["schemas"]["Event"][];
-            next_cursor: string | null;
-          };
+          "application/json": components["schemas"]["EventPage"];
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getEvent: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EventDetail"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  receiveMockWebhook: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MockWebhookEvent"];
+      };
+    };
+    responses: {
+      /** @description Duplicate delivery counted; nothing applied */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookReceipt"];
+        };
+      };
+      /** @description First delivery recorded and processed */
+      202: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookReceipt"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getSettings: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Settings"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

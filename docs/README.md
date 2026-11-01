@@ -2,7 +2,7 @@
 
 Design documentation for the Railvanta sandbox. Start with the [project brief](../idea.md).
 
-**Status:** M1 source is added: Go startup/storage/auth, Next.js shell, tests, and CI configuration. Dependency downloads are blocked in the authoring environment, so full compilation, generated contracts, browser checks, and green CI remain unverified. Container image/Compose definitions are now added, with runtime validation pending. Payment execution and clusters are not implemented. Acceptance criteria remain open until verified and merged. See [setup](../README.md) and [actual results](../CODECHANGELOG.md).
+**Status:** M1 is merged. M2–M4 are implemented on `feat/m2-m4-payment-correctness`; their local verification (`pnpm check`, full E2E) is recorded in the [code changelog](../CODECHANGELOG.md). CI on that branch, container recovery (WBS 5.2), Kubernetes and the final gate (WBS 5.1) remain open, and unticked boxes in the [WBS](wbs.md) name the specific gates still unverified. See [setup](../README.md).
 
 ## Layout
 
