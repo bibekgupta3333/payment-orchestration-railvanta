@@ -102,6 +102,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 			writeHealth(w, http.StatusServiceUnavailable)
 			return
 		}
+		if err := storage.CheckWritable(checkCtx, store.DB); err != nil {
+			logger.Error("readiness degraded", "error", err.Error())
+			writeHealth(w, http.StatusServiceUnavailable)
+			return
+		}
 		writeHealth(w, http.StatusOK)
 	})
 	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, RequestsPerMinute: 600, Router: executor.Router(), OnAccepted: dispatcher.Notify}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
