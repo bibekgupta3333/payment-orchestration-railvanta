@@ -22,6 +22,16 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Docs hook ignores generated test reports
+
+**WBS:** process · **PR/commit:** feat/simulator-webhook-scenarios
+
+**Changed**
+- `.claude/hooks/require-docs.sh` — also skips `junit-results/`, `playwright-report/` and `test-results/`, which test runs write. A leftover `e2e/junit-results/e2e.xml` had blocked a finish.
+
+**Verification**
+- Hook run by hand with only generated report folders changed → allowed.
+
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 
 **WBS:** 4.3, 4.4 · **PR/commit:** feat/m2-m4-payment-correctness
