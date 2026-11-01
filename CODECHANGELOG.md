@@ -22,6 +22,26 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add Kubernetes reference manifests, validation script and k3d smoke drill
+
+**WBS:** 5.3.1–5.3.5, 5.3.7–5.3.9 (ticked); 5.3.6 and 5.3.10 (not ticked) · **PR/commit:** worktree branch, not yet merged
+
+**Changed**
+- `infrastructure/k8s/base/` (new, Kustomize) — Namespace, ServiceAccounts (no token automount), ConfigMap, placeholder Secret, API StatefulSet (1 replica, headless + ClusterIP Services, `ReadWriteOncePod` volumeClaimTemplate at `/var/lib/railvanta`, exec probes, 15 s grace), web Deployment and Service, Ingress, NetworkPolicies. `overlays/k3d-local/` adds a Retain StorageClass; `examples/tls-secret.example.yaml` is a placeholder.
+- `scripts/validate-k8s.sh` (new) — Kustomize render, `kubeconform -strict`, single-writer policy checks, optional `REQUIRE_DIGESTS=1`.
+- `scripts/k8s-smoke.sh` (new) — k3d cluster, image import, apply, TLS Ingress check, API pod-delete drill, NetworkPolicy probes, teardown.
+- `.github/workflows/k8s.yml` (new) — runs `validate-k8s.sh` with kubeconform v0.7.0.
+- `docs/operations/kubernetes.md`, `docs/wbs.md` — reference-manifest section; ticked boxes and open items.
+
+**Verification**
+- `scripts/validate-k8s.sh` with kubeconform v0.7.0 (`go install`), Kubernetes schema 1.35.0 — exit 0: base 17 resources valid, overlay 18 valid, example Secret valid, 8 policy checks ok. Not run: the GitHub workflow itself.
+- `scripts/k8s-smoke.sh` on k3d v5.9.0 (k3s v1.35.5, traefik, kube-router NetworkPolicy controller, local-path), images `railvanta-api:local` / `railvanta-web:local` imported: manifests applied cleanly; pods Ready via the exec probes; PVC bound as `RWOP` with PV reclaim `Retain`; `GET /` returned 200 through the Ingress over TLS (throwaway self-signed CA, deleted afterwards); `GET /v1/workspace` returned 200 with an operator key and 401 without; `/health/ready` through the Ingress returned 404. 3 payments succeeded, then 3 more were created and the pod was deleted: the replacement pod (new UID, 0 restarts) came up, all 6 payments `succeeded`, ledger transactions went 3 to 6 with 0 duplicate postings per payment. 1 StatefulSet replica, 0 Jobs, 0 CronJobs, 0 HPAs, one pod mounting the claim. The script ran end to end three times after fixes; the final run is the one reported. Fixes along the way: `kubectl exec -i cat` truncated the seeded database at 32 KiB (switched to `kubectl cp`), and traefik needed a wait before the first request.
+- NetworkPolicy: ingress-side policies enforced (unlabelled pod to API/web blocked; web-labelled pod to API allowed; web-labelled pod to web blocked). Egress was NOT observed to be enforced: a default-deny pod and a web-labelled pod still connected to `traefik.kube-system:80`, and a default-deny pod connected to 1.1.1.1:80. Cause not diagnosed (k3d on Docker Desktop). 5.3.6 stays unticked.
+- Teardown: `k3d cluster list` empty, no `k3d-*` containers, `minikube status` shows only the pre-existing stopped `local-cluster` profile, kubeconfig current context unchanged.
+- Not run: `pnpm test:e2e` against the Ingress (the base has no `E2E_BASE_URL` support; a scripted curl smoke was used instead); the in-cluster backup/restore drill (the container backup command is not in this base); pinned image digests (none exist, images use local tags; 5.3.10 unticked); a `kubectl apply --dry-run=server` run; resource sizing (initial values are unmeasured).
+
+**Notes:** the API requires a loopback `HEALTH_ADDR`, so probes exec `wget` inside the container. Credentials for the smoke test come from a throwaway demo-seeded database copied into the PVC while the API was scaled to zero; the container images create no credentials. The web image bakes `API_INTERNAL_ORIGIN=http://api:8080`, unused behind this Ingress.
+
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 
 **WBS:** 4.3, 4.4 · **PR/commit:** feat/m2-m4-payment-correctness
