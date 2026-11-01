@@ -171,6 +171,7 @@ export const ledgerJournalPageSchema = z.object({
       entries: z.array(
         z.object({
           account_id: z.string(),
+          account_code: z.string().optional(),
           side: z.enum(["debit", "credit"]),
           amount_minor: minorUnits,
         }),

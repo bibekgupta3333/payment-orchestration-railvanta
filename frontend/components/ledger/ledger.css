@@ -1,0 +1,134 @@
+.currency-group {
+  margin-bottom: 24px;
+}
+.currency-group h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.immutable-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid #067647;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.balance-check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+.balance-check-ok {
+  border-left-color: #067647;
+}
+.balance-check-bad {
+  border-left-color: #b42318;
+}
+.link-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 12px 0;
+}
+.overflow-cell {
+  color: #b42318;
+  font-weight: 600;
+}
+.dark .overflow-cell {
+  color: #ffb4ab;
+}
+.simulated-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px dashed var(--muted);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.count-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.recon-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.recon-detail section + section {
+  margin-top: 16px;
+}
+.recon-row-selected td {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.history-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.resolve-form {
+  display: grid;
+  gap: 12px;
+}
+.resolve-form textarea {
+  min-height: 80px;
+  font: inherit;
+}
+@media (max-width: 1100px) {
+  .recon-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .stack-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .stack-table,
+  .stack-table tbody {
+    display: block;
+  }
+  .stack-table tr {
+    display: block;
+    margin: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  .stack-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    border: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .stack-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    flex-shrink: 0;
+  }
+}

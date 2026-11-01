@@ -60,7 +60,7 @@ export function useWorkspace(): UseQueryResult<ApiResult<Workspace>, unknown> {
  * never be shared across workspaces or environments, and surfaces the
  * workspace error when that read fails.
  */
-function useScopedRead<T>(
+export function useScopedRead<T>(
   parts: unknown[],
   path: `/v1/${string}`,
   schema: z.ZodType<T>,

@@ -215,8 +215,14 @@ function JournalTab({ id }: { id: string }) {
       {read.page.items.map((journal) => (
         <Table key={journal.id} label={`Journal ${journal.id}`}>
           <caption>
-            Journal <span className="mono">{journal.id}</span> · posted ·
-            immutable
+            Journal{" "}
+            <Link
+              className="text-link mono"
+              href={`/dashboard/ledger/${journal.id}`}
+            >
+              {journal.id}
+            </Link>{" "}
+            · posted · immutable
           </caption>
           <thead>
             <tr>
@@ -230,7 +236,9 @@ function JournalTab({ id }: { id: string }) {
           <tbody>
             {journal.entries.map((entry, index) => (
               <tr key={`${entry.account_id}-${index}`}>
-                <td className="mono">{entry.account_id}</td>
+                <td className="mono">
+                  {entry.account_code ?? entry.account_id}
+                </td>
                 <td>{entry.side}</td>
                 <td className="numeric">
                   {formatMoney(entry.amount_minor, journal.currency)}

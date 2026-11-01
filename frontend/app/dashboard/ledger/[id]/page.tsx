@@ -1,10 +1,19 @@
-import { FeaturePage } from "@/components/feature-page";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { JournalDetail } from "@/components/ledger/JournalDetail";
+import { Skeleton } from "@/components/ui";
 
-export default function DetailPage() {
+export const metadata: Metadata = { title: "Journal detail" };
+
+export default async function JournalDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   return (
-    <FeaturePage
-      title="Journal details"
-      description="Detail inspection is unavailable until this capability is implemented. No financial records are shown."
-    />
+    <Suspense fallback={<Skeleton label="Loading journal" lines={4} />}>
+      <JournalDetail id={id} />
+    </Suspense>
   );
 }

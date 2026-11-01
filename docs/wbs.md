@@ -88,8 +88,8 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Implemented; verification recorded in CODECHANGELOG |
 | 3.1 | Payment-facing screens | 1.4, 2.1 | M3 | Tasks done; terminal-state, slow-API and CI gates pending (2026-10-31) |
 | 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Tasks and E2E done (2026-10-31); 375px tab check and CI gates pending |
-| 4.1 | Ledger explorer | 2.3, 3.1 | M4 | Not started |
-| 4.2 | Reconciliation | 2.4, 4.1 | M4 | Not started |
+| 4.1 | Ledger explorer | 2.3, 3.1 | M4 | Implemented; verification recorded in CODECHANGELOG (2026-10-31) |
+| 4.2 | Reconciliation | 2.4, 4.1 | M4 | Implemented; keyboard-navigation and reconciliation empty/error-state gates unchecked (2026-10-31) |
 | 4.3 | Events and audit | 2.4, 1.3 | M4 | Not started |
 | 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Not started |
 | 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Not started |
@@ -485,63 +485,63 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 2.3, 3.1 · **Deliverable:** Read-only ledger account and journal views with posting verification.
 
 **Tasks**
-- [ ] 4.1.1 Implement `GET /v1/ledger/accounts` (code, kind, currency, provider, balance computed from posted entries) with workspace scoping.
-- [ ] 4.1.2 Implement `GET /v1/ledger/transactions` (posted journals only) with cursor pagination and filters for currency and payment ID; amounts are returned as decimal strings.
-- [ ] 4.1.3 Implement `GET /v1/ledger/transactions/{id}` returning entries, debit and credit totals, the reversal link (`reversal_of` and reversed-by), and the related payment.
-- [ ] 4.1.4 Compute balances and totals with checked int64 arithmetic; on overflow, return an explicit error rather than a rounded value.
-- [ ] 4.1.5 Build the ledger page at `frontend/app/dashboard/ledger/page.tsx` with Accounts and Journal tabs, currency and payment-ID filters held in the URL, and per-currency grouping (no cross-currency totals).
-- [ ] 4.1.6 Build journal detail at `frontend/app/dashboard/ledger/[id]/page.tsx` showing a "POSTED / IMMUTABLE" badge, entry lines with side and amount, and a "debits equal credits" check computed from the returned lines.
-- [ ] 4.1.7 Show reversals as separate journals linked in both directions; there is no edit or delete action anywhere.
-- [ ] 4.1.8 Link the payment detail Journal tab to the ledger detail page, and link ledger detail back to the payment.
-- [ ] 4.1.9 Add Go tests: draft journals are never returned, balances match the sum of entries, workspaces are isolated, and overflow is rejected.
-- [ ] 4.1.10 Add component tests for journal detail (balanced, reversal-linked, and large-amount cases) in `frontend/tests/components/ledger.test.tsx`.
+- [x] 4.1.1 Implement `GET /v1/ledger/accounts` (code, kind, currency, provider, balance computed from posted entries) with workspace scoping.
+- [x] 4.1.2 Implement `GET /v1/ledger/transactions` (posted journals only) with cursor pagination and filters for currency and payment ID; amounts are returned as decimal strings.
+- [x] 4.1.3 Implement `GET /v1/ledger/transactions/{id}` returning entries, debit and credit totals, the reversal link (`reversal_of` and reversed-by), and the related payment.
+- [x] 4.1.4 Compute balances and totals with checked int64 arithmetic; on overflow, return an explicit error rather than a rounded value.
+- [x] 4.1.5 Build the ledger page at `frontend/app/dashboard/ledger/page.tsx` with Accounts and Journal tabs, currency and payment-ID filters held in the URL, and per-currency grouping (no cross-currency totals).
+- [x] 4.1.6 Build journal detail at `frontend/app/dashboard/ledger/[id]/page.tsx` showing a "POSTED / IMMUTABLE" badge, entry lines with side and amount, and a "debits equal credits" check computed from the returned lines.
+- [x] 4.1.7 Show reversals as separate journals linked in both directions; there is no edit or delete action anywhere.
+- [x] 4.1.8 Link the payment detail Journal tab to the ledger detail page, and link ledger detail back to the payment.
+- [x] 4.1.9 Add Go tests: draft journals are never returned, balances match the sum of entries, workspaces are isolated, and overflow is rejected.
+- [x] 4.1.10 Add component tests for journal detail (balanced, reversal-linked, and large-amount cases) in `frontend/tests/components/ledger.test.tsx`.
 
 **Acceptance gate**
-- [ ] For every journal, the debit and credit totals shown equal the database sums, as checked by a test against seeded postings.
-- [ ] Draft journals never appear in the API or the UI.
-- [ ] No UI path or API endpoint can modify or delete a posted journal or entry.
-- [ ] Balances are never added together across currencies.
-- [ ] Requests using another workspace's journal IDs return 404.
-- [ ] Ledger tables have correct loading, empty and error states and remain readable at 375px (entry cards) and 1440px.
-- [ ] axe reports no serious or critical violations, and amounts use tabular numerals.
+- [x] For every journal, the debit and credit totals shown equal the database sums, as checked by a test against seeded postings.
+- [x] Draft journals never appear in the API or the UI.
+- [x] No UI path or API endpoint can modify or delete a posted journal or entry.
+- [x] Balances are never added together across currencies.
+- [x] Requests using another workspace's journal IDs return 404.
+- [x] Ledger tables have correct loading, empty and error states and remain readable at 375px (entry cards) and 1440px.
+- [x] axe reports no serious or critical violations, and amounts use tabular numerals.
 
 **E2E test** — `e2e/ui/ledger.spec.ts`
-- [ ] The journal for a succeeded payment shows balanced debit and credit lines, with a "Posted / immutable" label
-- [ ] Navigation works in both directions: payment detail to journal, and journal to payment
-- [ ] The ledger has no edit or delete control anywhere; balances are shown per currency only
-- [ ] Large amounts display exactly (beyond `Number.MAX_SAFE_INTEGER`)
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] The journal for a succeeded payment shows balanced debit and credit lines, with a "Posted / immutable" label
+- [x] Navigation works in both directions: payment detail to journal, and journal to payment
+- [x] The ledger has no edit or delete control anywhere; balances are shown per currency only
+- [x] Large amounts display exactly (beyond `Number.MAX_SAFE_INTEGER`)
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 4.2 Reconciliation — backend + frontend
 **Depends on:** 2.4, 4.1 · **Deliverable:** Rerunnable reconciliation runs against mock-provider evidence, with stored discrepancies and resolution history.
 
 **Tasks**
-- [ ] 4.2.1 Add a migration with a CHECK on `reconciliation_discrepancies.kind` (`missing_posting`, `unknown_outcome`, `amount_mismatch`, `status_mismatch`, `missing_at_provider`) and add count columns or a view for matched, unmatched and mismatch totals.
-- [ ] 4.2.2 Implement a reconciliation service in `backend/internal/reconciliation` that compares mock-provider charges, payment state and posted journals over a time window.
-- [ ] 4.2.3 Make runs idempotent using `run_key` and `(run_id, fingerprint)`, so that re-running the same window creates no duplicate discrepancies.
-- [ ] 4.2.4 Ensure the service never creates journals or changes payment state to resolve a mismatch; resolution only records evidence.
-- [ ] 4.2.5 Implement `GET /v1/reconciliation/runs` and `GET /v1/reconciliation/discrepancies` (filtered by run, kind and status, with a cursor).
-- [ ] 4.2.6 Define an authorized, idempotent `POST /v1/reconciliation/runs` contract in OpenAPI, and implement it only once operator permission is enforced.
-- [ ] 4.2.7 Implement discrepancy resolution (status change plus `resolution_note`, `resolved_by` and `resolved_at`), restricted to operators and append-only in history.
-- [ ] 4.2.8 Build the reconciliation page at `frontend/app/dashboard/reconciliation/page.tsx`: run history selector, count cards, discrepancy table, and a detail pane (evidence → resolution history → related journal).
-- [ ] 4.2.9 Show the "Run sandbox reconciliation" control as disabled until 4.2.6 ships; afterwards it shows a confirmation, active run status, and handling for duplicate runs.
-- [ ] 4.2.10 Add Go tests covering each discrepancy kind, rerun idempotency, the no-invented-adjustment rule, and resolution permissions.
+- [x] 4.2.1 Add a migration with a CHECK on `reconciliation_discrepancies.kind` (`missing_posting`, `unknown_outcome`, `amount_mismatch`, `status_mismatch`, `missing_at_provider`) and add count columns or a view for matched, unmatched and mismatch totals.
+- [x] 4.2.2 Implement a reconciliation service in `backend/internal/reconciliation` that compares mock-provider charges, payment state and posted journals over a time window.
+- [x] 4.2.3 Make runs idempotent using `run_key` and `(run_id, fingerprint)`, so that re-running the same window creates no duplicate discrepancies.
+- [x] 4.2.4 Ensure the service never creates journals or changes payment state to resolve a mismatch; resolution only records evidence.
+- [x] 4.2.5 Implement `GET /v1/reconciliation/runs` and `GET /v1/reconciliation/discrepancies` (filtered by run, kind and status, with a cursor).
+- [x] 4.2.6 Define an authorized, idempotent `POST /v1/reconciliation/runs` contract in OpenAPI, and implement it only once operator permission is enforced.
+- [x] 4.2.7 Implement discrepancy resolution (status change plus `resolution_note`, `resolved_by` and `resolved_at`), restricted to operators and append-only in history.
+- [x] 4.2.8 Build the reconciliation page at `frontend/app/dashboard/reconciliation/page.tsx`: run history selector, count cards, discrepancy table, and a detail pane (evidence → resolution history → related journal).
+- [x] 4.2.9 Show the "Run sandbox reconciliation" control as disabled until 4.2.6 ships; afterwards it shows a confirmation, active run status, and handling for duplicate runs.
+- [x] 4.2.10 Add Go tests covering each discrepancy kind, rerun idempotency, the no-invented-adjustment rule, and resolution permissions.
 
 **Acceptance gate**
-- [ ] Running the same window twice leaves identical discrepancy rows (same count and fingerprints).
-- [ ] A run creates no ledger journals and no payment transitions, as shown by row counts before and after.
-- [ ] Each kind of discrepancy is detected by its fixture test.
-- [ ] A discrepancy cannot be marked resolved without a note, a resolver and a timestamp (enforced in the database and the API).
-- [ ] Mock evidence is labelled "Simulated" in the UI.
+- [x] Running the same window twice leaves identical discrepancy rows (same count and fingerprints).
+- [x] A run creates no ledger journals and no payment transitions, as shown by row counts before and after.
+- [x] Each kind of discrepancy is detected by its fixture test.
+- [x] A discrepancy cannot be marked resolved without a note, a resolver and a timestamp (enforced in the database and the API).
+- [x] Mock evidence is labelled "Simulated" in the UI.
 - [ ] Exact amounts and explanation text survive the 375px card layout; the 1440px table is keyboard-navigable.
 - [ ] Loading, empty ("no discrepancies") and error states render correctly.
 
 **E2E test** — `e2e/ui/reconciliation.spec.ts`
-- [ ] A seeded `unknown` payment where the provider confirmed success shows a `status_mismatch`/`unknown_outcome` discrepancy linked to the payment
-- [ ] Re-running with the same run key creates no duplicate discrepancies
-- [ ] Resolving a discrepancy requires a note, records who resolved it and when, and creates no adjusting journal
-- [ ] The run history shows matched and unmatched counts that agree with the API
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] A seeded `unknown` payment where the provider confirmed success shows a `status_mismatch`/`unknown_outcome` discrepancy linked to the payment
+- [x] Re-running with the same run key creates no duplicate discrepancies
+- [x] Resolving a discrepancy requires a note, records who resolved it and when, and creates no adjusting journal
+- [x] The run history shows matched and unmatched counts that agree with the API
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 4.3 Events and audit — backend + frontend
 **Depends on:** 2.4, 1.3 · **Deliverable:** Durable inbox deduplication, an append-only payment audit, and a read-only event explorer.

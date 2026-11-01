@@ -65,7 +65,7 @@ func TestOpenSafetyAndIDs(t *testing.T) {
 	}
 	var tables int64
 	s.DB.Raw("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables)
-	if tables != 23 {
+	if tables != 24 {
 		t.Fatalf("got %d tables", tables)
 	}
 	id, err := NewID()
@@ -138,7 +138,7 @@ func TestConstraintRejections(t *testing.T) {
 		{"duplicate idempotency key", `INSERT INTO idempotency_records(id,workspace_id,operation,key,request_hash,status,created_at) VALUES('i1','w1','create','key','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','pending',0)`, `INSERT INTO idempotency_records(id,workspace_id,operation,key,request_hash,status,created_at) VALUES('i2','w1','create','key','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','pending',0)`},
 		{"second unresolved attempt", `INSERT INTO payment_attempts(id,workspace_id,payment_id,provider_id,routing_reason,attempt_number,provider_idempotency_key,status,created_at,updated_at) VALUES('a1','w1','p1','provider1','mock',1,'key1','unknown',0,0)`, `INSERT INTO payment_attempts(id,workspace_id,payment_id,provider_id,routing_reason,attempt_number,provider_idempotency_key,created_at,updated_at) VALUES('a2','w1','p1','provider1','mock',2,'key2',0,0)`},
 
-		{"invalid discrepancy kind", `INSERT INTO reconciliation_runs VALUES('run','w1','key','pending',0,1,0,NULL)`, `INSERT INTO reconciliation_discrepancies(id,workspace_id,run_id,fingerprint,kind,details,created_at) VALUES('d','w1','run','key','invented','{}',0)`},
+		{"invalid discrepancy kind", `INSERT INTO reconciliation_runs(id,workspace_id,run_key,status,window_start,window_end,created_at) VALUES('run','w1','key','pending',0,1,0)`, `INSERT INTO reconciliation_discrepancies(id,workspace_id,run_id,fingerprint,kind,details,created_at) VALUES('d','w1','run','key','invented','{}',0)`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

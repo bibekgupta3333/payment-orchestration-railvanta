@@ -210,6 +210,22 @@ flowchart LR
 
 Acknowledge a valid webhook after durable inbox acceptance. Duplicate deliveries receive a successful acknowledgement without duplicate financial posting. A reconciliation run may use deterministic mock evidence in the MVP; label it simulated. It must not manufacture journals to make mismatches disappear. External webhook signature and provider lookup behavior will be specified against official provider contracts when integrations begin.
 
+### Implemented reconciliation contract (WBS 4.2)
+
+`POST /v1/reconciliation/runs` (operator only, `Idempotency-Key` is the run key, body is a `window_start`/`window_end` pair of at most 366 days) runs one synchronous, read-only comparison in a single write transaction. It considers settled payments created in the window that have a mock-provider attempt (`created` and `processing` payments are in flight and skipped) and compares each with the mock charge recorded for the latest attempt's idempotency key and with the posted, non-reversal success journal. The same key and window returns the stored run (200) and adds only discrepancies whose `(run_id, fingerprint)` is new; the same key with another window is 409.
+
+| Kind | Raised when |
+| --- | --- |
+| `unknown_outcome` | The payment is still `unknown` (the evidence says whether the mock holds a charge). |
+| `missing_at_provider` | The payment succeeded but the mock has no charge. |
+| `status_mismatch` | The charge status does not support the payment status (`succeeded` ↔ `succeeded`, `declined` ↔ `failed`), or a success journal exists for a payment that did not succeed. |
+| `amount_mismatch` | The charge amount or currency differs from the payment, or the journal totals differ from the amount. |
+| `missing_posting` | The payment succeeded and has no posted success journal. |
+
+The run never writes a payment, attempt, journal or charge and never calls a provider. Pending `payment.late_outcome` rows for the compared payments are attached to the discrepancy as evidence and marked `delivered` (`last_error` names the run); the payment is not changed. Counts: `matched` is compared payments with no discrepancy, `unmatched` is the three missing/unknown kinds, `mismatch` is the two mismatch kinds. Evidence is stored as JSON in `details`, labelled `simulated`.
+
+`POST /v1/reconciliation/discrepancies/{id}/resolve` (operator only) records a status change (`open`, `investigating`, `resolved`) with a required note. Each change appends a row to `reconciliation_resolution_events`; resolving also stores `resolution_note`, `resolved_by` and `resolved_at`. Triggers in migration 0004 make evidence and history immutable, reject a blank note, and make `resolved` final. Resolution is evidence only: the payment and ledger are never changed, so an unknown payment stays `unknown` and a missing posting stays missing until a separately designed correction exists.
+
 ## Failure recovery checklist
 
 | Failure point | Durable evidence | Required recovery |

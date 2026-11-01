@@ -22,6 +22,19 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Merge WBS 3.2 and 4.1/4.2 into the M2 backend
+
+**WBS:** 3.2, 4.1, 4.2 · **PR/commit:** feat/m2-m4-payment-correctness
+
+**Changed**
+- Merged the routing/simulator branch (migration `0003`) and the ledger explorer/reconciliation branch (migration `0004`). The migration numbers are consecutive.
+- Conflicts in `CODECHANGELOG.md`, `docs/wbs.md` and `e2e/ui/shell.spec.ts` were resolved by keeping both sides. The shell spec's list of routes exempt from the placeholder check is now the union of both branches' additions. `schema.d.ts` was regenerated.
+
+**Verification**
+- `go -C backend test -race ./...` — pass.
+- `pnpm check` — pass (Vitest 79 passed).
+- `pnpm test:e2e` — 67 passed, 0 failed.
+
 ## 2026-10-31 — Add routing and simulation UI with a backend-driven simulator
 
 **WBS:** 3.2.1–3.2.12, 3.2 acceptance gate (all but the 375px tab check and CI) and E2E · **PR/commit:** worktree branch, not yet merged
@@ -48,6 +61,34 @@ A record of every change to code, configuration or design docs, newest first. Ea
 - `unknown_recovery` and `timeout_after_success` use the same seeded mock method; they differ in what they assert and show. `timeout_before_execution` and `outage` end `unknown`, with the run complete once recovery has looked up at least once and the answer stayed unknown.
 - Not verified: the 375px labelled-scroll-region and keyboard check for the timeline and inspector with a live run, a screen-reader pass on the acceptance announcement (only the static `aria-live` text is asserted), and CI. Those gate items stay open in the WBS.
 - Provider health for Mock is computed from attempts the simulator and dev payments create, and is labelled "Simulated data".
+## 2026-10-31 — Add the ledger explorer (WBS 4.1) and reconciliation (WBS 4.2)
+
+**WBS:** 4.1.1–4.1.10, 4.2.1–4.2.10, 4.1 and 4.2 gates and E2E (two 4.2 gates left open, see Notes) · **PR/commit:** worktree branch worktree-agent-ac5ed560caef50576
+
+**Changed**
+- `backend/migrations/0004_reconciliation.sql` (new) — run count columns (`compared/matched/unmatched/mismatch/evidence_consumed`, `requested_by`), append-only `reconciliation_resolution_events`, and triggers: evidence and run windows immutable, no deletes, `resolved` final, blank resolution note/resolver rejected, discrepancies inserted `open`. The `kind` CHECK already existed in 0001 and is relied on. `0003_placeholder_local.sql` exists only in this worktree so the numbering is consecutive and is **not committed**; the routing branch supplies the real 0003.
+- `backend/internal/ledger/{explorer.go,read.go}` — checked `AddChecked/SubChecked/Totals`, `ListAccounts` (balances from posted entries, per-account `ErrOverflow` instead of a rounded value), `GetPosted` (totals, reversed-by), currency filter and `ReversedBy` on lists.
+- `backend/internal/transport/http/{ledger_views.go,reconciliation.go}` (new), `ledger.go`, `handler.go` (two routing hooks) — `GET /v1/ledger/accounts`, `GET /v1/ledger/transactions/{id}`, currency filter, `reversed_by`; `GET/POST /v1/reconciliation/runs`, `GET /v1/reconciliation/discrepancies[/{id}]`, `POST /v1/reconciliation/discrepancies/{id}/resolve`. Writes are operator-only (the existing write guard plus a second role check) and CSRF-checked for cookie sessions, so `POST runs` is implemented.
+- `backend/internal/reconciliation/{service,query,resolve}.go` (new) and `backend/internal/provider/mock/evidence.go` (read-only charge lookup) — the comparison service, rules for the five kinds, late-outcome consumption (marks rows delivered, never touches payments), run idempotency (`run_key`, `(run_id, fingerprint)`), resolution with history.
+- `backend/internal/storage/{models.go,storage_test.go}` — new columns/model; table count 23 to 24 and an explicit-column run insert in the constraint test.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — new paths and schemas; the stub reconciliation paths replaced.
+- `frontend/{app/dashboard/ledger,app/dashboard/reconciliation}`, `frontend/components/{ledger,reconciliation}/`, `frontend/lib/{api/ledger-schemas.ts,hooks/ledger.ts,hooks/reconciliation.ts,ledger-format.ts}` — ledger page (Accounts and Journal tabs, URL filters, per-currency groups, 375px cards), journal detail ("Posted / immutable", computed balance check, reversal links, payment link), reconciliation page (run selector, count cards, filters, evidence, history, related journal, confirm dialog, resolve form, all evidence labelled Simulated). `lib/hooks/payments.ts` only exports `useScopedRead`; `PaymentDetail.tsx` links the journal; `schemas.ts` accepts `account_code`.
+- `backend/tests/{ledger_explorer_test.go,reconciliation_test.go}`, `frontend/tests/components/ledger.test.tsx`, `e2e/ui/{ledger,reconciliation}.spec.ts`; `e2e/ui/shell.spec.ts` lists the two routes as implemented.
+- `docs/backend/flows.md` (reconciliation contract), `docs/wbs.md` (ticks, status rows).
+
+**Verification**
+- `go -C backend test -race -count=1 ./...` — pass, all packages; 225 PASS lines with `-v`, 0 FAIL. New: 13 top-level tests in `backend/tests` for ledger and reconciliation (each discrepancy kind, rerun idempotency, no invented adjustment via a before/after table dump, late-outcome consumption, resolution permissions and database triggers, overflow).
+- `pnpm check` — pass (Vitest 69 passed in 5 files, 11 new in `ledger.test.tsx`; lint, generated contracts, typecheck and build clean).
+- `pnpm test:e2e` — 58 passed, 0 failed (9 new in `ledger.spec.ts` and `reconciliation.spec.ts`, including axe at 375px and 1440px).
+- Fixtures: `unknown_outcome` comes from the real pipeline (the seeded outage method). Forged rows (an `amount_mismatch`, `status_mismatch`, `missing_posting` and `missing_at_provider`) are inserted directly in Go tests only. No E2E forging.
+
+**Notes**
+- A timeout-after-success payment is resolved by the recovery lookup before reconciliation runs, so the E2E `unknown_outcome` uses the outage scenario (no provider charge) rather than "provider confirmed success"; that case is covered by the Go `status_mismatch` fixture and the late-outcome test.
+- Cross-workspace 404s are asserted in Go only: the E2E `otherKey` is revoked by `auth-contract.spec.ts`.
+- Account balance overflow is reported per account (`balance_error: amount_overflow`, null amounts, HTTP 200) so one overflowing KWD account does not hide other currencies. The shared E2E database really overflows KWD (several max-int64 KWD payments), which the E2E asserts.
+- Open 4.2 gates: keyboard navigation of the 1440px table is not explicitly tested, and the reconciliation page's empty and error states are not yet covered by a test.
+- On merge: the storage test table count and the routing/events migrations (0003, 0005) need reconciling, and `e2e/ui/shell.spec.ts` placeholder list will conflict with the other packages.
+
 
 ## 2026-10-31 — Merge the WBS 3.1 payment screens into the M2 backend
 
