@@ -841,49 +841,6 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
-  /v1/providers/{id}:
-    parameters:
-    - name: id
-      in: path
-      required: true
-      description: Provider ID or code
-      schema:
-        type: string
-        pattern: ^[A-Za-z0-9_-]{1,64}$
-    get:
-      operationId: getProvider
-      summary: Read one provider with health and rules
-      tags:
-      - Sandbox
-      responses:
-        default: *id001
-        '200':
-          description: Successful response
-          headers:
-            X-Request-ID:
-              schema:
-                type: string
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProviderDetail'
-        '401': *id001
-        '403': *id001
-        '404': *id001
-        '429': *id001
-      parameters:
-      - name: X-Request-ID
-        in: header
-        required: false
-        schema:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{1,64}$
-      - name: X-Correlation-ID
-        in: header
-        required: false
-        schema:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/sandbox/scenarios:
     get:
       operationId: listScenarios
@@ -968,6 +925,49 @@ paths:
           type: integer
           minimum: 1
           maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/providers/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Provider ID or code
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,64}$
+    get:
+      operationId: getProvider
+      summary: Read one provider with health and rules
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderDetail'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+      parameters:
       - name: X-Request-ID
         in: header
         required: false

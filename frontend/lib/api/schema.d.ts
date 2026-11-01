@@ -261,26 +261,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Provider ID or code */
-        id: string;
-      };
-      cookie?: never;
-    };
-    /** Read one provider with health and rules */
-    get: operations["getProvider"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/sandbox/scenarios": {
     parameters: {
       query?: never;
@@ -313,6 +293,26 @@ export interface paths {
      * @description Provider health computed from attempt submitted_at and completed_at over 1h, 24h and 7d windows. A provider with no attempts reports status no_observations and null rates, never zeros.
      */
     get: operations["getProviderHealth"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider ID or code */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** Read one provider with health and rules */
+    get: operations["getProvider"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1515,38 +1515,6 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
-  getProvider: {
-    parameters: {
-      query?: never;
-      header?: {
-        "X-Request-ID"?: string;
-        "X-Correlation-ID"?: string;
-      };
-      path: {
-        /** @description Provider ID or code */
-        id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful response */
-      200: {
-        headers: {
-          "X-Request-ID"?: string;
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ProviderDetail"];
-        };
-      };
-      401: components["responses"]["Error"];
-      403: components["responses"]["Error"];
-      404: components["responses"]["Error"];
-      429: components["responses"]["Error"];
-      default: components["responses"]["Error"];
-    };
-  };
   listScenarios: {
     parameters: {
       query?: never;
@@ -1607,6 +1575,38 @@ export interface operations {
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getProvider: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        /** @description Provider ID or code */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderDetail"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
       429: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
