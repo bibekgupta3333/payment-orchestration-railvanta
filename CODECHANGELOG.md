@@ -2,6 +2,95 @@
 
 A record of every change to code, configuration or design docs, newest first. Each entry says what changed, which [WBS](docs/wbs.md) item it serves, and what was actually run to verify it. Only record results you observed. If a check was skipped or failed, say so.
 
+## 2026-11-01 — Integrate the demo playground and verify it on the Docker stack
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed (integration of the four demo changes above)**
+- `scripts/demo-up.sh` — the credentials file was sourced but never exported, so `docker compose exec -e NAME` passed empty values and the seeder rejected them; the script then wrongly blamed an already-seeded volume and deleted the file. It now exports the variables and the failure message points at the real error.
+- `backend/internal/simulation/runner.go` — the `settlement_mismatch` hold only touched pending lookup commands, so a lookup the dispatcher had already claimed rescheduled itself and resolved the payment once the provider-side charge existed (it failed in a full `backend/tests` run, not in the agent's targeted run). The runner now holds, waits until no lookup is in flight, then writes the charge.
+- `frontend/lib/api/routing-schemas.ts` — the provider code enum and `simulated_latency_ms` were missing (typecheck error, and routing decisions for `mock_fast` would have failed to parse in the browser); added optional `alternatives`.
+- `frontend/components/playground/RoutingDemo.tsx` — shows the per-provider verdicts (chosen, eligible lower priority, pinned, blocked) and takes an optional payment ID so the failover guard is visible.
+- `frontend/components/playground/DemoCard.tsx`, `frontend/lib/hooks/routing.ts` — Playground runs now send a $100.00 USD amount (the simulation API's `amount_minor`).
+- `e2e/ui/playground.spec.ts` — demo 3 asserted a test id that exists only in the ledger panel; it now reads the card's Journals value.
+- `docs/demo/README.md` — rewritten with the real button names and verified timings; removed a wrong `pending` state and an outdated CI statement; added the routing, duplicate-burst and settlement demos.
+
+**Verification**
+- `pnpm check` — pass on the final tree after all edits (lint, typecheck, Go tests, 100 Vitest tests, build, docs examples, bundle secret check). An earlier run before the routing-panel and $100 changes had 99 tests; the extra test covers the routing panel's per-provider verdicts and payment ID.
+- `go -C backend test ./tests ./internal/simulation/...` — pass after the runner fix. An earlier full run had failed `TestSimulationSettlementMismatchIsEvidenceOnly`.
+- `pnpm test:e2e e2e/ui/playground.spec.ts` (native, once): 4 passed, 1 failed on the demo 3 assertion above; after the fix, demo 3 alone passed. The whole file was not re-run together afterwards.
+- Docker stack (`DEMO_BUILD=1 pnpm demo:up`, built images, seeded `seeded=ok`; `RECOVERY_RESOLVE_DELAY=6s` confirmed inside the container). Against it, via the API with the seeded operator key: `success`, `duplicate_request` (10 requests: 1 first-accept, 9 replays, a 409; payments=1, attempts=1, charges=1), `timeout_after_success` (payment `unknown` from about 0.5 s to about 6.7 s, then `succeeded`; 1 charge, 1 journal; all invariants pass), `duplicate_posting` and `settlement_mismatch` (discrepancy `unknown_outcome`, status `investigating`, ledger rows changed 0) all completed with every invariant passing. Routing: the card method chose `mock_fast`, the ACH method `mock_ach`, and a payment on the outage method ended `unknown` with exactly one attempt and the evaluator reporting failover blocked.
+- A headless Chromium with the launcher's cookie recipe loaded `/dashboard/playground` signed in (`/v1/workspace` 200) and ran demo 3 to "6 of 6 invariants passed". It did not literally see the `unknown` badge on screen (the script matched description text); that window was verified through the API.
+- Not run: `pnpm demo:open` itself (headed browser), `scripts/demo-record.mjs`, the full E2E suite, container-mode E2E, CI.
+
+**Notes:** three simulated providers (`mock_fast`, `mock_economy`, `mock_ach`) are profiles of the same mock and are labelled Simulated; migration `0006` rebuilds the `providers` table to allow their codes and uses `PRAGMA defer_foreign_keys`, an exception to the migrations README that is documented there. The `settlement_mismatch` payment stays `unknown` with its recovery lookup held for an hour by design.
+
+## 2026-11-01 — Demo backend: simulated multi-provider routing story
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `backend/migrations/0006_simulated_providers.sql` (new) rebuilds `providers` so `code` also allows `mock_fast`, `mock_economy`, `mock_ach` (SQLite cannot relax a CHECK in place; `PRAGMA defer_foreign_keys` is transaction-scoped). `docs/backend/schema.sql` and `backend/migrations/README.md` updated.
+- `backend/internal/provider/mock/{mock.go,profiles.go}`: adapter `Options.Code/Rails/Latency`, `Latency()`; profiles `mock_fast` (card+ach, 50ms), `mock_economy` (card, 400ms), `mock_ach` (ach, 250ms), all deterministic, latency via the injectable `Sleep` hook (`ScenarioLatency`), never applied to outage. Default mock unchanged.
+- `backend/internal/auth/seed.go`: additive demo-workspace providers 0211-0213, rules 0731-0734, methods 0131-0134, tokens 0331-0337 (existing IDs untouched).
+- `backend/cmd/api/main.go`: registers one adapter per profile (executor/recovery look adapters up by provider code, so dispatch routes to the chosen adapter).
+- `backend/internal/routing/routing.go`: Decide reason names lower-priority eligible candidates.
+- `backend/internal/transport/http/{providers,routing}.go`, `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (regenerated): provider `simulated_latency_ms`, mode `simulated`, display names "Simulated Fast/Economy/ACH" (listed only when seeded and an adapter is configured); evaluate returns `alternatives[]` (chosen, pinned, eligible_lower_priority, ineligible, blocked with "unsafe failover blocked: prior attempt unresolved"). Provider code enums extended.
+- `backend/tests/routing_demo_test.go` (new).
+
+**Verification**
+- `gofmt -l .` clean; `go vet` clean for routing, provider, transport, tests.
+- `go test ./tests -run 'TestRoutingDemo|TestSimulatedProviders'` ok; `go test ./tests -run 'Dispatch|Route|Routing|Provider|Seed|Migrat|Recover|Simulat|Webhook'` ok (17.9s); `go test ./internal/routing/... ./internal/provider/... ./internal/storage/... ./internal/auth/...` ok.
+- `pnpm generate:api`, `pnpm check:docs`, `pnpm lint:openapi` ok (1 pre-existing warning).
+- NOT run: full suites, E2E, real container with the 0006 migration, frontend typecheck (new required `simulated_latency_ms` on Provider may affect frontend fixtures).
+
+## 2026-11-01 — Demo backend: visible recovery, 10-way duplicate demo and settlement mismatch scenario
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `RECOVERY_RESOLVE_DELAY` (default `0`, max 1m; `backend/internal/config/config.go`, `backend/cmd/api/main.go`, `backend/internal/payment/dispatch.go` `ExecutorOptions.ResolveDelay`): postpones the FIRST same-provider lookup after an ambiguous outcome through the outbox command's `available_at`; nothing sleeps. Default behaviour unchanged. Documented in `backend/.env.example` and `docs/backend/flows.md`.
+- `duplicate_request` (`backend/internal/simulation/{runner,invariants,catalog}.go`): 10 concurrent requests with one key, then one with a changed amount (409 `idempotency_conflict`); new invariants `duplicate_burst_answers` and `duplicate_single_effects` carry the real counts.
+- New scenario `settlement_mismatch` (catalog, runner, invariants `discrepancy_recorded_with_evidence`, `reconciliation_changed_no_ledger_rows`, `resolution_is_evidence_only`, OpenAPI enum, `frontend/lib/api/schema.d.ts` regenerated): simulated succeeded mock charge for an unknown (`outage`) payment, reconciliation run, evidence-only `investigating` resolution, before/after row counts.
+- Steps added at finalize are now persisted in `input_json` so the timeline shows them. Fingerprint includes scenario-specific `extra` evidence.
+- `backend/tests/simulation_test.go`, `backend/tests/dispatch_helpers_test.go` (`resolveDelay` config): tests for the delay (1s), the 10-way burst and the settlement mismatch; the scenario table gained `settlement_mismatch`.
+
+**Verification**
+- `gofmt -l` clean; `go vet ./tests ./internal/simulation/... ./internal/payment/...` clean.
+- `go test ./tests -run 'Simulation|Scenario'` ok (5.2s); `go test ./internal/simulation/... ./internal/config/...` ok; `go test ./tests -run 'Recovery|Dispatch'` ok.
+- `pnpm generate:api` ran (the schema diff also contains other agents' provider/routing enum changes).
+- NOT run: full suites, E2E, a real 6s delay against the running stack.
+
+## 2026-11-01 — Demo ops: one-command launcher, demo compose override and presenter runbook
+
+**WBS:** process (demo preparation) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `docker-compose.demo.yml` (new) — override with fast dispatcher polling, `MOCK_DELAYED_SUCCESS_DELAY=4s`, `RECOVERY_RESOLVE_DELAY=6s` (ignored by builds that predate the knob); no extra ports.
+- `scripts/demo-up.sh`, `scripts/demo-down.sh`, `scripts/demo-open.mjs` (new) — `pnpm demo:up` starts without building (`DEMO_BUILD=1` builds), writes throwaway credentials to `.demo/credentials.env`, runs `railvanta-api seed-demo` in the API container, prints key, curl examples and playground URL; `demo:open` launches headed Chromium with the session and CSRF cookies; `demo:down` warns about `-v`.
+- `scripts/demo-record.mjs` (new, optional) — Playwright video of the guided flow; not run.
+- `package.json` — `demo:up`, `demo:open`, `demo:down` scripts. `.gitignore` — `.demo/`. `README.md` — short Demo section. `docs/demo/README.md` (new) — presenter runbook.
+
+**Verification**
+- `docker compose -f docker-compose.yml -f docker-compose.demo.yml config -q` passed; `bash -n` and `shellcheck` on both shell scripts clean; `node --check` on both mjs scripts clean.
+- NOT run: `demo:up`, seeding, curl flow and `demo:open` (the stack was stopped, and no image rebuild or stack start was allowed); the Playground labels in the runbook are unverified because the page did not exist yet.
+
+## 2026-11-01 — Demo frontend: guided Payment Failure & Recovery Playground
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/app/dashboard/playground/page.tsx`, `frontend/components/playground/{PlaygroundView,DemoCard,RunResult,RoutingDemo}.tsx`, `frontend/lib/hooks/playground.ts` — new `/dashboard/playground`: six demo cards (what happens, what this proves, Run, result panel) driven through the real `POST /v1/sandbox/simulations` and polled via the existing `useSimulation`; evidence shown is only what the backend returns (invariants, state history, timeline, counts, journal lines with BigInt debit/credit totals, discrepancy from `/v1/reconciliation/discrepancies`). Cards whose scenario is missing from `GET /v1/sandbox/scenarios` are disabled with "backend scenario not available yet". Demo 3 has an `outage` contrast button; demo 4 uses `POST /v1/routing/evaluate`; demo 1 reuses the create-payment dialog (prefilled $100). "Run all in order" runs 1, 2, 3, 5, 6 and stops on the first failure. One polite live region announces each finished run once.
+- `frontend/components/layout/app-shell.tsx` — nav item "Playground".
+- `frontend/tests/components/playground.test.tsx` — 4 tests (cards/disabled scenarios, steps+invariants+evidence, unknown shows no retry action, exact >2^53 money).
+- `e2e/ui/playground.spec.ts` — written, NOT run: page/axe, demos 1, 2, 3, 5 (each skips when the scenario is not implemented).
+
+**Verification**
+- `vitest run tests/components/playground.test.tsx` — 1 file, 4 tests passed.
+- `eslint` on the new and changed frontend files — no findings; `prettier --write` applied.
+- `pnpm --filter @railvanta/frontend typecheck` — no errors in these files; one error remains in `lib/api/routing-schemas.ts` (providerSchema vs regenerated `simulated_latency_ms`), which belongs to another agent's in-progress change.
+- Not run: the e2e spec, `pnpm check`, a browser check at 375px/1440px.
+
 ## 2026-11-01 — Restore changelog entries dropped by a merge resolution
 
 **WBS:** process · **PR/commit:** PR #4 (`feat/simulator-webhook-scenarios`)
