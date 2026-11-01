@@ -2,13 +2,15 @@
 
 The one page to read before presenting. Everything runs locally in a sandbox: a deterministic mock provider, one Go API with SQLite, a Next.js dashboard. No real funds move.
 
+**Zero-friction entry.** With the Compose stack (`SANDBOX_PUBLIC_ACCESS=true`, see [ADR 0013](../decisions/0013-public-sandbox-access-and-default-demos.md)) the landing page needs no prepared credentials: it draws the payment lifecycle (Client, API, Outbox, Dispatcher/Router, Provider, Ledger, Reconciliation) with a travelling token and a Happy path / Lost response / Duplicate request selector, and its **Start sandbox** button creates a throwaway operator session and a one-time key and shows a curl with the real key that **Run it** executes. Every dashboard page carries a **Default demo** card (one click, one real $100 simulation, the page fills) and the hub's **Load sample data** runs the eight headline scenarios (about 20 seconds). Nothing runs or mints on page load.
+
 The dashboard home, `/dashboard`, is a hub: an **Integration credentials** card with a one-click **Generate default demo key** (nothing is minted on page load; the key is shown once), a **Run a demo now** card with three one-click simulated runs (**Lost response**, **Duplicate requests**, **Double-entry ledger**, each a real $100 run with a compact "N of N invariants passed" result and an **Open in Playground** link), and the live metrics. **API reference** in the sidebar opens `/dashboard/api-reference`, an embedded Swagger UI over the real OpenAPI document with an **Authorize** button for a bearer key. The Playground lives at `/dashboard/playground`. It has six cards, one per demo, each with a **Run demo N** button (demo 1 also has **Create $100 payment**, demo 3 also has **Contrast: provider outage**, demo 4 has an **Evaluate routing** form) and a **Run all in order** button at the top that runs demos 1, 2, 3, 5 and 6 and stops at the first failure. Every run is a real run against the real API and shows the payment state history, counts (attempts, charges, journals), and each invariant the backend checked with its evidence. Everything is badged **Simulated / sandbox**. Every Playground run is a **$100.00 USD** payment.
 
 ## Commands
 
 ```sh
 pnpm demo:up          # start the stack (no build), create throwaway credentials, seed, print key + curl examples
-pnpm demo:open        # headed Chromium, already signed in, opened at /dashboard/playground
+pnpm demo:open        # optional with public sandbox access: headed Chromium, already signed in, opened at /dashboard/playground
 pnpm demo:down        # stop (data kept); `pnpm demo:down -v` DELETES the demo data and credentials
 DEMO_BUILD=1 pnpm demo:up   # only after code changes: builds first (slow, heavy on the laptop)
 ```
@@ -19,17 +21,22 @@ How it works:
 - Containers run with `DEMO_MODE` off and the session cookie is HttpOnly, so it cannot be typed into DevTools. `scripts/demo-up.sh` generates random keys and tokens with `openssl` into `.demo/credentials.env` (git-ignored) and runs `railvanta-api seed-demo` inside the API container; `scripts/demo-open.mjs` installs the same two cookies Playwright uses in `e2e/support/browser.ts` (`__Host-railvanta_session`, `railvanta_csrf`).
 - Re-running `pnpm demo:up` reuses the stored file. If the volume is seeded but `.demo/credentials.env` is gone, seeding refuses; run `pnpm demo:down -v && pnpm demo:up`.
 
+## Showing the one-step API call (30 seconds, optional)
+
+On the landing page pick **Lost response** in the lifecycle visual and watch the token stop at the provider; then click **Start sandbox**, read the curl (real key, real method id), click **Run it**, and click it again to show the idempotent replay. Say: "A visitor gets a throwaway operator session in a shared sandbox workspace; the key is shown once and stored hashed." If the browser is Safari the session cookie is not stored on plain-http localhost; use Chromium or Firefox.
+
 ## Showing the API key generator and Swagger (45 seconds, optional)
 
 Fastest path: on the dashboard hub click **Generate default demo key**, click **Copy key**, and run the shown curl in a terminal. Then click **API reference** (or the quick action **API reference (Swagger)**), click **Authorize**, paste the key, and use **Try it out** on `GET /v1/payments`. Swagger writes need a bearer key; browser cookie writes are not used there. Swagger UI is third-party; do not claim its internals are audited for accessibility.
 
-Full path, Settings, **API keys** section: name the key, pick a role (Operator or Read only) and an expiry, click **Generate API key**. The full key appears once with a ready curl example and a "hide the key" button; after hiding it (or reloading) it cannot be shown again. The table lists only the prefix, role, status and dates, and **Revoke** asks for a confirmation. Say: "Only a hash is stored, the secret is returned once, keys always expire, and a workspace is capped at 20 active keys." Try the curl example in a terminal to prove the key works, then revoke it and show the next call answer 401. Honest limits: an operator key can mint more keys until it is revoked or expires, there is no rotation or per-key scope beyond read/operator (ADR 0011), and the landing page cannot mint keys because a visitor needs an operator session first.
+Full path, Settings, **API keys** section: name the key, pick a role (Operator or Read only) and an expiry, click **Generate API key**. The full key appears once with a ready curl example and a "hide the key" button; after hiding it (or reloading) it cannot be shown again. The table lists only the prefix, role, status and dates, and **Revoke** asks for a confirmation. Say: "Only a hash is stored, the secret is returned once, keys always expire, and a workspace is capped at 20 active keys." Try the curl example in a terminal to prove the key works, then revoke it and show the next call answer 401. Honest limits: an operator key can mint more keys until it is revoked or expires, there is no rotation or per-key scope beyond read/operator (ADR 0011), and the landing page's **Start sandbox** mints a session and key only when public sandbox access is enabled (the Compose files); otherwise a visitor needs an operator session first.
 
 ## Pre-demo checklist (15 minutes before)
 
 1. Quit heavy apps (IDE indexers, other Docker stacks, browsers with many tabs). Docker Desktop running.
-2. `pnpm demo:up`. Wait for the credentials banner.
-3. `pnpm demo:open`. A Chromium window opens already signed in at `/dashboard/playground` (open `/dashboard` for the hub) (if the cards show an error with a request ID instead, see "If something breaks").
+2. `pnpm demo:up`. Wait for the credentials banner (it seeds the demo workspace and sets the demo timings).
+3. `pnpm demo:open`, or open `http://localhost:3000` in Chromium/Firefox and click **Start sandbox**. Either way you are signed in; with `demo:open` the window lands at `/dashboard/playground` (open `/dashboard` for the hub). If the cards show an error with a request ID instead, see "If something breaks".
+3a. On the hub click **Load sample data** (about 20 seconds) so every page is populated: Payments, Routing, Ledger, Reconciliation and Events then have rows. These are real sandbox simulations labelled Simulated, not seeded fakes.
 4. Click **Run demo 3** once and watch it: the payment badge goes Created, then Unknown for about 6 seconds, then Succeeded, and the card ends with "6 of 6 invariants passed". Confirms the stack, the timings and your cursor path. (Each run adds a payment, which is harmless.)
 5. Optionally run the first curl example from the banner so you can show the 409 replay on request.
 6. Have these tabs ready: this runbook, `docs/case-study.md`, the GitHub repo, a terminal in the repo root.
@@ -38,7 +45,7 @@ Full path, Settings, **API keys** section: name the key, pick a role (Operator o
 
 | Time | Say | Do (Playground) |
 | --- | --- | --- |
-| 0:00-0:15 | "Railvanta is a sandbox payment orchestrator. The hard case is the request that times out after the provider already took the money: a naive retry charges twice. I built it so that ends with one charge and one balanced journal." | Dashboard hub open (or the Playground), nothing clicked. Optionally show **Generate default demo key** and **API reference** in one sentence. |
+| 0:00-0:15 | "Railvanta is a sandbox payment orchestrator. The hard case is the request that times out after the provider already took the money: a naive retry charges twice. I built it so that ends with one charge and one balanced journal." | Landing page lifecycle visual (or the dashboard hub / Playground), nothing clicked. Optionally pick **Lost response** in the visual or click **Start sandbox**. Optionally show **Generate default demo key** and **API reference** in one sentence. |
 | 0:15-0:30 | "First the normal path: I create a $100 payment. Acceptance writes the payment and an outbox command in one transaction; a dispatcher then calls the provider." | Click **Run demo 1** in the Playground. It finishes in about a second: created, processing, succeeded; 1 attempt, 1 charge, 1 journal. |
 | 0:30-0:45 | "Now I inject the failure: the provider charges the card, but the response is lost." | Click **Run demo 3**. |
 | 0:45-1:05 | "The payment goes to `unknown`, not `failed`. The recovery worker looks the attempt up at the same provider with the stored idempotency key. It never goes to a second provider, because that could double charge." | Watch the payment badge: Created, Unknown (about 6 seconds, keep talking), then Succeeded. |
@@ -49,7 +56,7 @@ Full path, Settings, **API keys** section: name the key, pick a role (Operator o
 
 Run in this order (about 5 minutes). Each demo: click, say, then the proof sentence. All of it is real backend output, labelled Simulated / sandbox.
 
-0. **Hub and API (about 60 s, optional).** On the dashboard hub click **Generate default demo key**, copy the curl and run it in a terminal; click **API reference** to show Swagger, **Authorize** with the key and try a read. Back on the hub, **Run a demo now** buttons (**Lost response**, **Duplicate requests**, **Double-entry ledger**) start real simulations with a compact invariant result; **Open in Playground** shows the full evidence. Say: "Everything here is simulated and sandbox-only."
+0. **Landing, hub and API (about 60 s, optional).** On the landing page show the lifecycle visual and **Start sandbox**. On the dashboard hub click **Generate default demo key**, copy the curl and run it in a terminal; click **API reference** to show Swagger, **Authorize** with the key and try a read. Back on the hub, **Run a demo now** buttons (**Lost response**, **Duplicate requests**, **Double-entry ledger**) start real simulations with a compact invariant result; **Open in Playground** shows the full evidence. Say: "Everything here is simulated and sandbox-only."
 1. **Live payment processing (about 40 s).** Click **Run demo 1**. Say: "States are `created`, `processing`, `succeeded`, `failed`, `canceled` and `unknown`; every move is an audited transition, and `unknown` is a real state, not an error." Point at the state history and the counts. Optional: **Create $100 payment**, then follow it on the payment detail page (provider, latency, journal).
 2. **Duplicate payment protection (about 50 s).** Click **Run demo 2**. The backend sends 10 concurrent requests with the same Idempotency-Key, then one more with a changed amount. Read the invariants aloud: "10 requests sent: 1 first-accept (202), 9 replays, the changed-amount request answered 409 idempotency_conflict", and "payments=1, idempotency_records=1, provider_attempts=1, mock_charges=1, outbox_dispatch_rows=1". Say: "Same key and body replays the stored response; a changed body is a 409; concurrent duplicates collapse to one payment."
 3. **Provider succeeds, response lost (about 70 s, the signature demo).** Click **Run demo 3** and narrate the 6-second `unknown` window as in the 90-second script. Then click **Contrast: provider outage**: "If the provider never answers, the payment stays `unknown` and visible, and we never fail over an unknown outcome."
@@ -77,6 +84,8 @@ Run in this order (about 5 minutes). Each demo: click, say, then the proof sente
 - One provider implementation: a deterministic mock. The extra providers in the routing demo (`mock_fast`, `mock_economy`, `mock_ach`) are simulated profiles of that same mock with different rails and fixed latencies, not separate integrations. Stripe test mode, Plaid and real rails are not implemented.
 - The "provider settlement report" in the reconciliation demo is a simulated provider record written by the simulator, labelled Simulated. There is no real settlement file import.
 - The simulation is deterministic and scripted; "failures" are chosen by payment method, not observed in the wild.
+- Public sandbox access: the Compose stack binds to loopback and sets `SANDBOX_PUBLIC_ACCESS=true`, so anyone who can reach it is an operator of the shared sandbox workspace (30 sessions per address per hour, a global cap, 12-hour sessions, same-origin check). That is a deliberate, opt-in demo trade-off (ADR 0013), not a production auth design; the flag is off in Kubernetes and the E2E override.
+- The per-page **Default demo** buttons and **Load sample data** run real simulations against the real API (they add sandbox payments, journals and events), labelled Simulated. The providers are simulated; the invariants shown are the backend's own checks.
 - No real funds, no real credentials. Auth is demo-grade. The hub's "Generate default demo key" and "Run a demo now" are real calls (a real sandbox key, real simulations) and are labelled sandbox/Simulated; the ADR 0011 key caveats and ADR 0012 Swagger caveats apply.
 - No throughput, latency-at-scale or multi-node claims. Measured numbers are small local runs (`docs/measurements.md`).
 - The ledger accounts are `provider_clearing` and `merchant_payable`. Do not say "settlement receivable". Say: "A successful payment debits the provider clearing account and credits merchant payable; bank settlement and payouts are not modelled."
@@ -105,6 +114,10 @@ Run in this order (about 5 minutes). Each demo: click, say, then the proof sente
 
 **Why does the lost-response demo show `unknown` for six seconds?** The demo deployment sets `RECOVERY_RESOLVE_DELAY=6s` so the state is visible. Without it the same lookup resolves in about 200 ms (`docs/measurements.md`).
 
+**Can anyone use my demo?** Only whoever can reach the loopback proxy, and only when `SANDBOX_PUBLIC_ACCESS` is on. They become operators of a shared sandbox workspace with no real funds. Do not publish the stack to the internet with the flag on (ADR 0013).
+
+**Are the default demos real?** Yes: each click is a real $100 simulation through `POST /v1/sandbox/simulations`; the provider is the deterministic mock and the card says Simulated.
+
 **Migrations?** Forward-only and additive (ADR 0002). Backups use `VACUUM INTO` (ADR 0006).
 
 **Scale?** "Not claimed." Correct at the tested concurrency (up to 32 concurrent same-key requests, see `docs/measurements.md`), single node only.
@@ -124,7 +137,7 @@ Full matrices: `docs/case-study.md` (scenario table with reproduce commands) and
 
 ## If something breaks
 
-1. Page shows errors or empty data: the session expired or the stack was recreated. Close the browser and run `pnpm demo:open` again.
+1. Page shows errors or empty data: the session expired (12 hours) or the stack was recreated. Click **Start sandbox** on the landing page again, or close the browser and run `pnpm demo:open`. In Safari the session cookie is not stored on plain-http localhost; switch to Chromium or Firefox.
 2. Stack unhealthy: `pnpm demo:down -v && pnpm demo:up` (deletes demo data, fresh credentials; a couple of minutes).
 3. Images stale or missing: `DEMO_BUILD=1 pnpm demo:up` (slow; avoid right before presenting).
 4. Playground misbehaves but the API works: use the curl examples from the `pnpm demo:up` banner, or `node scripts/measure-central-demo.mjs` for a narrated central demo with assertions.

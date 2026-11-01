@@ -133,7 +133,7 @@ The [data model](backend/data-model.md) distinguishes SQL-enforced constraints f
 
 ## Trust, observability, and limits
 
-**Authentication.** API keys (`Authorization: Bearer prefix.secret`, stored as SHA-256 hashes) and expiring sessions (`__Host-railvanta_session` cookie with a hashed CSRF token and an `X-CSRF-Token` header for writes). Roles are `operator` and `reader`; writes need `operator`. A request limiter allows 600 requests per minute per remote host. `DEMO_MODE` seeds fixed fixtures only when the API binds to literal loopback; containers keep it off and use `railvanta-api seed-demo`.
+**Authentication.** API keys (`Authorization: Bearer prefix.secret`, stored as SHA-256 hashes) and expiring sessions (`__Host-railvanta_session` cookie with a hashed CSRF token and an `X-CSRF-Token` header for writes). With the opt-in `SANDBOX_PUBLIC_ACCESS` flag, `POST /v1/sandbox/session` issues such a session to an unauthenticated same-origin visitor as an operator of the demo workspace ([ADR 0013](decisions/0013-public-sandbox-access-and-default-demos.md)). Roles are `operator` and `reader`; writes need `operator`. A request limiter allows 600 requests per minute per remote host. `DEMO_MODE` seeds fixed fixtures only when the API binds to literal loopback; containers keep it off and use `railvanta-api seed-demo`.
 
 **Webhooks.** `POST /v1/sandbox/webhooks/mock` is an operator-authenticated sandbox endpoint, not a public provider webhook ([ADR 0005](decisions/0005-sandbox-only-mock-webhook.md)). `webhook_inbox.signature_status` has a `verified` value, but nothing writes it: raw-body signature verification belongs to a future real adapter.
 

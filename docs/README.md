@@ -48,6 +48,7 @@ Diagrams use Mermaid. Wireframes are plain text.
 | [0010](decisions/0010-original-frontend-components.md) | Original Tailwind components, no icon library, read-only shell | Accepted |
 | [0011](decisions/0011-sandbox-api-key-generator.md) | Sandbox API key generator in Settings | Accepted |
 | [0012](decisions/0012-dashboard-hub-and-swagger-reference.md) | Dashboard hub and embedded Swagger API reference | Accepted |
+| [0013](decisions/0013-public-sandbox-access-and-default-demos.md) | Public sandbox access (opt-in) and default demos on every dashboard page | Accepted |
 
 Each ADR has Context, Decision, Consequences and Status. ADR 0001 predates this template and adds an Alternatives section.
 

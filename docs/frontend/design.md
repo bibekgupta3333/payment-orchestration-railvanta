@@ -42,7 +42,7 @@ frontend/
     ui/                        # Button, Badge, Table, Skeleton, EmptyState, dialog, tabs, query-state, copy-code
     layout/app-shell.tsx       # sidebar, topbar, mobile drawer
     payments/ routing/ provider-views/ simulator/ ledger/ reconciliation/ events/
-    settings/ dashboard/ charts/ docs/
+    settings/ dashboard/ charts/ docs/ demo/   # demo/ holds the shared DefaultDemo card
     providers.tsx, theme.tsx, feature-page.tsx
   lib/
     api/                       # client.ts, Zod schemas per area, generated schema.d.ts
@@ -57,6 +57,20 @@ frontend/
 
 The dashboard home is a hub treated like the main page: heading and quick actions, an "Integration credentials" card (base URL, bearer format, active-key count, curl with a `$KEY` placeholder, and a **Generate default demo key** button that mints only on click and shows the secret once from component state), a "Run a demo now" card (Lost response, Duplicate requests, Double-entry ledger as real $100 simulations with a compact invariant result and a link to the Playground), a capability strip and the live metrics. Read-only roles see an explanation instead of the generate button. `/dashboard/api-reference` embeds Swagger UI for the real OpenAPI document; the sidebar item is "API reference". Swagger UI internals are third-party markup and are outside the accessibility claims below.
 
+**Public sandbox access and default demos (ADR 0013).** When the API runs with `SANDBOX_PUBLIC_ACCESS=true` (the Compose files; off by default), `GET /v1/sandbox/status` tells the landing page whether to offer **Start sandbox**, and `POST /v1/sandbox/session` (same-origin; the API checks `Origin`) creates a throwaway operator visitor in the shared demo workspace and sets the HttpOnly session cookie and the readable `railvanta_csrf` cookie for 12 hours; `DELETE /v1/sandbox/session` signs out. The page then mints a one-time key with the normal `POST /v1/api-keys` and shows a curl with the real key. Every dashboard page also renders the shared `DefaultDemo` card (`frontend/components/demo/DefaultDemo.tsx`): props `id`, `scenario`, `title`, `description`, `actionLabel` and `producesLabel`; one click starts a real $100.00 simulation through `POST /v1/sandbox/simulations`, follows it with `GET /v1/sandbox/simulations/{id}`, shows live status and the backend's invariant summary, and invalidates the workspace queries once when the run settles. Nothing runs or mints on page load except the Routing page's single read-only evaluation.
+
+| Page | Default demo scenario | Preconfiguration |
+| --- | --- | --- |
+| Payments | `success` | None |
+| Routing | outage (default demo) | Routing-demo method preselected, one automatic read-only evaluation, payment id prefilled after the run so "failover blocked" shows |
+| Providers | `success` | None |
+| Simulator | default scenario | Scenario preselected; **Run default demo** |
+| Ledger | `duplicate_posting` | None |
+| Reconciliation | `settlement_mismatch` (about 6 s) | None |
+| Events | `duplicate_webhook` | None |
+| Settings | none (mints a key) | **Generate default demo key** shortcut |
+| Hub | 8 headline scenarios, sequential (about 20 s) | **Load sample data** card |
+
 Render the public landing page and developer documentation on the server. Keep dashboard layouts server-rendered where practical; isolate query providers, filters, forms, dialogs, and charts in Client Components. The [`use client` boundary](https://nextjs.org/docs/app/api-reference/directives/use-client) belongs at interactive entry points, not every file.
 
 The browser calls a same-origin `/v1` reverse proxy routed to the Go API. Next.js owns presentation; Go owns authorization, payment transitions, routing decisions, validation, persistence, and provider credentials. Never open SQLite from Next.js. Configure the same `/v1` routing contract in local development and deployment. An ingress or server-side proxy forwards cookies and correlation identifiers but must not cache workspace responses publicly. In development `next.config.ts` rewrites `/v1/:path*` to `API_INTERNAL_ORIGIN`; the Compose Nginx proxy and the Kubernetes Ingress do the same routing in deployment, preserving the `/v1` prefix. The build uses `output: "standalone"`. Cookie-authenticated writes send `X-CSRF-Token` read from the `railvanta_csrf` cookie; the session cookie itself is not readable by script.
@@ -65,7 +79,7 @@ The browser calls a same-origin `/v1` reverse proxy routed to the Go API. Next.j
 
 | Route | API dependencies | Scope |
 | --- | --- | --- |
-| `/` | None | Landing, architecture overview, sandbox entry |
+| `/` | `GET /v1/sandbox/status`, `POST /v1/sandbox/session`, `POST /v1/api-keys`, `GET /v1/payment-methods`, `POST /v1/payments` (only on the "Call the API in one step" panel, after a click) | Landing: three.js payment-lifecycle visual (client-only, loaded on this page only; text list and reduced-motion/no-WebGL fallbacks), architecture overview, one-step sandbox entry (ADR 0013) |
 | `/dashboard` | `GET /v1/api-keys`, `POST /v1/api-keys`, `GET /v1/sandbox/scenarios`, `POST /v1/sandbox/simulations` (and `GET /v1/sandbox/simulations/{id}` to follow a run), `GET /v1/dashboard/summary`, `/v1/dashboard/payment-volume` | Hub: integration credentials with one-click default demo key, three one-click demo runs, capability strip, live sandbox metrics. Nothing is minted or run on load |
 | `/dashboard/api-reference` | None of its own; the embedded Swagger UI loads the OpenAPI document served from the same origin (`frontend/public/openapi.json`, generated from `backend/api/openapi.yaml` by `pnpm generate:api` with `servers` set to `/`; `pnpm check:generated` fails on drift. See ADR 0012) and sends "Try it out" calls to `/v1` with a bearer key | Interactive API reference with an Authorize button |
 | `/dashboard/payments` | `GET /v1/payments`, `/v1/payment-methods`, `POST /v1/payments` | Filtered list and sandbox creation |

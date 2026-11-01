@@ -14,6 +14,7 @@ All routes below exist in `frontend/`, as does `/dashboard/playground` (see the 
 - **Simulator:** `duplicate_webhook` and `reordered_events` are listed but disabled.
 - **Settings:** workspace, providers and appearance are read-only or local. Operators also get a sandbox API key generator (name, role, expiry; the secret is shown once; list and two-step revoke, ADR 0011). Member roles and live activation appear as unavailable capabilities, not controls.
 - **Dashboard hub and API reference:** `/dashboard` is the hub drawn in section 2 and `/dashboard/api-reference` the Swagger page in section 10a; the sidebar gains an "API reference" item. Nothing is minted or run on page load. The hub's demo buttons run real simulations and are labelled Simulated. Swagger UI internals are third-party markup, so their accessibility is not asserted by the sweep (ADR 0012). The hub and demo cards are verified against the code at the time of writing; the metrics section below them is the previous overview content (including the Recent payments table). The provider-distribution chart drawn in the earlier overview wireframe was never built.
+- **Default demos:** every dashboard page carries the shared Default demo card described in the "Default demo panel" section below, and the hub has a "Load sample data" card (ADR 0013). Nothing runs or mints on page load; the one exception is the Routing page's single read-only evaluation. The landing page's one-step "Start sandbox" flow needs `SANDBOX_PUBLIC_ACCESS` (on in the Compose files, off elsewhere).
 - **Not compared line by line:** the providers, ledger, reconciliation, events and docs layouts and the shared loading, empty and error states. The Playwright specs and the 375/1440 px accessibility sweep (`e2e/ui/a11y-routes.spec.ts`) cover their behavior, not their resemblance to these drawings.
 
 ## Shared desktop and mobile shells
@@ -62,23 +63,91 @@ Drawer: workspace, every navigation destination, theme, and close button. Openin
 
 ## 1. Public landing page — `/`
 
+The landing page lets a visitor see the payment lifecycle and call the API without reading documentation first. Everything is sandbox: no real funds, no card or bank credentials. Nothing is created on page load: no session, no key and no payment until a button is clicked.
+
+Desktop (1440 px):
+
 ```text
 +--------------------------------------------------------------------------+
-| RAILVANTA                       Features  API docs  Architecture  GitHub  |
+| ◇ Railvanta                                  API docs   [Explore sandbox]|
 |--------------------------------------------------------------------------|
-| Payments, intelligently routed.                                          |
-| One API. Every rail. Complete control.                                    |
-| [Explore sandbox]  [View architecture]                                    |
-|                                                                          |
-| Browser -> API -> Router -> Mock provider -> Journal                       |
-|                            Stripe / Plaid: planned sandbox adapters       |
-|                                                                          |
-| [Idempotency]       [Routing]       [Recovery]       [Reconciliation]       |
-| [Copy API example]                    Sandbox only / no real funds        |
+| [Sandbox infrastructure]                                                 |
+| Payments,                                                                |
+| intelligently routed.                                                    |
+| One API. Every rail. Complete control.                                   |
+| [Start sandbox]  [Explore the dashboard]  [Open API reference]           |
+| Sandbox only / no real funds. Simulated methods; no credentials.         |
+|--------------------------------------------------------------------------|
+| PAYMENT LIFECYCLE                                                        |
+| +------------------------------------+  Use case                         |
+| |  three.js canvas (decorative,      |  [Happy path][Lost response][Dup] |
+| |  aria-hidden)                      |  (segmented, aria-pressed)        |
+| |  [Client]->[API]->[Outbox]->[Route]|  Caption for the chosen use case  |
+| |   ->[Provider]->[Ledger]->[Recon]  |  [Pause] / [Play]                 |
+| |  glowing token travels the path    |                                   |
+| +------------------------------------+  1. Client sends the request      |
+|  (WebGL missing: static SVG/CSS flow)   2. API accepts once (key)  <-now |
+|                                         3. Outbox   4. Router            |
+|                                         5. Provider (outside DB tx)      |
+|                                         6. Ledger   7. Reconciliation    |
+|--------------------------------------------------------------------------|
+| CALL THE API IN ONE STEP                                                 |
+| Status unknown : "Checking sandbox access..." (button disabled)          |
+| Public access off: "Public sandbox access is off. Start the stack with   |
+|   pnpm demo:up (it turns it on) and open the dashboard with             |
+|   pnpm demo:open"  [Start sandbox] disabled; static example, placeholders|
+| Public access on : [Start sandbox]                                       |
+|   Starting...     : button disabled, "Starting sandbox..." (role=status) |
+|   Error           : role=alert message + [Try again]                     |
+|   Started         : Key (shown ONCE) rvk_...  [Copy key]                 |
+|                     [I have copied it, hide the key]                     |
+|                     curl with the REAL key and sandbox method id [Copy]  |
+|                     [Run it]  [Run it again (same Idempotency-Key)]      |
+|                     Response: 202 + pretty JSON (replay: same body)      |
+|                     [Open the dashboard]  [API reference]                |
+|--------------------------------------------------------------------------|
+| CAPABILITIES   [card][card][card] ... (Available / Planned badges)       |
+|--------------------------------------------------------------------------|
+| Railvanta · Sandbox only / No real funds                                 |
 +--------------------------------------------------------------------------+
 ```
 
-Mobile: stack hero, calls to action, vertical architecture, capability cards, and code sample. Architecture links to this documentation set. Only show a GitHub link once its real destination is configured. Distinguish planned capabilities from implemented ones.
+Mobile (375 px): one column, no horizontal page scroll.
+
+```text
++-----------------------------------+
+| ◇ Railvanta     [Explore sandbox] |
+| Payments, intelligently routed.   |
+| [Start sandbox]                   |
+| [Explore the dashboard]           |
+| [Open API reference]              |
+| Sandbox only / no real funds.     |
+|-----------------------------------|
+| PAYMENT LIFECYCLE                 |
+| [Happy][Lost response][Duplicate] |
+| Caption  [Pause]                  |
+| +-------------------------------+ |
+| | canvas (shorter, same flow)   | |
+| +-------------------------------+ |
+| 1. Client ... 7. Reconciliation   |
+|-----------------------------------|
+| CALL THE API IN ONE STEP          |
+| [Start sandbox]                   |
+| key, curl (scrolls inside block)  |
+| [Run it] [Run it again]           |
+| response, [Open the dashboard]    |
+|-----------------------------------|
+| Capability cards (one column)     |
+| Footer                            |
++-----------------------------------+
+```
+
+States and rules:
+
+- **Lifecycle canvas:** decorative and `aria-hidden`; the ordered list below it is the text alternative, the current step is highlighted (`aria-current="step"`) and one polite live region announces step changes at a low rate. With `prefers-reduced-motion` the canvas renders one static frame and the list shows every step without animation; Play/Pause is available otherwise. The render loop pauses off-screen and in a hidden tab. If WebGL is unavailable a static SVG/CSS diagram of the same flow is shown.
+- **Use cases:** Happy path runs straight to the ledger. Lost response: the token reaches the provider, the response is lost, the payment parks as Unknown, a lookup returns to the SAME provider, then the ledger; never a second provider. Duplicate request: a second token reaches the API and the stored response is replayed; no second payment.
+- **API panel:** the key is shown once and lives only in component state (never stored, never in the URL); hiding it removes it from the DOM. The curl example and "Run it" use the real key and a real sandbox payment method; "Run it" sends the bearer key, not the session cookie. "Run it again" replays the same Idempotency-Key.
+- **Kept for the shell tests:** heading "Payments, ...", link "Explore the dashboard", the text "Sandbox only / no real funds." and the Planned badge.
 
 ## 2. Dashboard hub — `/dashboard`
 
@@ -230,6 +299,40 @@ The page embeds Swagger UI (`swagger-ui-dist`) over `/openapi.json`, a same-orig
 ```
 
 Mobile retains the same sections in one column. Theme preference is local UI state. Key generation is real (ADR 0011); do not display fake membership management or live activation controls.
+
+## Default demo panel (shared card)
+
+One component, `frontend/components/demo/DefaultDemo.tsx`, used on every dashboard page. A click starts a real $100.00 USD sandbox simulation (the same backend scenarios as the Playground) and refreshes the page's lists when the run settles. Nothing runs on page load.
+
+```text
++--------------------------------------------------------------------------+
+| Default demo                                   [Simulated / sandbox]     |
+| One or two sentences: what the run does and why it matters on this page. |
+| [Run the default demo]   Creates a posted journal.                        |
+|   (button reads "Running..." while pending; a disabled button explains    |
+|    why, e.g. "Disabled: backend scenario not available.")                 |
+| Live status: Payment unknown, waiting for the provider lookup...          |
+|--------------------------------------------------------------------------|
+| Result:  [Succeeded]  6 of 6 invariants passed       Open in Playground  |
+| Error:   message  Request ID: req_...    (role="alert")                   |
++--------------------------------------------------------------------------+
+```
+
+The result appears only after the run settles. A failed run shows "Run failed: reason". Completion is announced through a polite live region, and the live status line is not re-announced on every poll. Placement and preconfiguration per page:
+
+| Page | Placement | Scenario and preconfiguration |
+| --- | --- | --- |
+| Payments | Above the filters | `success`; the list refreshes with the new payment |
+| Routing | Above the evaluate form | Outage demo (the default); a routing-demo method is preselected and one read-only evaluation runs on first load; after the demo the payment id is prefilled so "Unknown outcome: failover blocked" appears |
+| Providers | Above the provider list | `success`; the health figures update |
+| Simulator | Above the scenario form | The default scenario is preselected; a **Run default demo** button next to the form |
+| Ledger | Above the journals | `duplicate_posting`; one balanced journal appears |
+| Reconciliation | Above the runs | `settlement_mismatch` (takes about 6 seconds); a discrepancy appears |
+| Events | Above the event list | `duplicate_webhook`; inbox and outbox rows appear |
+| Settings | In the API keys section | **Generate default demo key** shortcut; the secret is shown once from component state |
+| Hub | "Load sample data" card | Runs the 8 headline scenarios one after another (about 20 seconds); progress per scenario |
+
+Mobile: the card is one column and the button spans the width. The unknown-outcome wait (about 6 seconds) is intentional and visible in the live status.
 
 ## Shared loading, empty, and error states
 
