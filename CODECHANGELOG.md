@@ -22,6 +22,25 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Update design docs to implemented behavior and add ADRs 0002–0010
+
+**WBS:** 5.4.3, 5.4.9 (ticked) · **PR/commit:** worktree branch `worktree-agent-a6db49068f8921820`
+
+**Changed**
+- `docs/backend/schema.sql` — drift fix: it lacked migrations 0003 and 0004 (table `reconciliation_resolution_events`, five indexes, nine triggers, new columns on `simulation_runs` and `reconciliation_runs`). Appended both migrations verbatim; no migration or code change.
+- `docs/architecture.md` — rewritten from "proposed" to implemented: real repository layout (config, auth, simulation, backup, event, provider/mock, cmd subcommands, e2e/ops, infrastructure, scripts), corrected component diagram (reconciliation reads the mock's charges, not the adapter; simulation runner and private health listener added), execution steps as implemented, explicit "not implemented" list.
+- `docs/backend/data-model.md`, `persistence.md`, `flows.md` — five migrations and 24 tables, `reconciliation_resolution_events`, outbox types, accounts in use, retry/503 policy, lease tokens, `payment.lookup` now handled, late-outcome consumer, webhook diagram without a signature step, new simulation contract and "Not implemented" sections, new schema comparison script and verification section.
+- `docs/frontend/design.md`, `wireframes.md` — real directory tree and route/API table, endpoints the UI does not use (cancel, recovery, webhook), no Tailwind Plus or `lucide-react`, "Implementation status" differences list in the wireframes.
+- `docs/decisions/0002`–`0010` (new) and `0001` status — ADRs for forward-only migrations, mock scenario by token prefix, late outcomes as outbox rows, sandbox-only webhook, `VACUUM INTO` backups, private API-owned health, evidence-only reconciliation, unknown-outcome policy, original frontend components. `docs/README.md` — ADR index, status, schema comparison record.
+- `docs/wbs.md` — 5.4.3 and 5.4.9 ticked.
+
+**Verification**
+- Schema diff (Python 3, SQLite 3.51.0): before the fix, migrations 0001–0005 gave 63 objects and `schema.sql` 49 (including `schema_migrations`); 15 objects and three tables' columns differed (only in migrations: 1 table, 5 indexes, 9 triggers; column diffs on `reconciliation_resolution_events`, `reconciliation_runs`, `simulation_runs`). After the fix: no objects or columns differ; the only extra object is `schema_migrations`, which `storage/migrate.go` creates. The same script as printed in `docs/backend/persistence.md` was run and printed `Reference schema matches migrations: 64 objects`; `integrity_check` is `ok` and `foreign_key_check` is empty for `schema.sql`.
+- Link check (inline Python over every `*.md` outside `node_modules`/`.git`/`.claude`): 29 files, 152 relative links and anchors, 0 broken.
+- Not run: `pnpm check` and any Go/Vitest/Playwright suites (documentation only; no code changed); Mermaid diagrams were not rendered, only reviewed against the code; wireframes were compared at feature level, not pixel level.
+
+**Notes:** `docs/operations/deployment.md` still carries a few "proposed"/"pending" phrases (outside this change's ownership). The simulator catalog still lists `duplicate_webhook`/`reordered_events` as waiting for WBS 4.3, which is merged; documented in the flows doc and ADR 0005, code unchanged.
+
 ## 2026-11-01 — Merge WBS 5.2 container delivery and 5.3 Kubernetes manifests
 
 **WBS:** 5.2, 5.3 · **PR/commit:** feat/m5-m6-verification-delivery

@@ -1,6 +1,6 @@
 # ADR 0001: Go, GORM, SQLite, and Next.js Sandbox
 
-Status: selected for this documentation baseline by the latest user request; implementation pending.
+Status: accepted and implemented (M1–M6). Later decisions that diverged from the design docs are ADRs 0002 onward; see the [ADR index](../README.md#architecture-decisions).
 
 ## Context
 
@@ -21,7 +21,7 @@ Preserve financial correctness requirements from the brief: durable idempotency,
 - One database writer and a single API owner simplify local execution but limit throughput and availability.
 - Outbox leases and stable provider keys provide recoverability; external effects still require provider-specific duplicate protection and reconciliation.
 - Horizontal backend scaling, real integrations, capture/refund lifecycle, and production availability remain separate future decisions.
-- Tailwind UI licensing must be resolved before copying its commercial components. Documentation and original wireframes require no purchase.
+- No Tailwind UI source was used; the frontend uses original components ([ADR 0010](0010-original-frontend-components.md)).
 
 ## Alternatives
 
