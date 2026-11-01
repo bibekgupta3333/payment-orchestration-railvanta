@@ -22,6 +22,33 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — WBS 5.1 Go integration and Vitest correctness suites
+
+**WBS:** 5.1.1–5.1.7 (Playwright 5.1.8/5.1.9 and CI 5.1.10/5.1.11 are not part of this change) · **PR/commit:** worktree branch
+
+**Audit.** M2–M4 already covered most rows (concurrency, conflict, replay, crash points, stale lease, accounting, webhooks, busy retry, migration rollback, money formatting, unknown outcome, double submit). Added: shared helper consolidation, forged-workspace and other-session isolation, disk-full, busy-during-outcome, migration-failure/startup-refusal, a workspace-keyed cache test and loading/empty/error component tests. Full row-by-row mapping, including honest "not covered" entries, is in `docs/verification-matrix.md`.
+
+**Changed**
+- `backend/tests/helpers_test.go` — new shared `openTestStore` (5.1.1): production connection string via `storage.Open`, all migrations, PRAGMAs, migration history, `foreign_key_check` and pool size re-asserted. `cancel_test.go`, `dispatch_test.go`, `ledger_posting_test.go` now use it instead of calling `storage.Open` directly.
+- `backend/tests/isolation_test.go` (new, 5.1.5) — forged workspace IDs in body, header, query and path; every list/detail read plus cancel, resolve and webhook with the other workspace's API key and a browser session cookie.
+- `backend/tests/operations_test.go` (new) — disk full (page-limit `SQLITE_FULL`), writable probe degraded vs busy, busy during outcome recording with one provider call, migration failure and refused startup.
+- `backend/internal/storage/health.go` (new) — `CheckWritable`, `IsWriteFailure`, `IsTransient`.
+- `backend/cmd/api/main.go` — `/health/ready` also runs `storage.CheckWritable` (503 when the database cannot accept writes; a busy database stays ready). Tiny two-line addition after the existing ping.
+- `backend/internal/transport/http/payments.go` — acceptance and cancel now answer 503 + `Retry-After` for SQLite write failures (disk full, I/O, read-only) instead of 500. Found by the disk-full test, which first failed with a 500.
+- `frontend/tests/components/workspace-cache.test.tsx` (new, 5.1.7) — workspace-scoped query keys, no stale workspace A data after the session becomes workspace B, loading/empty/read-error states for the payments explorer.
+- `docs/verification-matrix.md` (new), `docs/wbs.md` (5.1.1–5.1.7 ticked; 5.1 status row).
+
+**Verification**
+- `go -C backend test -race ./...` — all packages ok (tests package 25.2 s).
+- `go -C backend test -race ./tests -run '^TestConcurrentSameKeyCreatesExactlyOnePayment$' -count=100` — ok, 100 of 100 runs passed (`-v` showed 100 `--- PASS`), 5.8 s; without `-race` also `-count=100` ok in 1.8 s. Each run: 50 goroutines, one payment/outbox row, identical 202 bodies.
+- `go -C backend vet ./...` and `gofmt -l backend` — clean.
+- `pnpm check` — exit 0 (Vitest 8 files, 95 tests passed; Go tests, lint, generated contracts, typecheck, build passed).
+- `pnpm test:e2e` — not run (owned by another work package; no `e2e/` change here).
+
+**Notes:** the `/health/ready` handler is in `package main` and has no test; disk-full is simulated with SQLite's page limit rather than a full filesystem; restore is WBS 5.2; Playwright rows are pending in the matrix.
+
+---
+
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 
 **WBS:** 4.3, 4.4 · **PR/commit:** feat/m2-m4-payment-correctness
