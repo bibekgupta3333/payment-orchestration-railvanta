@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: railvanta-config
+data:
+  APP_ENV: sandbox
+  HTTP_ADDR: ":8080"
+  # The API requires a literal loopback health bind, so probes use exec.
+  HEALTH_ADDR: "127.0.0.1:8081"
+  SQLITE_PATH: /var/lib/railvanta/railvanta.db
+  # Must equal the Ingress origin (scheme, host and port) the browser uses.
+  PUBLIC_APP_ORIGIN: https://railvanta.test
+  # Demo seeding requires a loopback HTTP bind and is never enabled here.
+  DEMO_MODE: "false"
+  WEB_NODE_ENV: production
+  WEB_PORT: "3000"
