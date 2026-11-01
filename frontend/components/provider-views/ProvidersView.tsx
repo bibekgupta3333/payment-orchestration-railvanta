@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDurationMs } from "@/lib/format-duration";
 import Link from "next/link";
 import { Card, EmptyState, Table } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
@@ -107,7 +108,7 @@ export function ProvidersView() {
 }
 
 function formatMs(value: number | null): string {
-  return value === null ? "No samples" : `${value} ms`;
+  return value === null ? "No samples" : formatDurationMs(value);
 }
 
 export function ProviderDetailView({ id }: { id: string }) {

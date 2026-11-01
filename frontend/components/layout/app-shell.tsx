@@ -19,6 +19,7 @@ export const navigation = [
   { href: "/dashboard/events", label: "Events", icon: "≋" },
   { href: "/dashboard/settings", label: "Settings", icon: "⚙" },
   { href: "/docs", label: "API docs", icon: "⌘" },
+  { href: "/dashboard/api-reference", label: "API reference", icon: "{}" },
 ] as const;
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
@@ -111,7 +112,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
         <footer className="workspace-footer">
-          <span>Railvanta · Foundation M1</span>
+          <span>Railvanta · Sandbox</span>
           <span>Sandbox only / No real funds</span>
         </footer>
       </div>

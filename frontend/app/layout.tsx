@@ -3,6 +3,7 @@ import { Providers } from "@/components/providers";
 import "@fontsource-variable/inter";
 import "./globals.css";
 import "./events-docs.css";
+import "./dashboard-hub.css";
 
 export const metadata: Metadata = {
   title: {
