@@ -22,6 +22,32 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add event inbox deduplication, the events API and explorer, docs and settings (WBS 4.3, 4.4)
+
+**WBS:** 4.3.1–4.3.10, 4.4.1–4.4.10 and their E2E specs · **PR/commit:** worktree branch worktree-agent-aaef35b66a89caa15 (unmerged)
+
+**Changed**
+- `backend/migrations/0005_events_audit.sql` (new) — `webhook_inbox.duplicate_count` and `last_received_at` already existed in `0001`, so this adds what 4.3 still needed: `event_type`, `payment_id`, `attempt_id`, `signature_status` (`not_applicable|verified|rejected`), `outcome` (`applied|ignored`) and reason, `investigation_flag`, `conflicting_payload_hash`, `conflict_count`; list indexes; triggers that make inbox identity and payload immutable, forbid deletes and keep counters and the flag monotonic. `payment_state_transitions` was already append-only from `0001` (update and delete triggers), so no trigger was added there. This worktree used placeholder `0003`/`0004` files (not committed) so numbering stayed consecutive; the real ones come from the other branches.
+- `backend/internal/payment/inbox.go` (new) — `ReceiveWebhook`: one transaction that inserts once per `(provider, event_id)`, counts identical repeats, flags changed-hash repeats without overwriting, and applies new events through status-guarded `ApplySuccess`/`ApplyDecline`. Out-of-order or conflicting events are recorded as ignored (a contradiction of a terminal payment also writes a `payment.late_outcome` row, source `webhook`).
+- `backend/internal/storage/models.go` — new `WebhookInbox` columns.
+- `backend/internal/transport/http/events.go`, `webhooks.go`, `settings.go` (new), `handler.go` (one hook line) — `GET /v1/events` (inbox and outbox merged, filters, keyset cursor), `GET /v1/events/{id}` (safe fields, allow-listed payload summary, no raw payload), sandbox-only `POST /v1/sandbox/webhooks/mock` (operator role, unsigned so `not_applicable`, 202 / 200 duplicate / 409 `event_payload_conflict`), `GET /v1/settings` (workspace, role, provider status; no secrets).
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — the four operations and their schemas.
+- `backend/tests/events_test.go` (new) — duplicates with one effect, 8 concurrent identical deliveries, changed hash flagged, reordered events, audit and inbox mutation rejected, events API safety/filters/cursor, workspace scoping and role checks, settings membership and secrets.
+- `frontend/lib/docs/examples.json`, `snippets.ts`, `components/docs/ExampleBlock.tsx`, `app/docs/page.tsx` — server-rendered docs with 12 generated cURL/TypeScript/Go examples, retry-safety guidance, supported and planned endpoints, copy buttons, collapsible section nav.
+- `scripts/check-docs-examples.mjs`, `package.json` — `pnpm check:docs`, part of `pnpm check`: validates every example's request and response against the OpenAPI document, required headers and queries, that supported endpoints exist and planned ones do not.
+- `frontend/components/events/*`, `lib/hooks/events.ts`, `lib/api/event-schemas.ts`, `app/dashboard/events/*` — events list (URL filters, Refresh, source and updated label, duplicate column, mobile cards) and detail (text-only payload summary, investigation panel, trace link only when `NEXT_PUBLIC_TRACE_URL_TEMPLATE` is an https template).
+- `frontend/components/settings/SettingsView.tsx`, `app/dashboard/settings/page.tsx` — theme select, workspace, fixed Sandbox, read-only providers, unavailable list with no controls. `frontend/app/events-docs.css` — styles.
+- `frontend/tests/components/docs-settings.test.tsx` (new) — theme toggle, unavailable states, copy announcements, docs data attributes and snippets, event detail safety.
+- `e2e/api/events.spec.ts`, `e2e/ui/events.spec.ts`, `e2e/ui/docs-settings.spec.ts`, `e2e/support/events.ts` (new); `e2e/ui/shell.spec.ts` — events is no longer a placeholder route. The docs spec extracts every `data-docs-example` from `/docs` and executes it against the live API.
+- `docs/backend/{data-model.md,flows.md,schema.sql}`, `docs/wbs.md` — documentation and ticks.
+
+**Verification**
+- `go -C backend test -race -count=1 ./...` — pass (all packages; 8 new top-level tests in `backend/tests`).
+- `pnpm check` — pass (Vitest 70 passed, 12 new; `check:docs` 12 examples and 13 supported endpoints valid; lint, generated contracts, typecheck, build clean).
+- `pnpm test:e2e` — 65 passed, 0 failed (16 new). A first full run failed 2 new tests that used the other workspace's key, which `auth-contract.spec.ts` revokes earlier in the run; they now use the reader key and the Go suite covers cross-workspace isolation.
+
+**Notes:** not verified: empty-state and keyboard checks of the events pages at both 375px and 1440px, dark-theme contrast, the frontend-bundle secret scan in CI, and a CI run. Mock webhook processing is synchronous inside the request; a future real-provider inbox worker can reuse `applyWebhook`. Cross-workspace isolation is covered by Go tests only, not E2E.
+
 ## 2026-10-31 — Merge the WBS 3.1 payment screens into the M2 backend
 
 **WBS:** 3.1, 2.2–2.4 · **PR/commit:** feat/m2-m4-payment-correctness
