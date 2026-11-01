@@ -62,6 +62,12 @@ export default function DocsPage() {
             are sandbox values: nothing moves real funds, and credentials in
             snippets are placeholders.
           </p>
+          <p>
+            <Link href="/dashboard/api-reference">
+              Open the interactive Swagger reference
+            </Link>{" "}
+            to browse every endpoint and try requests with a sandbox API key.
+          </p>
 
           <section id="getting-started" aria-labelledby="h-getting-started">
             <h2 id="h-getting-started">Getting started</h2>

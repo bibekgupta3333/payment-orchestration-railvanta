@@ -2,13 +2,12 @@ openapi: 3.0.3
 info:
   title: Railvanta Sandbox API
   version: 0.1.0
-  description: Implements authentication, workspace and payment-method reads, idempotent payment acceptance
-    (WBS 2.1), workspace-scoped payment, attempt, history and list reads, observed dashboard metrics (WBS
-    3.1), read-only routing evaluation (WBS 2.2), posted ledger journals (WBS 2.3), and cancellation and
-    recovery reads (WBS 2.4). Accepted payments are executed asynchronously by the in-process outbox dispatcher
-    against the deterministic mock provider. Routing rules, provider capabilities and health, and a
-    backend-driven sandbox simulator are read or run through WBS 3.2. Other operational routes remain explicitly
-    unavailable (501) until later WBS packages. Decimal-string money preserves exact int64 minor units.
+  description: Sandbox API for the Railvanta payment orchestration demo. Create payments idempotently
+    with an Idempotency-Key; accepted payments are executed asynchronously against a deterministic mock provider,
+    with recorded routing decisions, a double-entry ledger, recovery of unknown outcomes through the original
+    provider, reconciliation, events and a failure simulator. Authenticate with a sandbox API key
+    (Authorization Bearer, generated in the dashboard Settings) or the dashboard session. Money is an integer
+    in minor units serialized as a decimal string. Sandbox only; no real funds move.
   license:
     name: Private project
 servers:
