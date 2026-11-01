@@ -84,7 +84,7 @@ Separate images for the Go API and Next.js, plus an unprivileged Nginx proxy; on
 pnpm compose:up        # docker compose up --build --detach --wait
 ```
 
-Open <http://localhost:3000> (`RAILVANTA_PORT=3100 pnpm compose:up` picks another host port; `COMPOSE_PROJECT_NAME` isolates a second stack). Useful follow-ups:
+Open <http://localhost:3000> (`RAILVANTA_PORT=3100 pnpm compose:up` picks another host port). The data volume is named `railvanta_railvanta-data` regardless of project name, so a second stack needs both `COMPOSE_PROJECT_NAME=<name>` and `RAILVANTA_DATA_VOLUME=<name>-data`. Useful follow-ups:
 
 ```sh
 pnpm compose:logs      # follow logs
@@ -117,7 +117,7 @@ docker compose down -v # also delete the volume
 
 ### End-to-end tests
 
-Native mode (the default) needs no running services; the harness builds and starts everything it uses. Container mode runs the same suite, plus the `e2e/ops` specs (backup/restore, non-root runtime, private health, container kill), against a Compose stack on a fresh volume with fast dispatcher timings:
+Native mode (the default) needs no running services; the harness builds and starts everything it uses. Container mode runs the same suite, plus the `e2e/ops` specs (backup/restore, non-root runtime, private health, container kill), against a Compose stack on a **fresh** volume (run `docker compose down -v` first; a volume reused from `pnpm compose:up` made one spec fail in a trial run) with fast dispatcher timings. `down -v` deletes the data volume (`railvanta_railvanta-data` by default; set `RAILVANTA_DATA_VOLUME` to use another), and the backup/restore spec leaves a `*-restored-*` volume to remove by hand:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build --detach --wait

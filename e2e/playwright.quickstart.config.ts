@@ -9,5 +9,5 @@ export default defineConfig({
   retries: 0,
   timeout: 45 * 60_000,
   reporter: [["list"]],
-  outputDir: "test-results-quickstart",
+  outputDir: "test-results/quickstart", // ignored by git
 });
