@@ -28,6 +28,7 @@ type LedgerJournalView struct {
 	Status     string            `json:"status"`
 	PostingKey string            `json:"posting_key"`
 	ReversalOf *string           `json:"reversal_of"`
+	ReversedBy *string           `json:"reversed_by"`
 	CreatedAt  string            `json:"created_at"`
 	PostedAt   string            `json:"posted_at"`
 	Entries    []LedgerEntryView `json:"entries"`
@@ -60,6 +61,12 @@ func (h *handler) listLedgerTransactions(w http.ResponseWriter, r *http.Request,
 		}
 		filter.PaymentID = value
 	}
+	if value := query.Get("currency"); value != "" {
+		if payment.ValidateCurrency(value) != nil {
+			fields = append(fields, FieldError{Field: "currency", Message: "Use a three-letter uppercase currency code"})
+		}
+		filter.Currency = value
+	}
 	if len(fields) > 0 {
 		fail(w, 400, "validation_error", "Invalid list parameters", id, fields...)
 		return
@@ -80,22 +87,27 @@ func (h *handler) listLedgerTransactions(w http.ResponseWriter, r *http.Request,
 	}
 	items := make([]LedgerJournalView, 0, len(journals))
 	for _, view := range journals {
-		j := view.Journal
-		postedAt := ""
-		if j.PostedAt != nil {
-			postedAt = payment.FormatTimestamp(*j.PostedAt)
-		}
-		entries := make([]LedgerEntryView, 0, len(view.Entries))
-		for _, e := range view.Entries {
-			entries = append(entries, LedgerEntryView{
-				ID: e.ID, AccountID: e.AccountID, AccountCode: e.AccountCode, ProviderID: e.AccountProviderID,
-				Side: e.Side, AmountMinor: strconv.FormatInt(e.AmountMinor, 10),
-			})
-		}
-		items = append(items, LedgerJournalView{
-			ID: j.ID, PaymentID: j.PaymentID, Currency: j.Currency, Status: j.Status, PostingKey: j.PostingKey, ReversalOf: j.ReversalOf,
-			CreatedAt: payment.FormatTimestamp(j.CreatedAt), PostedAt: postedAt, Entries: entries,
-		})
+		items = append(items, newLedgerJournalView(view))
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "next_cursor": next})
+}
+
+func newLedgerJournalView(view ledger.JournalView) LedgerJournalView {
+	j := view.Journal
+	postedAt := ""
+	if j.PostedAt != nil {
+		postedAt = payment.FormatTimestamp(*j.PostedAt)
+	}
+	entries := make([]LedgerEntryView, 0, len(view.Entries))
+	for _, e := range view.Entries {
+		entries = append(entries, LedgerEntryView{
+			ID: e.ID, AccountID: e.AccountID, AccountCode: e.AccountCode, ProviderID: e.AccountProviderID,
+			Side: e.Side, AmountMinor: strconv.FormatInt(e.AmountMinor, 10),
+		})
+	}
+	return LedgerJournalView{
+		ID: j.ID, PaymentID: j.PaymentID, Currency: j.Currency, Status: j.Status, PostingKey: j.PostingKey,
+		ReversalOf: j.ReversalOf, ReversedBy: view.ReversedBy,
+		CreatedAt: payment.FormatTimestamp(j.CreatedAt), PostedAt: postedAt, Entries: entries,
+	}
 }

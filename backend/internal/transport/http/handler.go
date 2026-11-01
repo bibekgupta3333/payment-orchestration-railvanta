@@ -218,8 +218,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.evaluateRouting(w, r, principal, id)
 		return
 	}
-	if r.Method == "GET" && r.URL.Path == "/v1/ledger/transactions" {
-		h.listLedgerTransactions(w, r, principal, id)
+	if h.serveLedger(w, r, principal, id) || h.serveReconciliation(w, r, principal, id) {
 		return
 	}
 	if r.Method == "GET" && r.URL.Path == "/v1/session" {

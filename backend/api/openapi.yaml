@@ -1032,6 +1032,114 @@ paths:
         schema:
           type: string
           maxLength: 64
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/ledger/accounts:
+    get:
+      operationId: getLedgerAccounts
+      summary: Read ledger accounts with balances
+      tags:
+      - Sandbox
+      description: Read-only. Every account of the authenticated workspace with debit and credit totals
+        computed from posted entries only (drafts never count), ordered by currency then code. Totals use
+        checked int64 arithmetic, so when a total or balance does not fit in int64 the account reports
+        balance_error amount_overflow and null amounts, never a rounded number. Balances are per account
+        and per currency and are never added across currencies. balance_minor is debits minus credits for
+        asset and expense accounts and credits minus debits for the others (normal_balance says which).
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LedgerAccount'
+                required:
+                - items
+        '400': *id001
+        '401': *id001
+        '403': *id001
+        '429': *id001
+        '503': *id001
+      parameters:
+      - name: currency
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/ledger/transactions/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getLedgerTransaction
+      summary: Read one posted journal
+      tags:
+      - Sandbox
+      description: Read-only. A posted journal with its entries, checked debit and credit totals, the reversal
+        links in both directions (reversal_of and reversed_by) and the related payment. Drafts, missing
+        IDs and other workspaces' journals all return 404. There is no endpoint that edits or deletes a
+        journal or entry.
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerJournalDetail'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '500': *id001
+        '503': *id001
+      parameters:
       - name: X-Request-ID
         in: header
         required: false
@@ -1050,6 +1158,8 @@ paths:
       summary: Read reconciliation runs
       tags:
       - Sandbox
+      description: Runs of the authenticated workspace, newest first with an opaque keyset cursor. Counts
+        are derived from the stored discrepancies. All evidence is simulated mock-provider data.
       responses:
         default: *id001
         '200':
@@ -1074,15 +1184,11 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
+        '400': *id001
         '401': *id001
         '403': *id001
-        '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
+        '503': *id001
       parameters:
       - name: cursor
         in: query
@@ -1095,6 +1201,73 @@ paths:
           type: integer
           minimum: 1
           maximum: 100
+          default: 50
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+    post:
+      operationId: startReconciliationRun
+      summary: Start or re-run a sandbox reconciliation
+      tags:
+      - Sandbox
+      description: "Operator-only. The Idempotency-Key header is the run key. A new key creates the run and returns 201; the same key with the same window returns the stored run with 200 after re-checking the window, adding only discrepancies not already recorded for that run (unique per run and fingerprint); the same key with a different window returns 409 idempotency_conflict. Read-only against payments, attempts, journals and the provider: it compares mock charges, payment state and posted journals, never creates a journal or changes a payment, and marks pending payment.late_outcome rows for the window consumed as evidence. Cookie sessions need a valid Origin and X-CSRF-Token; read-only credentials get 403."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartReconciliationRunRequest'
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationRun'
+        '201':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationRun'
+        '400': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '409': *id001
+        '429': *id001
+        '503': *id001
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 255
+      - name: X-CSRF-Token
+        in: header
+        required: false
+        schema: *id005
+        description: Required with a valid Origin for cookie-authenticated writes.
       - name: X-Request-ID
         in: header
         required: false
@@ -1113,6 +1286,9 @@ paths:
       summary: Read recorded differences
       tags:
       - Sandbox
+      description: Discrepancies of the authenticated workspace, newest first with an opaque keyset cursor,
+        filtered by run, kind and status. Each item carries its stored evidence, its append-only resolution
+        history and the related posted journal, if any. Evidence is simulated mock-provider data.
       responses:
         default: *id001
         '200':
@@ -1137,15 +1313,11 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
+        '400': *id001
         '401': *id001
         '403': *id001
-        '404': *id001
         '429': *id001
-        '422':
-          $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
+        '503': *id001
       parameters:
       - name: cursor
         in: query
@@ -1158,6 +1330,118 @@ paths:
           type: integer
           minimum: 1
           maximum: 100
+          default: 50
+      - name: run_id
+        in: query
+        required: false
+        schema: *id002
+      - name: kind
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/DiscrepancyKind'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/DiscrepancyStatus'
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/reconciliation/discrepancies/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getDiscrepancy
+      summary: Read one discrepancy
+      tags:
+      - Sandbox
+      description: One discrepancy of the authenticated workspace; another workspace's ID returns 404.
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discrepancy'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '503': *id001
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/reconciliation/discrepancies/{id}/resolve:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    post:
+      operationId: resolveDiscrepancy
+      summary: Record a discrepancy status change
+      tags:
+      - Sandbox
+      description: "Operator-only. Changes status (open, investigating or resolved) and appends one history row with the required note and the actor. Resolving also stores resolution_note, resolved_by and resolved_at. A resolved discrepancy is final (409 invalid_transition). Resolution records evidence only: it never changes a payment, attempt or journal and never calls the provider. Another workspace returns 404; read-only credentials return 403."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDiscrepancyRequest'
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discrepancy'
+        '400': *id001
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '409': *id001
+        '429': *id001
+        '503': *id001
+      parameters:
+      - name: X-CSRF-Token
+        in: header
+        required: false
+        schema: *id005
+        description: Required with a valid Origin for cookie-authenticated writes.
       - name: X-Request-ID
         in: header
         required: false
@@ -1842,6 +2126,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        reversed_by:
+          type: string
+          format: uuid
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -1884,14 +2172,41 @@ components:
       - status
       - posting_key
       - reversal_of
+      - reversed_by
       - created_at
       - posted_at
       - entries
+    ReconciliationCounts:
+      type: object
+      additionalProperties: false
+      properties:
+        compared:
+          type: integer
+          minimum: 0
+          description: Settled mock-provider payments created in the window.
+        matched:
+          type: integer
+          minimum: 0
+          description: Compared payments with no discrepancy.
+        unmatched:
+          type: integer
+          minimum: 0
+          description: missing_posting, unknown_outcome and missing_at_provider discrepancies.
+        mismatch:
+          type: integer
+          minimum: 0
+          description: amount_mismatch and status_mismatch discrepancies.
+      required:
+      - compared
+      - matched
+      - unmatched
+      - mismatch
     ReconciliationRun:
       type: object
       additionalProperties: false
       properties:
         id: *id002
+        run_key: *id005
         status:
           type: string
           enum:
@@ -1899,32 +2214,394 @@ components:
           - running
           - completed
           - failed
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        requested_by:
+          type: string
+          nullable: true
+        counts:
+          $ref: '#/components/schemas/ReconciliationCounts'
+        evidence_consumed_count:
+          type: integer
+          minimum: 0
+          description: payment.late_outcome rows consumed as evidence by this run.
+        simulated:
+          type: boolean
+          description: Always true; evidence comes from the mock provider.
       required:
       - id
+      - run_key
       - status
+      - window_start
+      - window_end
+      - created_at
+      - completed_at
+      - requested_by
+      - counts
+      - evidence_consumed_count
+      - simulated
+    StartReconciliationRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        window_start:
+          type: string
+          format: date-time
+          description: Inclusive RFC 3339 start; payments are matched on created_at.
+        window_end:
+          type: string
+          format: date-time
+          description: Exclusive RFC 3339 end; must be after window_start and at most 366 days later.
+      required:
+      - window_start
+      - window_end
+    DiscrepancyKind:
+      type: string
+      enum:
+      - missing_posting
+      - unknown_outcome
+      - amount_mismatch
+      - status_mismatch
+      - missing_at_provider
+    DiscrepancyStatus:
+      type: string
+      enum:
+      - open
+      - investigating
+      - resolved
+    DiscrepancyEvidence:
+      type: object
+      description: Stored evidence (details). Money is a decimal string. Always simulated mock data.
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+          enum:
+          - mock_provider
+        simulated:
+          type: boolean
+        summary:
+          type: string
+        expected:
+          type: string
+        payment:
+          type: object
+          additionalProperties: false
+          properties:
+            id: *id002
+            status: *id005
+            amount_minor: *id005
+            currency: *id005
+          required:
+          - id
+          - status
+          - amount_minor
+          - currency
+        provider_charge:
+          type: object
+          nullable: true
+          additionalProperties: false
+          properties:
+            id: *id005
+            provider_reference: *id005
+            status: *id005
+            amount_minor: *id005
+            currency: *id005
+            scenario: *id005
+          required:
+          - id
+          - provider_reference
+          - status
+          - amount_minor
+          - currency
+          - scenario
+        journal:
+          type: object
+          nullable: true
+          additionalProperties: false
+          properties:
+            id: *id002
+            debit_total_minor: *id005
+            credit_total_minor: *id005
+          required:
+          - id
+          - debit_total_minor
+          - credit_total_minor
+        late_outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              event_id: *id005
+              outcome: *id005
+              source: *id005
+              payment_status: *id005
+              attempt_status: *id005
+              observed_at:
+                type: integer
+                format: int64
+            required:
+            - event_id
+            - outcome
+            - source
+            - payment_status
+            - attempt_status
+            - observed_at
+      required:
+      - source
+      - simulated
+      - summary
+      - payment
+      - provider_charge
+      - journal
+      - late_outcomes
+    ResolutionEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        from_status:
+          $ref: '#/components/schemas/DiscrepancyStatus'
+        to_status:
+          $ref: '#/components/schemas/DiscrepancyStatus'
+        note: *id005
+        actor: *id005
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - from_status
+      - to_status
+      - note
+      - actor
+      - created_at
     Discrepancy:
       type: object
       additionalProperties: false
       properties:
         id: *id002
+        run_id: *id002
+        payment_id:
+          type: string
+          format: uuid
+          nullable: true
+        kind:
+          $ref: '#/components/schemas/DiscrepancyKind'
+        status:
+          $ref: '#/components/schemas/DiscrepancyStatus'
+        details:
+          $ref: '#/components/schemas/DiscrepancyEvidence'
+        resolution_note:
+          type: string
+          nullable: true
+        resolved_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        related_journal_id:
+          type: string
+          format: uuid
+          nullable: true
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolutionEvent'
+        simulated:
+          type: boolean
+      required:
+      - id
+      - run_id
+      - payment_id
+      - kind
+      - status
+      - details
+      - resolution_note
+      - resolved_by
+      - created_at
+      - resolved_at
+      - related_journal_id
+      - history
+      - simulated
+    ResolveDiscrepancyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          $ref: '#/components/schemas/DiscrepancyStatus'
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Required for every status change.
+      required:
+      - status
+      - note
+    LedgerAccount:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        code:
+          type: string
+          description: merchant_payable or provider_clearing:{provider_id}
         kind:
           type: string
           enum:
-          - missing_posting
-          - unknown_outcome
-          - amount_mismatch
-          - status_mismatch
-          - missing_at_provider
+          - asset
+          - liability
+          - income
+          - expense
+          - equity
+        currency: *id008
+        provider_id:
+          type: string
+          format: uuid
+          nullable: true
+        provider_code:
+          type: string
+          nullable: true
+        debit_total_minor:
+          type: string
+          nullable: true
+          description: Decimal-string int64 minor units; null when balance_error is set.
+        credit_total_minor:
+          type: string
+          nullable: true
+        balance_minor:
+          type: string
+          nullable: true
+        balance_error:
+          type: string
+          nullable: true
+          enum:
+          - amount_overflow
+          - null
+        normal_balance:
+          type: string
+          enum:
+          - debit
+          - credit
+        entry_count:
+          type: integer
+          minimum: 0
+      required:
+      - id
+      - code
+      - kind
+      - currency
+      - provider_id
+      - provider_code
+      - debit_total_minor
+      - credit_total_minor
+      - balance_minor
+      - balance_error
+      - normal_balance
+      - entry_count
+    LedgerJournalDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id002
+        payment_id:
+          type: string
+          format: uuid
+          nullable: true
+        currency: *id008
         status:
           type: string
           enum:
-          - open
-          - investigating
-          - resolved
+          - posted
+        posting_key: *id005
+        reversal_of:
+          type: string
+          format: uuid
+          nullable: true
+        reversed_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        posted_at:
+          type: string
+          format: date-time
+        entries:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id: *id002
+              account_id: *id002
+              account_code: *id005
+              provider_id:
+                type: string
+                format: uuid
+                nullable: true
+              side:
+                type: string
+                enum:
+                - debit
+                - credit
+              amount_minor: *id007
+            required:
+            - id
+            - account_id
+            - account_code
+            - provider_id
+            - side
+            - amount_minor
+        debit_total_minor: *id005
+        credit_total_minor: *id005
+        payment:
+          type: object
+          nullable: true
+          additionalProperties: false
+          properties:
+            id: *id002
+            status: *id005
+            amount_minor: *id005
+            currency: *id005
+          required:
+          - id
+          - status
+          - amount_minor
+          - currency
       required:
       - id
-      - kind
+      - payment_id
+      - currency
       - status
+      - posting_key
+      - reversal_of
+      - reversed_by
+      - created_at
+      - posted_at
+      - entries
+      - debit_total_minor
+      - credit_total_minor
+      - payment
     Event:
       type: object
       additionalProperties: false

@@ -232,6 +232,13 @@ type ReconciliationRun struct {
 	WindowEnd   int64  `gorm:"column:window_end"`
 	CreatedAt   int64  `gorm:"column:created_at;autoCreateTime:milli"`
 	CompletedAt *int64 `gorm:"column:completed_at"`
+
+	ComparedCount         int64   `gorm:"column:compared_count"`
+	MatchedCount          int64   `gorm:"column:matched_count"`
+	UnmatchedCount        int64   `gorm:"column:unmatched_count"`
+	MismatchCount         int64   `gorm:"column:mismatch_count"`
+	EvidenceConsumedCount int64   `gorm:"column:evidence_consumed_count"`
+	RequestedBy           *string `gorm:"column:requested_by"`
 }
 
 func (ReconciliationRun) TableName() string { return "reconciliation_runs" }
@@ -253,6 +260,20 @@ type ReconciliationDiscrepancy struct {
 }
 
 func (ReconciliationDiscrepancy) TableName() string { return "reconciliation_discrepancies" }
+
+// ReconciliationResolutionEvent maps explicitly to reconciliation_resolution_events (append-only).
+type ReconciliationResolutionEvent struct {
+	ID             string `gorm:"column:id;primaryKey"`
+	WorkspaceID    string `gorm:"column:workspace_id"`
+	DiscrepancyID  string `gorm:"column:discrepancy_id"`
+	FromStatus     string `gorm:"column:from_status"`
+	ToStatus       string `gorm:"column:to_status"`
+	Note           string `gorm:"column:note"`
+	ActorReference string `gorm:"column:actor_reference"`
+	CreatedAt      int64  `gorm:"column:created_at"`
+}
+
+func (ReconciliationResolutionEvent) TableName() string { return "reconciliation_resolution_events" }
 
 // User maps explicitly to users; migrations own constraints.
 type User struct {
