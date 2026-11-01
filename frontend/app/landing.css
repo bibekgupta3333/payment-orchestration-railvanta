@@ -1,0 +1,188 @@
+/* Landing page: lifecycle visual and the one-step API panel. */
+.lifecycle,
+.api-example {
+  margin: 0 0 40px;
+}
+.lifecycle {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 35px;
+}
+.lifecycle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.lifecycle-visual {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--canvas);
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+.lifecycle-canvas {
+  position: absolute;
+  inset: 0;
+}
+.lifecycle-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.lifecycle-labels {
+  position: absolute;
+  inset: auto 0 10px 0;
+  height: 36px;
+  pointer-events: none;
+}
+.lifecycle-labels span {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.2;
+}
+.lifecycle-labels b {
+  font-weight: 700;
+}
+.lifecycle-labels i {
+  font-style: normal;
+  color: var(--muted);
+}
+.lifecycle-marker {
+  position: absolute;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.lifecycle-marker-lost,
+.lifecycle-marker-unknown {
+  border-color: #e0524f;
+  color: #b3312e;
+}
+.dark .lifecycle-marker-lost,
+.dark .lifecycle-marker-unknown {
+  color: #ff9a97;
+}
+.lifecycle-marker-replayed,
+.lifecycle-marker-lookup {
+  border-color: #d99a1e;
+}
+.lifecycle-fallback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+}
+.lifecycle-fallback b {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.lifecycle-fallback em {
+  font-style: normal;
+  color: var(--muted);
+  margin-right: 6px;
+}
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.segmented button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.lifecycle-caption {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 14px;
+  min-height: 3.2em;
+}
+.lifecycle-steps {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 6px;
+  counter-reset: step;
+}
+.lifecycle-steps li {
+  counter-increment: step;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px 8px 40px;
+  position: relative;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+}
+.lifecycle-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.lifecycle-steps li span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.lifecycle-steps li.is-current {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.api-example .code-block {
+  margin-top: 16px;
+}
+.api-example pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.landing-run {
+  margin-top: 16px;
+}
+@media (max-width: 900px) {
+  .lifecycle {
+    padding: 20px;
+  }
+  .lifecycle-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lifecycle-visual {
+    aspect-ratio: 4 / 3;
+  }
+  .lifecycle-labels i {
+    display: none;
+  }
+}

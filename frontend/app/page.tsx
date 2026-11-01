@@ -1,21 +1,8 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui";
-import { CopyCode } from "@/components/ui/copy-code";
-
-const apiExample = `curl -X POST http://localhost:3000/v1/payments \\
-  -H "Authorization: Bearer $RAILVANTA_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -H "Idempotency-Key: order-1042-attempt" \\
-  -d '{
-    "amount_minor": "25000",
-    "currency": "USD",
-    "payment_method_id": "<sandbox payment method ID>",
-    "merchant_reference": "order-1042"
-  }'
-
-# 202 Accepted + Location: /v1/payments/{id}
-# Resending the same body with the same key replays the
-# original response instead of creating a second payment.`;
+import { Lifecycle } from "@/components/landing/Lifecycle";
+import { SandboxStart } from "@/components/landing/SandboxStart";
+import { StartSandboxButton } from "@/components/landing/StartSandboxButton";
 
 const flow: { step: string; detail: string; available: boolean }[] = [
   { step: "Browser", detail: "Next.js dashboard", available: true },
@@ -116,11 +103,12 @@ export default function Home() {
             and balanced financial records.
           </p>
           <div className="hero-actions">
-            <Link className="button" href="/dashboard">
+            <StartSandboxButton />
+            <Link className="button button-quiet" href="/dashboard">
               Explore the dashboard <span aria-hidden="true">→</span>
             </Link>
-            <Link className="text-link" href="/docs">
-              Read the API documentation
+            <Link className="text-link" href="/dashboard/api-reference">
+              Open API reference
             </Link>
           </div>
           <p className="sandbox-notice" role="note">
@@ -129,6 +117,8 @@ export default function Home() {
             collected.
           </p>
         </section>
+        <Lifecycle />
+        <SandboxStart />
         <section
           className="architecture-card"
           aria-labelledby="architecture-title"
@@ -170,10 +160,6 @@ export default function Home() {
               </article>
             ))}
           </div>
-        </section>
-        <section className="api-example" aria-labelledby="api-example-title">
-          <h2 id="api-example-title">Create a sandbox payment</h2>
-          <CopyCode code={apiExample} label="API example: create a payment" />
         </section>
       </main>
       <footer className="public-footer">
