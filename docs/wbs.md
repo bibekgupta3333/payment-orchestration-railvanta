@@ -700,13 +700,13 @@ Images, Compose, health probes, graceful shutdown, API-owned backup/restore/chec
 **Tasks**
 - [ ] 5.4.1 Write root `README.md` with prerequisites, local dev, Compose, test, lint and format commands, each run on a clean checkout
 - [ ] 5.4.2 Update `AGENTS.md` build/test command section to the real scripts
-- [ ] 5.4.3 Update `docs/architecture.md`, `docs/backend/*` and `docs/frontend/*` from "planned" to implemented behavior; mark remaining gaps explicitly
+- [x] 5.4.3 Update `docs/architecture.md`, `docs/backend/*` and `docs/frontend/*` from "planned" to implemented behavior; mark remaining gaps explicitly
 - [ ] 5.4.4 Publish the OpenAPI contract and confirm `/docs` examples match it
 - [ ] 5.4.5 Record measured latency, recovery outcomes and test counts with the date, commit and environment they were measured in
 - [ ] 5.4.6 Write a known-limitations section: single SQLite writer, no HA, mock provider only, no real funds, deferred capabilities
 - [ ] 5.4.7 Document the backup/restore runbook with the date of the last successful drill
 - [ ] 5.4.8 Write the short technical case study and record demo scenarios as reproducible scripts or Playwright specs
-- [ ] 5.4.9 Add ADRs for any implementation decision that diverged from the design docs
+- [x] 5.4.9 Add ADRs for any implementation decision that diverged from the design docs
 
 **Acceptance gate**
 - [ ] A reviewer following only the README reaches a running sandbox and green tests on a clean machine
