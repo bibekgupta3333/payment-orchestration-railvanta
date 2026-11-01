@@ -98,6 +98,10 @@ docker compose down -v # also delete the volume
 
 `scripts/backup-db.sh` takes a consistent online snapshot with a SHA-256 manifest; `scripts/restore-backup.sh <backup.db> [--start]` restores into a new volume after verification and preserves the old one; `scripts/restore-drill.sh` runs backup and restore under write load; `railvanta-api check` verifies integrity and ledger invariants. The runbook, drill record and supply-chain notes are in [docs/operations/deployment.md](docs/operations/deployment.md); optional Kubernetes manifests are in [docs/operations/kubernetes.md](docs/operations/kubernetes.md).
 
+## Demo
+
+For a live walkthrough of the Payment Failure & Recovery Playground: `pnpm demo:up` (start, seed throwaway credentials, print curl examples), `pnpm demo:open` (headed browser already signed in), `pnpm demo:down` (add `-v` to delete demo data). Script, Q&A, honest claims and fallbacks are in [docs/demo/README.md](docs/demo/README.md).
+
 ## Tests, lint and format
 
 | Command | Purpose |
