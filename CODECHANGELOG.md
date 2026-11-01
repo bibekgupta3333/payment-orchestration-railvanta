@@ -2,6 +2,72 @@
 
 A record of every change to code, configuration or design docs, newest first. Each entry says what changed, which [WBS](docs/wbs.md) item it serves, and what was actually run to verify it. Only record results you observed. If a check was skipped or failed, say so.
 
+## 2026-11-01 — Integrate the dashboard hub, Swagger reference and docs; verification and fixes
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed (integration of three parallel changes recorded above)**
+- Browser specs written by the agents but never run were run and two were wrong, not the product: `e2e/ui/api-reference.spec.ts` opened the page with a relative URL and matched "Settings" against two links (fixed to use the harness origin and the help link's href).
+- `frontend/components/api-reference/SwaggerReference.tsx`, `swagger-ui-dist.d.ts` — axe found two `<main>` landmarks (the app shell's and Swagger UI's own nested `<main id="operations">`); the wrapper now gives Swagger's one a labelled `region` role in `onComplete`.
+- `backend/api/openapi.yaml`, `frontend/public/openapi.json` — the spec description, now visible on the Swagger page, still mentioned WBS packages and routes "unavailable (501) until later WBS packages"; rewritten as accurate user-facing text.
+- `frontend/components/layout/app-shell.tsx` — footer said "Railvanta · Foundation M1"; now "Railvanta · Sandbox".
+- `frontend/lib/format-duration.ts` (new), `Overview.tsx`, `ProvidersView.tsx` — the p95 card showed raw `4465210 ms` (a simulated payment whose held recovery lookup resolved after an hour); durations of a second or more now show as seconds, minutes or hours, sub-second values are unchanged.
+
+**Verification**
+- `pnpm check` — pass on the final tree (lint, OpenAPI lint, generated contracts and `openapi.json` in sync, docs examples 12/16, typecheck, Go tests, 116 Vitest tests, build, bundle secret check).
+- Native browser specs, one run: `a11y-routes` (5), `payments` (8), `shell` (7), `dashboard-hub` (4) passed; `api-reference` failed first for the two test bugs above, then for the duplicate `main` landmark, and passes after the fixes. After the last small fixes, `dashboard-hub`, `api-reference` and the payments overview test were re-run: 6 passed.
+- Docker web container rebuilt; `/dashboard`, `/dashboard/api-reference` and `/openapi.json` (179 KB, servers `/`) answer 200. Screenshots of the hub (1440px) and the Swagger page were reviewed.
+- Not run: the full E2E suite, container-mode E2E, CI, the hub at 375px by eye (its horizontal-scroll test passed), dark theme by eye.
+
+**Notes:** a `settlement_mismatch` payment's held recovery lookup fires after an hour and resolves that payment; that is real behaviour of the recovery worker and can skew the p95 card, which is why the card is labelled as observed sandbox data.
+
+## 2026-11-01 — Dashboard home as a hub: credentials, demo runs and quick actions
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/components/dashboard/Hub.tsx` (new), `Overview.tsx`, `frontend/app/dashboard-hub.css` (new, imported in `app/layout.tsx`) — `/dashboard` now opens with the heading "Railvanta sandbox", four quick actions (Run a demo, Create a $100 payment via the existing dialog prefilled like Playground demo 1, API reference link, Generate API key anchor), an "Integration credentials" card (base URL, auth format, active-key count from `GET /v1/api-keys`, placeholder `$KEY` curl, one-click "Generate default demo key": operator, 24 hours, nothing minted on load), a "Run a demo now" card (Lost response, Duplicate requests, Double-entry ledger: real simulations of $100.00 USD, polled, with invariant counts and a Playground link; disabled with a reason when the scenario is missing) and the flow strip. All previous content (Needs attention, metric cards, chart, recent payments, loading/empty/error/stale states) is unchanged under "Live sandbox metrics".
+- `frontend/components/settings/GeneratedKey.tsx` (new), `ApiKeys.tsx` — the one-time key panel is extracted and shared; Settings markup, test ids and texts are unchanged.
+- `frontend/lib/hooks/dashboard-demo.ts` (new) — constants and pure helpers.
+- Tests: `frontend/tests/components/dashboard-hub.test.tsx` (6 tests), `e2e/ui/dashboard-hub.spec.ts` (4 tests, written, not run).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` clean; eslint and prettier clean on the changed frontend files; `tsc --noEmit` in `e2e/` clean.
+- Vitest `dashboard-hub.test.tsx`, `api-keys.test.tsx`, `docs-settings.test.tsx` — 23 passed.
+- Not run: `e2e/ui/dashboard-hub.spec.ts`, the `payments.spec.ts` overview test, a real browser, rendering at 375px, axe.
+
+## 2026-11-01 — Docs: dashboard hub wireframes, design, runbook and ADR 0012
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `docs/frontend/wireframes.md` — section 2 rewritten as the dashboard hub (desktop and mobile wireframes, quick actions, credentials card, demo-run card, capability strip, metrics, loading/error/read-only states); new section 10a for `/dashboard/api-reference`; "API reference" and Playground added to the shell nav; Implementation status updated.
+- `docs/frontend/design.md` — directory tree, `/dashboard` and `/dashboard/api-reference` route rows, hub paragraph, `/docs` row.
+- `docs/decisions/0012-dashboard-hub-and-swagger-reference.md` (new) and its index row in `docs/README.md`.
+- `docs/demo/README.md` — hub and Swagger in the intro, a "Hub and API" step, the key generator section, honest claims; `README.md` Demo section.
+- Reconciled with `frontend/components/dashboard/Hub.tsx`, `Overview.tsx`, `app/dashboard/api-reference/page.tsx`, `SwaggerReference.tsx` and `scripts/generate-api.mjs` as they stood when written.
+
+**Verification**
+- Relative-link check over the touched Markdown files (script run, result in the hand-off). No code, tests or builds were run; docs only.
+
+---
+
+## 2026-11-01 — Swagger UI API reference in the dashboard
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/app/dashboard/api-reference/page.tsx`, `frontend/components/api-reference/{SwaggerReference.tsx,swagger-theme.css,swagger-ui-dist.d.ts}` (new) — `/dashboard/api-reference` embeds Swagger UI (`swagger-ui-dist` 5.33.2, pinned, loaded by dynamic import in a client effect, never server-rendered) on a light surface card so it stays readable in the dark theme. Help text: generate a key in Settings, Authorize, paste, Try it out; sandbox only; bearer keys are the supported way to write (cookie writes need CSRF). No credential is embedded and `persistAuthorization` is off.
+- `scripts/generate-api.mjs` — also writes `frontend/public/openapi.json` from `backend/api/openapi.yaml` (`yaml` 2.9.1, root dev dependency) with `servers` set to `/` so Try it out hits the same-origin `/v1` proxy; `--check` (so `pnpm check:generated`) fails when it is stale. The file is committed, so the web image needs no change (its build also runs `generate:api`).
+- `frontend/components/layout/app-shell.tsx` (nav item "API reference" after "API docs"), `frontend/app/docs/page.tsx` (link "Open the interactive Swagger reference"), `frontend/.prettierignore`, `frontend/package.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (`@scarf/scarf` build script disallowed: swagger-ui-dist analytics postinstall).
+- Tests: `frontend/tests/components/api-reference.test.tsx` (swagger module mocked; also runs the generate `--check`), `e2e/ui/api-reference.spec.ts` (written, NOT run; axe excludes `.swagger-ui` third-party markup).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` clean; eslint on the touched files clean; prettier applied.
+- Vitest `api-reference.test.tsx` 2 passed; `shell.test.tsx` 5 passed.
+- `pnpm check:docs` — 12 examples, 16 endpoints valid; `pnpm check:generated` and `pnpm check:tracked` pass.
+- Not verified: real browser rendering, `next build` with the Swagger bundle, the Playwright spec.
+
 ## 2026-11-01 — Sandbox API key generator in Settings
 
 **WBS:** demo preparation (supersedes the 4.4 "no key generation" gate wording) · **PR/commit:** feat/demo-playground
