@@ -616,10 +616,10 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [ ] 5.1.5 Write workspace isolation tests: forged workspace IDs in body/path, cross-workspace foreign references, list/detail reads with another workspace's session
 - [ ] 5.1.6 Write webhook/event tests: duplicate delivery, reordered events, and payload-hash mismatch on a duplicate event ID; terminal states never regress
 - [ ] 5.1.7 Add Vitest + React Testing Library tests in `frontend/tests/components/` for money formatting (above `Number.MAX_SAFE_INTEGER`), unknown-outcome display, double-submit prevention, and loading/empty/error states
-- [ ] 5.1.8 Add Playwright specs in `e2e/ui/` for create payment → detail, simulator "timeout after success" → resolved, ledger journal balance view, and API-offline error states
-- [ ] 5.1.9 Run Playwright at 375 px and 1440 px widths with keyboard-only navigation and an automated accessibility scan (e.g. axe) on every dashboard route
-- [ ] 5.1.10 Add a CI workflow (`.github/workflows/ci.yml`) that runs `gofmt` check, `go vet`, `go test ./...`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, Vitest and `pnpm test:e2e` against the Go API started with the mock provider
-- [ ] 5.1.11 Publish test reports and Playwright traces as CI artifacts; record actual results in `docs/roadmap.md`
+- [x] 5.1.8 Add Playwright specs in `e2e/ui/` for create payment → detail, simulator "timeout after success" → resolved, ledger journal balance view, and API-offline error states
+- [x] 5.1.9 Run Playwright at 375 px and 1440 px widths with keyboard-only navigation and an automated accessibility scan (e.g. axe) on every dashboard route (`e2e/ui/a11y-routes.spec.ts`: all routes incl. detail pages, landing and docs, at 375/1440 px; verified locally 2026-10-31)
+- [ ] 5.1.10 Add a CI workflow (`.github/workflows/ci.yml`) that runs `gofmt` check, `go vet`, `go test ./...`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, Vitest and `pnpm test:e2e` against the Go API started with the mock provider (workflow authored and actionlint-clean; unticked until it runs on GitHub)
+- [ ] 5.1.11 Publish test reports and Playwright traces as CI artifacts; record actual results in `docs/roadmap.md` (upload steps and local results recorded; unticked until the first CI run)
 
 **Acceptance gate**
 - [ ] CI is green on `main`, with Go integration, Vitest and Playwright jobs all executed (not skipped)
@@ -632,7 +632,7 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [ ] The full suite runs in CI on every PR against the Go API with the mock provider, with traces and reports uploaded
 - [ ] The suite passes 3 consecutive CI runs without retries (a flake check), with the central-demo spec repeated 20 times in one of those runs
 - [ ] Every row of the verification matrix that can be covered end to end links to a named spec
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs (88 passed locally, retries disabled, 2026-10-31)
 
 ### 5.2 Container delivery and recovery — platform
 **Depends on:** 5.1 for full delivery acceptance; basic image/Compose source is explicitly authorized alongside M1. **Deliverable:** Reproducible images and a `docker compose` sandbox with one API-owned data volume, backup tooling, and a verified restore drill.

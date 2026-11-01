@@ -22,6 +22,28 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add route accessibility sweep, flake gating and the full CI workflow
+
+**WBS:** 5.1.8, 5.1.9, 5.1.10, 5.1.11 and the 5.1 E2E consolidation block · **PR/commit:** worktree branch (base `eba05b2`)
+
+**Changed**
+- `e2e/ui/a11y-routes.spec.ts` — new. Visits landing, docs, all nine dashboard routes and payment, ledger, provider (seeded and unconfigured) and event detail pages at 375 px and 1440 px: no horizontal scroll, keyboard Tab traversal lands only on visible elements, axe with no serious/critical violations; drawer and create-payment dialog trap focus, close on Escape and restore focus.
+- 5.1.8 audit (no new specs needed): create payment to detail `ui/payments.spec.ts` "a created payment shows as pending..."; timeout after success to resolved `ui/simulator.spec.ts` "timeout after success runs the real pipeline..." (plus API `api/recovery.spec.ts` central demo); ledger journal balance `ui/ledger.spec.ts` "a succeeded payment's journal is balanced..."; API offline `ui/payments.spec.ts` "with the API stopped...".
+- `frontend/app/globals.css` — accessibility/layout fix found by the new spec: `.mono` now wraps (`overflow-wrap: anywhere`); the 64-character payload hash made `/dashboard/events/[id]` scroll horizontally at 375 px.
+- `e2e/playwright.config.ts` — comment that retries stay 0; JUnit reporter when `CI` is set. `e2e/package.json`, `package.json` — `test:ci` / `test:e2e:ci` (`--retries=0`) and `test:central-demo-repeat` / `test:e2e:central-demo-repeat` (`--repeat-each=20`). `.gitignore` — `junit-results/`.
+- `.github/workflows/ci.yml` — rewritten into jobs `static` (policy, compose config, gofmt, go vet, pnpm lint, generated contracts, docs examples, typecheck, build), `go-tests` (`-race`), `vitest` (JUnit), `e2e` (Go API with mock provider, retries 0) and `flake-check` (3 consecutive full runs with `--retries=0`, then central demo x20). Go/pnpm/Playwright browser caching; reports, traces, Go output and Vitest results uploaded with `if: always()`.
+- `docs/roadmap.md` — "Recorded results" section (local results only; CI marked pending). `docs/wbs.md` — 5.1.8, 5.1.9 and the full-suite consolidation box ticked.
+
+**Verification**
+- `pnpm check` — exit 0 (Vitest 91 passed).
+- Full suite, `CI=1 pnpm run test:e2e:ci` — 88 passed, 0 failed.
+- `ui/a11y-routes.spec.ts` — 5 passed; it failed first on the event-detail overflow, fixed as above.
+- `CI=1 pnpm run test:e2e:central-demo-repeat` — 20 passed.
+- actionlint v1.7.7 — exit 0; YAML parses (PyYAML), 5 jobs.
+- Not run: GitHub Actions (5.1.10 and 5.1.11 stay unticked until a CI run; "3 consecutive CI runs" and "green on main" open); `go test -race` was not re-run (no Go changes).
+
+---
+
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 
 **WBS:** 4.3, 4.4 · **PR/commit:** feat/m2-m4-payment-correctness
