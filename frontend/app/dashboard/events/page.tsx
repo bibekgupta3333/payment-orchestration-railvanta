@@ -1,10 +1,14 @@
-import { FeaturePage } from "@/components/feature-page";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { EventExplorer } from "@/components/events/EventExplorer";
+import { Skeleton } from "@/components/ui";
 
-export default function Page() {
+export const metadata: Metadata = { title: "Events" };
+
+export default function EventsPage() {
   return (
-    <FeaturePage
-      title="Events"
-      description="Inspect durable events, deduplication, and state history. Event processing is not available yet."
-    />
+    <Suspense fallback={<Skeleton label="Loading events" lines={3} />}>
+      <EventExplorer />
+    </Suspense>
   );
 }
