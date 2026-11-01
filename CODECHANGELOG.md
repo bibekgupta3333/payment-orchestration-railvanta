@@ -22,6 +22,19 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Record the first green CI results for M5/M6
+
+**WBS:** 5.1.10, 5.1.11, 5.2.10, 5.2.11, 5.1 consolidation · **PR/commit:** PR #3 (`feat/m5-m6-verification-delivery`)
+
+**Changed**
+- `docs/wbs.md`, `docs/roadmap.md` — recorded the first GitHub Actions results on PR #3 and ticked only the boxes those runs prove (5.1.10, 5.1.11, the flake check, 5.2.10, 5.2.11, the non-root/secret-scan gate line). 5.3.10 stays unticked: CI validation passes but images are local tags, not digests.
+
+**Verification (GitHub Actions, commit `419608d`, 2026-11-01)**
+- CI run 41268891977 (pull_request) and push run 41268888658: static checks, Go `-race`, Vitest, Playwright E2E and the flake-check job (three full runs with `--retries=0`, central demo x20) all succeeded with no skipped steps.
+- Container delivery run 41268891933: pin check, secret scans of history, working tree and images, image build, digest record, E2E against Compose all succeeded; only the failure-only "Compose logs" step was skipped.
+- Kubernetes manifests run 41268891939: kubeconform validation succeeded.
+- Not claimed: "CI green on main" (not merged yet); the flake loop is three runs inside one workflow run, not three separate workflow runs.
+
 ## 2026-11-01 — Merge WBS 5.4 documentation and evidence; final M5/M6 verification
 
 **WBS:** 5.4 (and the integrated 5.1–5.3) · **PR/commit:** feat/m5-m6-verification-delivery

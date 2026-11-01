@@ -100,4 +100,16 @@ Not run locally: the Go `-race` suite was not re-run for this change (no Go code
 
 ### CI (GitHub Actions)
 
-Pending first run on this PR. The `flake-check` job (three consecutive full runs with `--retries=0`, plus the central-demo spec repeated 20 times) has not executed; the "3 consecutive CI runs" and "green on main" gates remain open.
+Recorded 2026-11-01 on PR #3 at commit `419608d` (GitHub-hosted runners, pull_request and push events): every job succeeded and no step in the CI, containers or Kubernetes workflows was skipped except the failure-only "Compose logs" step.
+
+| Workflow | Job | Result | Evidence |
+| --- | --- | --- | --- |
+| CI | Format, lint, contracts, types and build | pass (≈2 min) | run 41268891977 |
+| CI | Go tests (race detector) | pass (≈2 min) | run 41268891977 |
+| CI | Vitest component tests | pass (≈30 s) | run 41268891977 |
+| CI | Playwright E2E against the Go API with the mock provider | pass (≈5–7 min) | run 41268891977 |
+| CI | Flake check: three full runs with `--retries=0`, then the central-demo spec x20 | pass (≈17–18 min) | run 41268891977 |
+| Container delivery | Digest-pin check, secret scans (history, tree, images), image build and digest record, E2E against the Compose stack | pass (≈6–7 min) | run 41268891933 |
+| Kubernetes manifests | kubeconform validation | pass (≈25 s) | run 41268891939 |
+
+Still open: "CI green on main" (needs this PR merged and a run on `main`), and the flake loop ran inside one workflow run rather than as three separate runs.

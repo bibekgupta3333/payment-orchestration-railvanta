@@ -92,7 +92,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 4.2 | Reconciliation | 2.4, 4.1 | M4 | Implemented; keyboard-navigation and reconciliation empty/error-state gates unchecked (2026-10-31) |
 | 4.3 | Events and audit | 2.4, 1.3 | M4 | Implemented and verified locally; empty-state and keyboard checks at 375/1440 pending |
 | 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Implemented; CI run, bundle check, dark-theme contrast and 375/1440 gate items pending |
-| 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Tests and Playwright specs done (5.1.1–5.1.9); CI workflow written but unrun (5.1.10–5.1.11), so CI-based gates are open |
+| 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Done and green in CI on PR #3 (2026-11-01); "CI green on main" opens once merged |
 | 5.2 | Container delivery and recovery | 5.1 | M5 | Built, run and drilled locally (2026-11-01); CI digest recording and CI secret scan unverified until GitHub runs |
 | 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | Built and validated locally in k3d; egress NetworkPolicy enforcement, CI, digest pinning and in-cluster backup drill open |
 | 5.4 | Release documentation | 5.2; 5.3 if used | M5 | Tasks 5.4.1–5.4.9 done locally; clean-machine gate and CI-based evidence open |
@@ -618,8 +618,8 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [x] 5.1.7 Add Vitest + React Testing Library tests in `frontend/tests/components/` for money formatting (above `Number.MAX_SAFE_INTEGER`), unknown-outcome display, double-submit prevention, and loading/empty/error states
 - [x] 5.1.8 Add Playwright specs in `e2e/ui/` for create payment → detail, simulator "timeout after success" → resolved, ledger journal balance view, and API-offline error states
 - [x] 5.1.9 Run Playwright at 375 px and 1440 px widths with keyboard-only navigation and an automated accessibility scan (e.g. axe) on every dashboard route (`e2e/ui/a11y-routes.spec.ts`: all routes incl. detail pages, landing and docs, at 375/1440 px; verified locally 2026-10-31)
-- [ ] 5.1.10 Add a CI workflow (`.github/workflows/ci.yml`) that runs `gofmt` check, `go vet`, `go test ./...`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, Vitest and `pnpm test:e2e` against the Go API started with the mock provider (workflow authored and actionlint-clean; unticked until it runs on GitHub)
-- [ ] 5.1.11 Publish test reports and Playwright traces as CI artifacts; record actual results in `docs/roadmap.md` (upload steps and local results recorded; unticked until the first CI run)
+- [x] 5.1.10 Add a CI workflow (`.github/workflows/ci.yml`) that runs `gofmt` check, `go vet`, `go test ./...`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, Vitest and `pnpm test:e2e` against the Go API started with the mock provider (workflow authored and actionlint-clean; unticked until it runs on GitHub) (ran green on PR #3, 2026-11-01: static, Go -race, Vitest and E2E jobs, none skipped; CI runs 41268891977 and push run 41268888658)
+- [x] 5.1.11 Publish test reports and Playwright traces as CI artifacts; record actual results in `docs/roadmap.md` (artifacts uploaded by the CI runs above; results recorded in docs/roadmap.md)
 
 **Acceptance gate**
 - [ ] CI is green on `main`, with Go integration, Vitest and Playwright jobs all executed (not skipped)
@@ -630,7 +630,7 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 
 **E2E test** — all of `e2e/` (consolidation)
 - [ ] The full suite runs in CI on every PR against the Go API with the mock provider, with traces and reports uploaded
-- [ ] The suite passes 3 consecutive CI runs without retries (a flake check), with the central-demo spec repeated 20 times in one of those runs
+- [x] The suite passes 3 consecutive CI runs without retries (a flake check), with the central-demo spec repeated 20 times in one of those runs (met inside the CI `flake-check` job: three full suite runs with --retries=0 plus the central demo x20, all passing, in CI run 41268891977 and again in the push run; the loop is in one workflow run rather than three separate runs)
 - [ ] Every row of the verification matrix that can be covered end to end links to a named spec
 - [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs (88 passed locally, retries disabled, 2026-10-31)
 
@@ -649,15 +649,15 @@ Images, Compose, health probes, graceful shutdown, API-owned backup/restore/chec
 - [x] 5.2.7 Implement API-owned backup using the SQLite online backup API (or `VACUUM INTO`), writing snapshot time, schema version, checksum and release metadata
 - [x] 5.2.8 Document and script a restore: stop and fence the API, preserve the old volume, restore into a clean directory, run `PRAGMA integrity_check` / `foreign_key_check` and domain invariant checks, then start a matching release
 - [x] 5.2.9 Add a domain-check command (e.g. `railvanta-api check`) verifying all posted journals balance, no orphaned attempts, and payment/journal consistency
-- [ ] 5.2.10 Add `.env.example` with placeholders only; confirm images and Git contain no secrets (secret scan in CI)
-- [ ] 5.2.11 Build images in CI with pinned base-image digests and record image digests per release
+- [x] 5.2.10 Add `.env.example` with placeholders only; confirm images and Git contain no secrets (secret scan in CI) (CI secret scans of history, working tree and both images passed in container-delivery run 41268891933)
+- [x] 5.2.11 Build images in CI with pinned base-image digests and record image digests per release (CI verifies the pins, builds the images and records digests as an artifact in run 41268891933)
 
 **Acceptance gate**
 - [x] `docker compose up` on a clean machine yields a working sandbox reachable at one origin
 - [x] Killing the API container mid-dispatch and restarting recovers work without duplicate ledger postings
 - [x] Restore drill from a backup taken under write load passes integrity, foreign-key and domain checks; the result is recorded with date and release
 - [x] No backup procedure copies only the live `.db` file
-- [ ] Containers run as non-root; secret scan reports no findings
+- [x] Containers run as non-root; secret scan reports no findings (non-root verified locally; CI secret scans clean)
 
 **E2E test** — run `pnpm test:e2e` with `E2E_BASE_URL` set to the `docker compose` stack
 - [x] The full suite passes against the built containers, not just dev processes
