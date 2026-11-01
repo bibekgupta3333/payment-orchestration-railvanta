@@ -212,7 +212,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.serveReadModels(w, r, principal, id) || h.serveRoutingAndSimulation(w, r, principal, id) {
 		return
 	}
-	if h.serveEvents(w, r, principal, id) || h.serveWebhooks(w, r, principal, id) || h.serveSettings(w, r, principal, id) {
+	if h.serveEvents(w, r, principal, id) || h.serveWebhooks(w, r, principal, id) || h.serveSettings(w, r, principal, id) || h.serveAPIKeys(w, r, principal, id) {
 		return
 	}
 	if r.URL.Path == "/v1/payments" || strings.HasPrefix(r.URL.Path, "/v1/payments/") {

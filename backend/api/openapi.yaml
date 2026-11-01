@@ -1907,6 +1907,152 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/api-keys:
+    post:
+      operationId: createAPIKey
+      summary: Generate a sandbox API key (operator)
+      description: Sandbox convenience for the demo. Mints a workspace-scoped key with the requested role
+        (read or operator) that always expires (default 24 hours, at most 720) and returns its secret exactly
+        once, in this response only. Only a SHA-256 hash is stored. A workspace may hold at most 20 active
+        keys (409 api_key_limit). The response is not cacheable. Requires the operator role; cookie sessions
+        also need the CSRF token.
+      tags:
+      - Sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKeyRequest'
+      responses:
+        '201':
+          description: Key created. The secret is never shown again.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyCreated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+    get:
+      operationId: listAPIKeys
+      summary: List API key metadata (operator)
+      description: Metadata only (name, public prefix, role, status, timestamps). Secrets and hashes are never
+        returned. Scoped to the caller's workspace.
+      tags:
+      - Sandbox
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyList'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/api-keys/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    delete:
+      operationId: revokeAPIKey
+      summary: Revoke an API key of this workspace (operator)
+      description: Idempotent. Answers 200 with the key's metadata and status revoked. A key of another
+        workspace or an unknown ID returns 404.
+      tags:
+      - Sandbox
+      responses:
+        '200':
+          description: Key revoked
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKey'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/api-keys/current:
     delete:
       operationId: revokeCurrentAPIKey
@@ -3473,6 +3619,94 @@ components:
       - outcome_reason
       - duplicate_count
       - signature_status
+    APIKey:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prefix:
+          type: string
+          description: Public identifier, the part of the key before the dot.
+        role:
+          type: string
+          enum:
+          - read
+          - operator
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+      required:
+      - id
+      - name
+      - prefix
+      - role
+      - created_at
+      - expires_at
+      - revoked_at
+      - status
+    APIKeyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$
+        role:
+          type: string
+          enum:
+          - read
+          - operator
+        expires_in_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          description: Defaults to 24.
+      required:
+      - name
+      - role
+    APIKeyCreated:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          $ref: '#/components/schemas/APIKey'
+        secret:
+          type: string
+          description: The full prefix.secret key. Returned only in this response.
+      required:
+      - key
+      - secret
+    APIKeyList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKey'
+        limit:
+          type: integer
+          description: Maximum number of active keys per workspace.
+      required:
+      - items
+      - limit
     Settings:
       type: object
       additionalProperties: false
@@ -3518,6 +3752,7 @@ components:
             api_key_management:
               type: string
               enum:
+              - available
               - unavailable
             role_management:
               type: string

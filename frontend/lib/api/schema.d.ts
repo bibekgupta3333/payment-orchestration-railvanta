@@ -635,6 +635,52 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/api-keys": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List API key metadata (operator)
+     * @description Metadata only (name, public prefix, role, status, timestamps). Secrets and hashes are never returned. Scoped to the caller's workspace.
+     */
+    get: operations["listAPIKeys"];
+    put?: never;
+    /**
+     * Generate a sandbox API key (operator)
+     * @description Sandbox convenience for the demo. Mints a workspace-scoped key with the requested role (read or operator) that always expires (default 24 hours, at most 720) and returns its secret exactly once, in this response only. Only a SHA-256 hash is stored. A workspace may hold at most 20 active keys (409 api_key_limit). The response is not cacheable. Requires the operator role; cookie sessions also need the CSRF token.
+     */
+    post: operations["createAPIKey"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/api-keys/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke an API key of this workspace (operator)
+     * @description Idempotent. Answers 200 with the key's metadata and status revoked. A key of another workspace or an unknown ID returns 404.
+     */
+    delete: operations["revokeAPIKey"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/api-keys/current": {
     parameters: {
       query?: never;
@@ -1276,6 +1322,39 @@ export interface components {
       /** @enum {string} */
       signature_status: "not_applicable" | "verified" | "rejected";
     };
+    APIKey: {
+      id: string;
+      name: string;
+      /** @description Public identifier, the part of the key before the dot. */
+      prefix: string;
+      /** @enum {string} */
+      role: "read" | "operator";
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      expires_at: string | null;
+      /** Format: date-time */
+      revoked_at: string | null;
+      /** @enum {string} */
+      status: "active" | "expired" | "revoked";
+    };
+    APIKeyRequest: {
+      name: string;
+      /** @enum {string} */
+      role: "read" | "operator";
+      /** @description Defaults to 24. */
+      expires_in_hours?: number;
+    };
+    APIKeyCreated: {
+      key: components["schemas"]["APIKey"];
+      /** @description The full prefix.secret key. Returned only in this response. */
+      secret: string;
+    };
+    APIKeyList: {
+      items: components["schemas"]["APIKey"][];
+      /** @description Maximum number of active keys per workspace. */
+      limit: number;
+    };
     Settings: {
       workspace: components["schemas"]["Workspace"];
       /** @enum {string} */
@@ -1295,7 +1374,7 @@ export interface components {
       }[];
       capabilities: {
         /** @enum {string} */
-        api_key_management: "unavailable";
+        api_key_management: "available" | "unavailable";
         /** @enum {string} */
         role_management: "unavailable";
         /** @enum {string} */
@@ -2678,6 +2757,107 @@ export interface operations {
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
+      422: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  listAPIKeys: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["APIKeyList"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      422: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  createAPIKey: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["APIKeyRequest"];
+      };
+    };
+    responses: {
+      /** @description Key created. The secret is never shown again. */
+      201: {
+        headers: {
+          "X-Request-ID"?: string;
+          Location?: string;
+          "Cache-Control"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["APIKeyCreated"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      422: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  revokeAPIKey: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key revoked */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["APIKey"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
       default: components["responses"]["Error"];

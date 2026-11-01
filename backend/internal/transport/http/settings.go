@@ -55,8 +55,10 @@ func (h *handler) serveSettings(w http.ResponseWriter, r *http.Request, principa
 		"workspace": workspace,
 		"role":      principal.Role,
 		"providers": known,
-		// Fixed capabilities of this build. They are facts, not settings.
-		"capabilities": map[string]string{"api_key_management": "unavailable", "role_management": "unavailable", "live_activation": "unavailable"},
+		// Fixed capabilities of this build. They are facts, not settings. API key
+		// management is the sandbox generator in apikeys.go; roles and live
+		// activation remain unavailable.
+		"capabilities": map[string]string{"api_key_management": "available", "role_management": "unavailable", "live_activation": "unavailable"},
 	})
 	return true
 }
