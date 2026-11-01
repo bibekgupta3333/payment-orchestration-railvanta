@@ -1,0 +1,93 @@
+name: Container delivery
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: containers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: true
+      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml
+      RAILVANTA_PORT: 3000
+      RAILVANTA_RELEASE: ${{ github.sha }}
+      RAILVANTA_GIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the secret scan reads the full history
+      - name: Verify base images are pinned by digest
+        run: scripts/check-image-pins.sh
+      - name: Scan Git history and the working tree for secrets
+        run: scripts/secret-scan.sh
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Build images
+        run: docker compose build
+      - name: Record image digests
+        run: |
+          {
+            echo "## Image digests (release ${RAILVANTA_RELEASE})"
+            echo
+            echo "| image | image ID (config digest) |"
+            echo "| --- | --- |"
+            for image in railvanta-api:local railvanta-web:local; do
+              echo "| ${image} | $(docker image inspect --format '{{.Id}}' "${image}") |"
+            done
+            echo
+            echo "Base images (pinned in the Dockerfiles and compose file):"
+            echo
+            grep -hE '^FROM |^\s+image: ' infrastructure/docker/*.Dockerfile docker-compose.yml | sort -u | sed 's/^/- `/; s/$/`/'
+          } | tee -a "$GITHUB_STEP_SUMMARY" | tee image-digests.md
+      - name: Scan built images for secrets
+        run: scripts/secret-scan.sh image railvanta-api:local railvanta-web:local
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Set up pnpm
+        uses: pnpm/setup@v3
+        with:
+          version: 11.3.0
+          node-version-file: "false"
+          install: false
+          cache: true
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm --filter @railvanta/e2e exec playwright install --with-deps chromium
+      - name: Start the Compose stack on a clean volume
+        run: |
+          docker compose down -v
+          docker compose up --detach --wait
+      - name: Run the E2E suite against the containers
+        env:
+          E2E_BASE_URL: http://localhost:3000
+        run: pnpm test:e2e
+      - name: Compose logs
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+      - name: Upload digests, reports and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-results
+          path: |
+            image-digests.md
+            e2e/playwright-report/
+            e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
