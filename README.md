@@ -100,7 +100,7 @@ docker compose down -v # also delete the volume
 
 ## Demo
 
-For a live walkthrough of the Payment Failure & Recovery Playground: `pnpm demo:up` (start, seed throwaway credentials, print curl examples), `pnpm demo:open` (headed browser already signed in), `pnpm demo:down` (add `-v` to delete demo data). Script, Q&A, honest claims and fallbacks are in [docs/demo/README.md](docs/demo/README.md).
+Signed in as an operator, **Settings → API keys** generates a sandbox key (name, role, expiry), shows the secret once with a curl example, and can revoke it. For a live walkthrough of the Payment Failure & Recovery Playground: `pnpm demo:up` (start, seed throwaway credentials, print curl examples), `pnpm demo:open` (headed browser already signed in), `pnpm demo:down` (add `-v` to delete demo data). Script, Q&A, honest claims and fallbacks are in [docs/demo/README.md](docs/demo/README.md).
 
 ## Tests, lint and format
 

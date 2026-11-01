@@ -248,7 +248,7 @@ Demo scenarios added later: `duplicate_request` now sends 10 concurrent requests
 - Retry, resubmit or re-dispatch of a payment, and any operator override of `unknown`.
 - Routing-rule creation or editing (rules are read-only through `GET /v1/routing/rules`; `POST /v1/routing/evaluate` moves no money), and routing across more than one live provider.
 - Webhook signature verification, a public webhook receiver, and a metrics exporter.
-- API-key creation or rotation (only `DELETE /v1/api-keys/current` exists), member or role management.
+- API-key rotation, custom roles or scopes, member management (keys can be generated, listed and revoked; see "Implemented API key generator" below).
 - High availability: one API process, one SQLite writer.
 
 ## Failure recovery checklist
@@ -262,3 +262,7 @@ Demo scenarios added later: `duplicate_request` now sends 10 concurrent requests
 | Before success transaction commits | Attempt plus provider reference/key | Confirm outcome and atomically post once |
 | Duplicate webhook/event | Unique inbox/event business key | Acknowledge or consume without another posting |
 | Database busy | Transaction rolled back or result unresolved | Bounded database retry; never blindly repeat provider call |
+
+### Implemented API key generator (sandbox)
+
+`POST /v1/api-keys` (operator) mints a workspace-scoped key with role `read` or `operator` and an expiry of 1 to 720 hours (default 24). The secret (`rvk_<8 hex>.<48 hex>`, from `crypto/rand`) is returned once with `Cache-Control: no-store`; only its SHA-256 hash is stored, as for seeded keys. A workspace holds at most 20 active keys (409 `api_key_limit`); invalid names, roles or expiries answer 422 and create nothing. `GET /v1/api-keys` (operator) returns metadata only (never the secret or hash); `DELETE /v1/api-keys/{id}` (operator) revokes idempotently, and another workspace's key answers 404. Revoked and expired keys are rejected by authentication. Writes keep the generic operator and CSRF rules. A log line records the key ID, prefix and role at creation and revocation, never the secret. See [ADR 0011](../decisions/0011-sandbox-api-key-generator.md); tests: `backend/tests/api_keys_test.go`, `frontend/tests/components/api-keys.test.tsx`, `e2e/ui/docs-settings.spec.ts`.

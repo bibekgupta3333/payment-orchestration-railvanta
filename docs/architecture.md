@@ -6,7 +6,7 @@ Railvanta demonstrates payment routing, durable execution, a double-entry ledger
 
 **Status: implemented (M1–M6), verified locally.** Results and their limits are in the [code changelog](../CODECHANGELOG.md) and the [verification matrix](verification-matrix.md). The system runs against one deterministic mock provider with sandbox payments only.
 
-**Not implemented:** Stripe and Plaid adapters, real fund movement, capture and refunds, routing-rule mutation, API-key or member management in the UI, webhook signature verification (mock events are unsigned), a metrics exporter, Kafka, Redis, Temporal, additional backend services, and high availability. Dashboard controls for these are absent or shown as unavailable. Decisions that diverged from the original design are recorded as ADRs; see the [ADR index](README.md#architecture-decisions).
+**Not implemented:** Stripe and Plaid adapters, real fund movement, capture and refunds, routing-rule mutation, member or role management and API-key rotation (sandbox key generation, listing and revocation exist in Settings, ADR 0011), webhook signature verification (mock events are unsigned), a metrics exporter, Kafka, Redis, Temporal, additional backend services, and high availability. Dashboard controls for these are absent or shown as unavailable. Decisions that diverged from the original design are recorded as ADRs; see the [ADR index](README.md#architecture-decisions).
 
 | Concern | Implemented choice | Reason / boundary |
 | --- | --- | --- |

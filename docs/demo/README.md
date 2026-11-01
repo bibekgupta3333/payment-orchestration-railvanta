@@ -19,6 +19,10 @@ How it works:
 - Containers run with `DEMO_MODE` off and the session cookie is HttpOnly, so it cannot be typed into DevTools. `scripts/demo-up.sh` generates random keys and tokens with `openssl` into `.demo/credentials.env` (git-ignored) and runs `railvanta-api seed-demo` inside the API container; `scripts/demo-open.mjs` installs the same two cookies Playwright uses in `e2e/support/browser.ts` (`__Host-railvanta_session`, `railvanta_csrf`).
 - Re-running `pnpm demo:up` reuses the stored file. If the volume is seeded but `.demo/credentials.env` is gone, seeding refuses; run `pnpm demo:down -v && pnpm demo:up`.
 
+## Showing the API key generator (30 seconds, optional)
+
+Settings, **API keys** section: name the key, pick a role (Operator or Read only) and an expiry, click **Generate API key**. The full key appears once with a ready curl example and a "hide the key" button; after hiding it (or reloading) it cannot be shown again. The table lists only the prefix, role, status and dates, and **Revoke** asks for a confirmation. Say: "Only a hash is stored, the secret is returned once, keys always expire, and a workspace is capped at 20 active keys." Try the curl example in a terminal to prove the key works, then revoke it and show the next call answer 401. Honest limits: an operator key can mint more keys until it is revoked or expires, there is no rotation or per-key scope beyond read/operator (ADR 0011), and the landing page cannot mint keys because a visitor needs an operator session first.
+
 ## Pre-demo checklist (15 minutes before)
 
 1. Quit heavy apps (IDE indexers, other Docker stacks, browsers with many tabs). Docker Desktop running.

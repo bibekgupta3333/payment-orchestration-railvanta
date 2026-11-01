@@ -12,7 +12,7 @@ All eleven routes below exist in `frontend/`. The wireframes remain design inten
 - **Payments:** filters and cursor live in the URL as designed. The detail page has Attempts, Events and Journal tabs. There is **no cancel control** and **no recovery panel**, although `POST /v1/payments/{id}/cancel` and `GET /v1/payments/{id}/recovery` exist in the API.
 - **Routing:** rules are inspect-only, as drawn; there is no rule editor.
 - **Simulator:** `duplicate_webhook` and `reordered_events` are listed but disabled.
-- **Settings:** read-only. API-key management, member roles and live activation appear as unavailable capabilities, not controls.
+- **Settings:** workspace, providers and appearance are read-only or local. Operators also get a sandbox API key generator (name, role, expiry; the secret is shown once; list and two-step revoke, ADR 0011). Member roles and live activation appear as unavailable capabilities, not controls.
 - **Not compared line by line:** the overview, providers, ledger, reconciliation, events and docs layouts and the shared loading, empty and error states. The Playwright specs and the 375/1440 px accessibility sweep (`e2e/ui/a11y-routes.spec.ts`) cover their behavior, not their resemblance to these drawings.
 
 ## Shared desktop and mobile shells
@@ -296,7 +296,7 @@ Mobile: collapsible section navigation above content. Copy actions announce succ
 +--------------------------------------------------------------------------+
 ```
 
-Mobile retains the same sections in one column. Theme preference is local UI state. Do not display fake key generation, membership management, or live activation controls.
+Mobile retains the same sections in one column. Theme preference is local UI state. Key generation is real (ADR 0011); do not display fake membership management or live activation controls.
 
 ## Shared loading, empty, and error states
 

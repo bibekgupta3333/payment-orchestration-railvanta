@@ -73,7 +73,7 @@ The browser calls a same-origin `/v1` reverse proxy routed to the Go API. Next.j
 | `/dashboard/reconciliation` | `GET /v1/reconciliation/runs`, `/discrepancies`; `POST` runs and `/resolve` | Runs, discrepancies, resolution history (operators can run and resolve) |
 | `/dashboard/events`, `/dashboard/events/[id]` | `GET /v1/events`, `/v1/events/{id}` | Correlated inbox and outbox events and processing results |
 | `/docs` | None at runtime (static page; examples are checked against the OpenAPI document by `pnpm check:docs`) | Supported API examples and retry semantics |
-| `/dashboard/settings` | `GET /v1/settings`, local theme | Read-only workspace, role, provider status and unavailable capabilities |
+| `/dashboard/settings` | `GET /v1/settings`, local theme, `GET`/`POST /v1/api-keys`, `DELETE /v1/api-keys/{id}` | Workspace, role, provider status, the sandbox API key generator (operators) and unavailable capabilities |
 
 API endpoints **not used by the UI**: `POST /v1/payments/{id}/cancel`, `GET /v1/payments/{id}/recovery`, `POST /v1/sandbox/webhooks/mock`, `GET /v1/workspaces/{id}`, `GET /v1/payment-methods/{id}` and `DELETE /v1/api-keys/current`. The UI has no cancel control, no recovery panel and no webhook sender.
 
