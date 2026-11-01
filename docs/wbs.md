@@ -94,7 +94,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Implemented; CI run, bundle check, dark-theme contrast and 375/1440 gate items pending |
 | 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Go and Vitest parts (5.1.1–5.1.7) done; Playwright and CI (5.1.8–5.1.11) pending |
 | 5.2 | Container delivery and recovery | 5.1 | M5 | Image/Compose source added; runtime and recovery gates pending |
-| 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | Not started |
+| 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | In progress |
 | 5.4 | Release documentation | 5.2; 5.3 if used | M5 | Not started |
 
 ## 1. Foundation and contracts (M1)
@@ -669,23 +669,25 @@ Image definitions, Compose wiring and the volume mount are added; `pnpm compose:
 **Depends on:** 5.2 · **Deliverable:** Reviewed manifests matching [kubernetes.md](operations/kubernetes.md), validated in a disposable local cluster.
 
 **Tasks**
-- [ ] 5.3.1 Confirm a free, local disposable cluster (kind, k3d or minikube); no paid cloud resources without explicit authorization
-- [ ] 5.3.2 Write manifests under `infrastructure/k8s/`: Namespace, ConfigMap, Secret placeholders, ServiceAccounts with token automount disabled
-- [ ] 5.3.3 Write API StatefulSet with `replicas: 1`, headless Service, `volumeClaimTemplates` mounting `/var/lib/railvanta`, and no HPA
-- [ ] 5.3.4 Write web Deployment and ClusterIP Services (`railvanta-web :3000`, `railvanta-api :8080`)
-- [ ] 5.3.5 Write Ingress: `/v1` Prefix → API, `/` → web, no path stripping, TLS Secret; install a compatible ingress controller in the test cluster
+- [x] 5.3.1 Confirm a free, local disposable cluster (kind, k3d or minikube); no paid cloud resources without explicit authorization
+- [x] 5.3.2 Write manifests under `infrastructure/k8s/`: Namespace, ConfigMap, Secret placeholders, ServiceAccounts with token automount disabled
+- [x] 5.3.3 Write API StatefulSet with `replicas: 1`, headless Service, `volumeClaimTemplates` mounting `/var/lib/railvanta`, and no HPA
+- [x] 5.3.4 Write web Deployment and ClusterIP Services (`railvanta-web :3000`, `railvanta-api :8080`)
+- [x] 5.3.5 Write Ingress: `/v1` Prefix → API, `/` → web, no path stripping, TLS Secret; install a compatible ingress controller in the test cluster
 - [ ] 5.3.6 Add NetworkPolicies (default deny plus listed flows) and verify with an enforcing CNI
-- [ ] 5.3.7 Set pod security context: `runAsNonRoot`, dropped capabilities, `seccompProfile: RuntimeDefault`, read-only root filesystem with explicit writable mounts
-- [ ] 5.3.8 Configure startup/liveness/readiness probes and `terminationGracePeriodSeconds` matching the API's drain policy
-- [ ] 5.3.9 Choose PVC access mode (`ReadWriteOncePod` where supported) and reclaim policy `Retain`
+- [x] 5.3.7 Set pod security context: `runAsNonRoot`, dropped capabilities, `seccompProfile: RuntimeDefault`, read-only root filesystem with explicit writable mounts
+- [x] 5.3.8 Configure startup/liveness/readiness probes and `terminationGracePeriodSeconds` matching the API's drain policy
+- [x] 5.3.9 Choose PVC access mode (`ReadWriteOncePod` where supported) and reclaim policy `Retain`
 - [ ] 5.3.10 Validate manifests in CI (`kubectl apply --dry-run=server` or kubeconform) with pinned image digests
 
 **Acceptance gate**
-- [ ] Manifests apply cleanly to the disposable cluster and the sandbox works through the Ingress over TLS
-- [ ] Deleting the API pod results in a replacement that opens the volume only after the old pod exited, with no duplicate postings
+- [x] Manifests apply cleanly to the disposable cluster and the sandbox works through the Ingress over TLS
+- [x] Deleting the API pod results in a replacement that opens the volume only after the old pod exited, with no duplicate postings
 - [ ] Backup/restore drill passes in the cluster on a separate volume
-- [ ] No second API replica, worker Deployment, migration Job or backup CronJob writes the live database
-- [ ] Cluster is torn down after validation; no billable resources remain
+- [x] No second API replica, worker Deployment, migration Job or backup CronJob writes the live database
+- [x] Cluster is torn down after validation; no billable resources remain
+
+**Open (2026-10-31):** 5.3.6 stays unticked because k3s enforced ingress policies but egress policies were not observed to be enforced (a default-deny pod still reached a kube-system Service and a public IP). 5.3.10 stays unticked because CI validation exists (`.github/workflows/k8s.yml`, not yet run on GitHub) but the images use local tags, not real digests; `REQUIRE_DIGESTS=1 scripts/validate-k8s.sh` is the gate once digests exist. The in-cluster backup/restore drill is pending the container backup command (5.2). See [CODECHANGELOG.md](../CODECHANGELOG.md).
 
 **E2E test** — run `pnpm test:e2e` with `E2E_BASE_URL` set to the disposable cluster's ingress (optional)
 - [ ] Smoke and payment specs pass through the ingress over TLS, with `/v1` routed to the API and the path preserved

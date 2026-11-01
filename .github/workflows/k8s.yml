@@ -1,0 +1,43 @@
+name: Kubernetes manifests
+
+on:
+  push:
+    paths:
+      - infrastructure/k8s/**
+      - scripts/validate-k8s.sh
+      - .github/workflows/k8s.yml
+  pull_request:
+    paths:
+      - infrastructure/k8s/**
+      - scripts/validate-k8s.sh
+      - .github/workflows/k8s.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: k8s-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KUBECONFORM_VERSION: v0.7.0
+      K8S_VERSION: "1.35.0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache: false
+      # Built from the pinned module version; go.sum-style verification comes
+      # from the Go checksum database.
+      - name: Install kubeconform
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install "github.com/yannh/kubeconform/cmd/kubeconform@${KUBECONFORM_VERSION}"
+          echo "KUBECONFORM=$RUNNER_TEMP/bin/kubeconform" >> "$GITHUB_ENV"
+      - name: Validate manifests (strict schema and single-writer policy)
+        run: scripts/validate-k8s.sh
