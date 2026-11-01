@@ -330,6 +330,12 @@ type SimulationRun struct {
 	Status      string  `gorm:"column:status"`
 	CreatedAt   int64   `gorm:"column:created_at;autoCreateTime:milli"`
 	CompletedAt *int64  `gorm:"column:completed_at"`
+	// Added by migration 0003.
+	InjectedFault  *string `gorm:"column:injected_fault"`
+	InvariantsJSON *string `gorm:"column:invariants_json"`
+	Fingerprint    *string `gorm:"column:fingerprint"`
+	FailureReason  *string `gorm:"column:failure_reason"`
+	UpdatedAt      *int64  `gorm:"column:updated_at"`
 }
 
 func (SimulationRun) TableName() string { return "simulation_runs" }

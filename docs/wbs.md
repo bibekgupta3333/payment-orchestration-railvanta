@@ -87,7 +87,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 2.3 | Atomic ledger posting | 2.2 | M2 | Implemented; all gates verified |
 | 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Implemented; verification recorded in CODECHANGELOG |
 | 3.1 | Payment-facing screens | 1.4, 2.1 | M3 | Tasks done; terminal-state, slow-API and CI gates pending (2026-10-31) |
-| 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Not started |
+| 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Tasks and E2E done (2026-10-31); 375px tab check and CI gates pending |
 | 4.1 | Ledger explorer | 2.3, 3.1 | M4 | Not started |
 | 4.2 | Reconciliation | 2.4, 4.1 | M4 | Not started |
 | 4.3 | Events and audit | 2.4, 1.3 | M4 | Not started |
@@ -448,36 +448,36 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 2.2, 3.1 · **Deliverable:** Routing inspection and evaluation, provider diagnostics, and a backend-driven simulator with persisted runs.
 
 **Tasks**
-- [ ] 3.2.1 Implement `GET /v1/routing/rules` and a non-executing `POST /v1/routing/evaluate` in `backend/internal/routing` and `backend/internal/transport/http`; evaluation returns the matched rule, the capability checks and a reason, and writes nothing.
-- [ ] 3.2.2 Build the routing page at `frontend/app/dashboard/routing/page.tsx`: a read-only rule table (priority, rail, currency, amount range, provider, enabled) and an evaluator form showing the request → matching rule → capability check → result path.
-- [ ] 3.2.3 Show rule create, edit and reorder controls as disabled, with the reason "requires rule mutation contract".
-- [ ] 3.2.4 Implement `GET /v1/providers/health`, computed from attempt `submitted_at`/`completed_at` (success rate, p95, error counts per window); return "no observations" instead of zeros when there is no data.
-- [ ] 3.2.5 Build the providers list and detail pages at `frontend/app/dashboard/providers/page.tsx` and `[id]/page.tsx`: capability cards, Mock marked "Simulated", Stripe and Plaid marked "Not configured", and a health badge only when there is evidence.
-- [ ] 3.2.6 Add the `simulation_runs` migration (scenario, payment_id, injected fault, invariant results, status, timestamps) and the repository in `backend/internal/storage`.
-- [ ] 3.2.7 Implement `POST /v1/sandbox/simulations` and `GET /v1/sandbox/simulations/{id}`. Only scenarios the backend actually implements are accepted (success, decline, timeout before execution, timeout after success, duplicate request, duplicate webhook, reordered events, outage, unknown-outcome recovery, duplicate ledger post); anything else returns 422.
-- [ ] 3.2.8 Have the backend check each run's invariants: one payment per key, one balanced journal, no cross-provider attempt after `unknown`, and no regression of a terminal state. Store pass/fail with evidence in `simulation_runs`.
-- [ ] 3.2.9 Build the simulator page at `frontend/app/dashboard/simulator/page.tsx`: configuration form, execution timeline, and inspector tabs (Request, Response, Routing, Attempts, Events, Journal, Invariants) under a persistent "SIMULATED / SANDBOX ONLY" badge.
-- [ ] 3.2.10 Drive the timeline by polling the backend with a manual refresh, announcing run acceptance once through `aria-live`; it shows no made-up progress animation, and invariants stay "pending" until the backend returns evidence.
-- [ ] 3.2.11 Fetch the scenario list from the backend so that unimplemented scenarios render disabled with the missing dependency named.
-- [ ] 3.2.12 Add Go integration tests (file-backed SQLite) for evaluate-has-no-side-effects and for each simulation scenario's invariant results.
+- [x] 3.2.1 Implement `GET /v1/routing/rules` and a non-executing `POST /v1/routing/evaluate` in `backend/internal/routing` and `backend/internal/transport/http`; evaluation returns the matched rule, the capability checks and a reason, and writes nothing.
+- [x] 3.2.2 Build the routing page at `frontend/app/dashboard/routing/page.tsx`: a read-only rule table (priority, rail, currency, amount range, provider, enabled) and an evaluator form showing the request → matching rule → capability check → result path.
+- [x] 3.2.3 Show rule create, edit and reorder controls as disabled, with the reason "requires rule mutation contract".
+- [x] 3.2.4 Implement `GET /v1/providers/health`, computed from attempt `submitted_at`/`completed_at` (success rate, p95, error counts per window); return "no observations" instead of zeros when there is no data.
+- [x] 3.2.5 Build the providers list and detail pages at `frontend/app/dashboard/providers/page.tsx` and `[id]/page.tsx`: capability cards, Mock marked "Simulated", Stripe and Plaid marked "Not configured", and a health badge only when there is evidence.
+- [x] 3.2.6 Add the `simulation_runs` migration (scenario, payment_id, injected fault, invariant results, status, timestamps) and the repository in `backend/internal/storage`.
+- [x] 3.2.7 Implement `POST /v1/sandbox/simulations` and `GET /v1/sandbox/simulations/{id}`. Only scenarios the backend actually implements are accepted (success, decline, timeout before execution, timeout after success, duplicate request, duplicate webhook, reordered events, outage, unknown-outcome recovery, duplicate ledger post); anything else returns 422.
+- [x] 3.2.8 Have the backend check each run's invariants: one payment per key, one balanced journal, no cross-provider attempt after `unknown`, and no regression of a terminal state. Store pass/fail with evidence in `simulation_runs`.
+- [x] 3.2.9 Build the simulator page at `frontend/app/dashboard/simulator/page.tsx`: configuration form, execution timeline, and inspector tabs (Request, Response, Routing, Attempts, Events, Journal, Invariants) under a persistent "SIMULATED / SANDBOX ONLY" badge.
+- [x] 3.2.10 Drive the timeline by polling the backend with a manual refresh, announcing run acceptance once through `aria-live`; it shows no made-up progress animation, and invariants stay "pending" until the backend returns evidence.
+- [x] 3.2.11 Fetch the scenario list from the backend so that unimplemented scenarios render disabled with the missing dependency named.
+- [x] 3.2.12 Add Go integration tests (file-backed SQLite) for evaluate-has-no-side-effects and for each simulation scenario's invariant results.
 
 **Acceptance gate**
-- [ ] Calling `POST /v1/routing/evaluate` creates no payment, attempt, outbox or ledger rows, as shown by row counts before and after.
-- [ ] The UI shows an "unsafe failover blocked" explanation when a prior attempt is unresolved.
-- [ ] Re-running a scenario with the same seed gives identical states and invariant results.
-- [ ] The "timeout after success" run ends with one payment, one provider charge, one balanced posted journal, and no attempt with a second provider.
-- [ ] Every simulator, provider and metric surface carries a visible "Simulated" or "Not configured" label, and no green health badge appears without observations.
-- [ ] Disabled controls explain what they depend on; no enabled control fakes a successful operation.
+- [x] Calling `POST /v1/routing/evaluate` creates no payment, attempt, outbox or ledger rows, as shown by row counts before and after.
+- [x] The UI shows an "unsafe failover blocked" explanation when a prior attempt is unresolved.
+- [x] Re-running a scenario with the same seed gives identical states and invariant results.
+- [x] The "timeout after success" run ends with one payment, one provider charge, one balanced posted journal, and no attempt with a second provider.
+- [x] Every simulator, provider and metric surface carries a visible "Simulated" or "Not configured" label, and no green health badge appears without observations.
+- [x] Disabled controls explain what they depend on; no enabled control fakes a successful operation.
 - [ ] The timeline and inspector tabs work at 375px (labelled scroll region) and 1440px, and are keyboard-operable; screen readers announce run acceptance once, not on every poll.
 - [ ] The Go integration tests and Playwright flows pass in CI.
 
 **E2E test** — `e2e/ui/simulator.spec.ts`, `e2e/ui/routing.spec.ts`
-- [ ] Simulator "timeout after success": the timeline shows `unknown`, recovery resolves it to `succeeded`, the Invariants tab shows every check passed, and the Journal tab shows exactly one journal
-- [ ] Each enabled scenario completes with the backend-reported result; scenarios that aren't implemented are disabled with a reason
-- [ ] A simulator run persists: reloading the page shows the same run from `simulation_runs`
-- [ ] Routing evaluation shows the matched rule and reason and creates no payment
-- [ ] Provider cards distinguish "Simulated", "Not configured" and "No observations"
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] Simulator "timeout after success": the timeline shows `unknown`, recovery resolves it to `succeeded`, the Invariants tab shows every check passed, and the Journal tab shows exactly one journal
+- [x] Each enabled scenario completes with the backend-reported result; scenarios that aren't implemented are disabled with a reason
+- [x] A simulator run persists: reloading the page shows the same run from `simulation_runs`
+- [x] Routing evaluation shows the matched rule and reason and creates no payment
+- [x] Provider cards distinguish "Simulated", "Not configured" and "No observations"
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ## 4. Financial operations (M4)
 

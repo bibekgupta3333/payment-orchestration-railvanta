@@ -241,6 +241,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/providers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read providers and their capabilities
+     * @description Stored providers plus every known provider code without a row. Mock is simulated; a provider with no adapter in this build is not_configured.
+     */
+    get: operations["listProviders"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox/scenarios": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List simulator scenarios
+     * @description Every scenario the simulator knows. Scenarios the backend cannot run yet are implemented false and name the missing dependency.
+     */
+    get: operations["listScenarios"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers/health": {
     parameters: {
       query?: never;
@@ -250,9 +290,29 @@ export interface paths {
     };
     /**
      * Read provider observations
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Provider health computed from attempt submitted_at and completed_at over 1h, 24h and 7d windows. A provider with no attempts reports status no_observations and null rates, never zeros.
      */
     get: operations["getProviderHealth"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider ID or code */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** Read one provider with health and rules */
+    get: operations["getProvider"];
     put?: never;
     post?: never;
     delete?: never;
@@ -270,7 +330,7 @@ export interface paths {
     };
     /**
      * Read routing rules
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Read-only. Every routing rule of the workspace in dispatch order (priority, then ID). Rule mutation has no contract yet.
      */
     get: operations["getRoutingRules"];
     put?: never;
@@ -292,7 +352,7 @@ export interface paths {
     put?: never;
     /**
      * Evaluate without moving money
-     * @description Read-only. Returns the provider, rule and reason the dispatcher would choose for a payment with this method, amount and currency, using the same router as real dispatch (enabled provider with a token for the method, an enabled rule matching rail, currency and inclusive amount bounds, lowest priority first, and an executing adapter). Writes nothing and moves no money; requires operator role. 404 for a method outside the workspace; 422 no_eligible_provider when nothing matches.
+     * @description Read-only. Returns the provider, matched rule, capability checks and reason the dispatcher would choose for a payment with this method, amount and currency, using the same router as real dispatch. With payment_id naming a payment that has an unresolved attempt, failover_blocked is true and the original provider is returned, because such a payment is never routed elsewhere. Writes nothing and moves no money; requires operator role. 404 for a method or payment outside the workspace; 422 no_eligible_provider lists each provider's reason in field_errors.
      */
     post: operations["evaluateRouting"];
     delete?: never;
@@ -392,7 +452,7 @@ export interface paths {
     put?: never;
     /**
      * Run an implemented fault scenario
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Runs an implemented scenario through the real payment pipeline against the deterministic mock provider (SIMULATED / SANDBOX ONLY). The seed fixes the amount; the same seed gives identical states and invariant results. 422 unknown_scenario or scenario_not_implemented (field_errors names the missing dependency).
      */
     post: operations["createSimulation"];
     delete?: never;
@@ -412,7 +472,7 @@ export interface paths {
     };
     /**
      * Read a persisted simulation
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Persisted run with the evidence read from the real pipeline. Invariants stay pending until the backend stored evidence for them.
      */
     get: operations["getSimulation"];
     put?: never;
@@ -621,21 +681,69 @@ export interface components {
       amount_minor: components["schemas"]["AggregateAmount"];
       payment_count: number;
     };
+    ProviderHealthWindow: {
+      /** @enum {string} */
+      window: "1h" | "24h" | "7d";
+      observations: number;
+      succeeded: number;
+      failed: number;
+      unknown: number;
+      /** @description One-decimal percentage; null when there are no observations. */
+      success_rate_percent: string | null;
+      /** @description null when no attempt has both submitted_at and completed_at. */
+      p95_ms: number | null;
+      latency_samples: number;
+      error_counts: {
+        [key: string]: number;
+      };
+    };
     ProviderHealth: {
-      /** Format: uuid */
       id: string;
+      /** @enum {string} */
+      code: "mock" | "stripe" | "plaid";
       configured: boolean;
-      data_source: string;
+      data_source: components["schemas"]["DataSource"];
+      /** @description Observations in the 7d window. */
       observation_count: number;
+      /** @enum {string} */
+      status:
+        | "no_observations"
+        | "insufficient_data"
+        | "healthy"
+        | "degraded"
+        | "unhealthy";
+      windows: components["schemas"]["ProviderHealthWindow"][];
+    };
+    Provider: {
+      id: string;
+      /** @enum {string} */
+      code: "mock" | "stripe" | "plaid";
+      display_name: string;
+      /** @enum {string} */
+      mode: "simulated" | "configured" | "not_configured";
+      enabled: boolean;
+      configured: boolean;
+      capabilities: {
+        idempotent_replay: boolean;
+        lookup_by_idempotency_key: boolean;
+        rails: string[];
+      } | null;
+      rule_count: number;
+    };
+    ProviderDetail: {
+      provider: components["schemas"]["Provider"];
+      health: components["schemas"]["ProviderHealth"];
+      rules: components["schemas"]["RoutingRule"][];
     };
     RoutingRule: {
-      /** Format: uuid */
       id: string;
-      /** Format: uuid */
       provider_id: string;
-      /** @enum {string} */
-      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      provider_code: string;
+      rail: string;
+      currency: string;
       priority: number;
+      min_amount_minor: string;
+      max_amount_minor: string | null;
       enabled: boolean;
     };
     RoutingEvaluation: {
@@ -648,16 +756,31 @@ export interface components {
       amount_minor: string;
       /** @enum {string} */
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      /** @description Optional existing payment; an unresolved prior attempt blocks failover. */
+      payment_id?: string;
+    };
+    RoutingCheck: {
+      id: string;
+      label: string;
+      passed: boolean;
+      detail: string;
     };
     RoutingDecision: {
-      /** Format: uuid */
       provider_id: string;
       /** @enum {string} */
       provider_code: "mock" | "stripe" | "plaid";
-      /** Format: uuid */
-      rule_id: string;
-      priority: number;
+      rule_id: string | null;
+      priority: number | null;
       reason: string;
+      rule: components["schemas"]["RoutingRule"] | null;
+      checks: components["schemas"]["RoutingCheck"][];
+      candidates: {
+        provider_id: string;
+        provider_code: string;
+        rule_id: string;
+        priority: number;
+      }[];
+      failover_blocked: boolean;
     };
     LedgerJournal: {
       /** Format: uuid */
@@ -732,14 +855,94 @@ export interface components {
         | "outage"
         | "unknown_recovery"
         | "duplicate_posting";
-      payment: components["schemas"]["CreatePayment"];
+      /** @description Default "default". Fixes the amount, so the same seed reproduces the same states. */
+      seed?: string;
+      /** @description Overrides the seed-derived amount. */
+      amount_minor?: string;
+      /** @description Defaults to USD. */
+      currency?: string;
+    };
+    ScenarioCatalog: {
+      label: string;
+      items: {
+        id: string;
+        label: string;
+        description: string;
+        implemented: boolean;
+        missing_dependency: string | null;
+        injected_fault: string;
+      }[];
+    };
+    SimulationInvariant: {
+      id: string;
+      title: string;
+      /** @enum {string} */
+      status: "pending" | "pass" | "fail";
+      evidence: string;
     };
     Simulation: {
-      /** Format: uuid */
       id: string;
-      status: string;
-      /** Format: uuid */
-      payment_id: string;
+      /** @description Always SIMULATED / SANDBOX ONLY. */
+      label: string;
+      scenario: string;
+      seed: string;
+      /** @enum {string} */
+      status: "running" | "completed" | "failed";
+      payment_id: string | null;
+      injected_fault: string;
+      created_at: string;
+      completed_at: string | null;
+      failure_reason: string | null;
+      /** @description Hash of the end state; equal for runs with the same scenario and seed. */
+      fingerprint: string | null;
+      request: {
+        payment_method_id: string;
+        amount_minor: string;
+        currency: string;
+        idempotency_key: string;
+        merchant_reference: string;
+      };
+      response: {
+        status_code: number;
+        body: {
+          [key: string]: unknown;
+        };
+      } | null;
+      payment: components["schemas"]["Payment"] | null;
+      routing: {
+        failover_blocked: boolean;
+        failover_reason: string | null;
+        decisions: {
+          attempt_number: number;
+          provider_id: string;
+          rule_id: string | null;
+          reason: string;
+        }[];
+      };
+      attempts: components["schemas"]["Attempt"][];
+      transitions: {
+        from_status: string | null;
+        to_status: string;
+        reason: string;
+        actor_reference: string;
+        created_at: string;
+      }[];
+      events: {
+        id: string;
+        event_type: string;
+        status: string;
+        attempts: number;
+        created_at: string;
+        delivered_at: string | null;
+      }[];
+      journals: components["schemas"]["LedgerJournal"][];
+      invariants: components["schemas"]["SimulationInvariant"][];
+      timeline: {
+        at: string;
+        source: string;
+        title: string;
+        detail: string;
+      }[];
     };
     /** @enum {string} */
     DataSource: "observed" | "simulated" | "seeded";
@@ -1281,6 +1484,65 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  listProviders: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            items: components["schemas"]["Provider"][];
+            next_cursor: string | null;
+          };
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  listScenarios: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ScenarioCatalog"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
   getProviderHealth: {
     parameters: {
       query?: {
@@ -1314,7 +1576,38 @@ export interface operations {
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getProvider: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        /** @description Provider ID or code */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderDetail"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1351,7 +1644,6 @@ export interface operations {
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1559,8 +1851,8 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Successful response */
-      200: {
+      /** @description Run accepted; poll GET /v1/sandbox/simulations/{id} */
+      202: {
         headers: {
           "X-Request-ID"?: string;
           [name: string]: unknown;
@@ -1577,7 +1869,6 @@ export interface operations {
       415: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1610,7 +1901,6 @@ export interface operations {
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

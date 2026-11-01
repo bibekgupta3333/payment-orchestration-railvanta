@@ -6,8 +6,9 @@ info:
     (WBS 2.1), workspace-scoped payment, attempt, history and list reads, observed dashboard metrics (WBS
     3.1), read-only routing evaluation (WBS 2.2), posted ledger journals (WBS 2.3), and cancellation and
     recovery reads (WBS 2.4). Accepted payments are executed asynchronously by the in-process outbox dispatcher
-    against the deterministic mock provider. Other operational routes remain explicitly unavailable (501)
-    until later WBS packages. Decimal-string money preserves exact int64 minor units.
+    against the deterministic mock provider. Routing rules, provider capabilities and health, and a
+    backend-driven sandbox simulator are read or run through WBS 3.2. Other operational routes remain explicitly
+    unavailable (501) until later WBS packages. Decimal-string money preserves exact int64 minor units.
   license:
     name: Private project
 servers:
@@ -793,6 +794,88 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/providers:
+    get:
+      operationId: listProviders
+      summary: Read providers and their capabilities
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Provider'
+                  next_cursor:
+                    type: string
+                    nullable: true
+                required:
+                - items
+                - next_cursor
+        '401': *id001
+        '403': *id001
+        '429': *id001
+      description: Stored providers plus every known provider code without a row. Mock is simulated; a provider with no adapter in this build is not_configured.
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/sandbox/scenarios:
+    get:
+      operationId: listScenarios
+      summary: List simulator scenarios
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioCatalog'
+        '401': *id001
+        '403': *id001
+        '429': *id001
+      description: Every scenario the simulator knows. Scenarios the backend cannot run yet are implemented false and name the missing dependency.
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/providers/health:
     get:
       operationId: getProviderHealth
@@ -823,15 +906,13 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
+      description: Provider health computed from attempt submitted_at and completed_at over 1h, 24h and 7d windows. A provider with no attempts reports status no_observations and null rates, never zeros.
       parameters:
       - name: cursor
         in: query
@@ -844,6 +925,49 @@ paths:
           type: integer
           minimum: 1
           maximum: 100
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/providers/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      description: Provider ID or code
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,64}$
+    get:
+      operationId: getProvider
+      summary: Read one provider with health and rules
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderDetail'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+      parameters:
       - name: X-Request-ID
         in: header
         required: false
@@ -886,15 +1010,13 @@ paths:
                 required:
                 - items
                 - next_cursor
-        '501': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
+      description: Read-only. Every routing rule of the workspace in dispatch order (priority, then ID). Rule mutation has no contract yet.
       parameters:
       - name: cursor
         in: query
@@ -947,11 +1069,7 @@ paths:
         '415': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Read-only. Returns the provider, rule and reason the dispatcher would choose for a
-        payment with this method, amount and currency, using the same router as real dispatch (enabled
-        provider with a token for the method, an enabled rule matching rail, currency and inclusive amount
-        bounds, lowest priority first, and an executing adapter). Writes nothing and moves no money; requires
-        operator role. 404 for a method outside the workspace; 422 no_eligible_provider when nothing matches.
+      description: Read-only. Returns the provider, matched rule, capability checks and reason the dispatcher would choose for a payment with this method, amount and currency, using the same router as real dispatch. With payment_id naming a payment that has an unresolved attempt, failover_blocked is true and the original provider is returned, because such a payment is never routed elsewhere. Writes nothing and moves no money; requires operator role. 404 for a method or payment outside the workspace; 422 no_eligible_provider lists each provider's reason in field_errors.
       requestBody:
         required: true
         content:
@@ -1241,8 +1359,8 @@ paths:
       - Sandbox
       responses:
         default: *id001
-        '200':
-          description: Successful response
+        '202':
+          description: Run accepted; poll GET /v1/sandbox/simulations/{id}
           headers:
             X-Request-ID:
               schema:
@@ -1251,7 +1369,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Simulation'
-        '501': *id001
         '401': *id001
         '403': *id001
         '404': *id001
@@ -1261,14 +1378,13 @@ paths:
         '415': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/SimulationRequest'
+      description: Runs an implemented scenario through the real payment pipeline against the deterministic mock provider (SIMULATED / SANDBOX ONLY). The seed fixes the amount; the same seed gives identical states and invariant results. 422 unknown_scenario or scenario_not_implemented (field_errors names the missing dependency).
       parameters:
       - name: X-Request-ID
         in: header
@@ -1305,15 +1421,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Simulation'
-        '501': *id001
         '401': *id001
         '403': *id001
         '404': *id001
         '429': *id001
         '422':
           $ref: '#/components/responses/Error'
-      description: Contract for a later work package. The M1 server returns 501 not_implemented after
-        authentication and any implemented validation.
+      description: Persisted run with the evidence read from the real pipeline. Invariants stay pending until the backend stored evidence for them.
       parameters:
       - name: X-Request-ID
         in: header
@@ -1756,39 +1870,197 @@ components:
       - currency
       - amount_minor
       - payment_count
+    ProviderHealthWindow:
+      type: object
+      additionalProperties: false
+      properties:
+        window:
+          type: string
+          enum:
+          - 1h
+          - 24h
+          - 7d
+        observations:
+          type: integer
+          minimum: 0
+        succeeded:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        success_rate_percent:
+          type: string
+          nullable: true
+          description: One-decimal percentage; null when there are no observations.
+        p95_ms:
+          type: integer
+          nullable: true
+          description: null when no attempt has both submitted_at and completed_at.
+        latency_samples:
+          type: integer
+          minimum: 0
+        error_counts:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+      - window
+      - observations
+      - succeeded
+      - failed
+      - unknown
+      - success_rate_percent
+      - p95_ms
+      - latency_samples
+      - error_counts
     ProviderHealth:
       type: object
       additionalProperties: false
       properties:
-        id: *id002
+        id:
+          type: string
+        code:
+          type: string
+          enum:
+          - mock
+          - stripe
+          - plaid
         configured:
           type: boolean
-        data_source: *id005
+        data_source:
+          $ref: '#/components/schemas/DataSource'
         observation_count:
+          type: integer
+          minimum: 0
+          description: Observations in the 7d window.
+        status:
+          type: string
+          enum:
+          - no_observations
+          - insufficient_data
+          - healthy
+          - degraded
+          - unhealthy
+        windows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderHealthWindow'
+      required:
+      - id
+      - code
+      - configured
+      - data_source
+      - observation_count
+      - status
+      - windows
+    Provider:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+          enum:
+          - mock
+          - stripe
+          - plaid
+        display_name:
+          type: string
+        mode:
+          type: string
+          enum:
+          - simulated
+          - configured
+          - not_configured
+        enabled:
+          type: boolean
+        configured:
+          type: boolean
+        capabilities:
+          type: object
+          nullable: true
+          additionalProperties: false
+          properties:
+            idempotent_replay:
+              type: boolean
+            lookup_by_idempotency_key:
+              type: boolean
+            rails:
+              type: array
+              items:
+                type: string
+          required:
+          - idempotent_replay
+          - lookup_by_idempotency_key
+          - rails
+        rule_count:
           type: integer
           minimum: 0
       required:
       - id
+      - code
+      - display_name
+      - mode
+      - enabled
       - configured
-      - data_source
-      - observation_count
+      - capabilities
+      - rule_count
+    ProviderDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          $ref: '#/components/schemas/Provider'
+        health:
+          $ref: '#/components/schemas/ProviderHealth'
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutingRule'
+      required:
+      - provider
+      - health
+      - rules
     RoutingRule:
       type: object
       additionalProperties: false
       properties:
-        id: *id002
-        provider_id: *id002
-        currency: *id008
+        id:
+          type: string
+        provider_id:
+          type: string
+        provider_code:
+          type: string
+        rail:
+          type: string
+        currency:
+          type: string
         priority:
           type: integer
           minimum: 0
+        min_amount_minor:
+          type: string
+          pattern: ^(0|[1-9][0-9]*)$
+        max_amount_minor:
+          type: string
+          nullable: true
+          pattern: ^(0|[1-9][0-9]*)$
         enabled:
           type: boolean
       required:
       - id
       - provider_id
+      - provider_code
+      - rail
       - currency
       - priority
+      - min_amount_minor
+      - max_amount_minor
       - enabled
     RoutingEvaluation:
       type: object
@@ -1797,32 +2069,91 @@ components:
         payment_method_id: *id002
         amount_minor: *id007
         currency: *id008
+        payment_id:
+          type: string
+          description: Optional existing payment; an unresolved prior attempt blocks failover.
       required:
       - payment_method_id
       - amount_minor
       - currency
+    RoutingCheck:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        passed:
+          type: boolean
+        detail:
+          type: string
+      required:
+      - id
+      - label
+      - passed
+      - detail
     RoutingDecision:
       type: object
       additionalProperties: false
       properties:
-        provider_id: *id002
+        provider_id:
+          type: string
         provider_code:
           type: string
           enum:
           - mock
           - stripe
           - plaid
-        rule_id: *id002
+        rule_id:
+          type: string
+          nullable: true
         priority:
           type: integer
           minimum: 0
-        reason: *id005
+          nullable: true
+        reason:
+          type: string
+        rule:
+          type: object
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/RoutingRule'
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoutingCheck'
+        candidates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              provider_id:
+                type: string
+              provider_code:
+                type: string
+              rule_id:
+                type: string
+              priority:
+                type: integer
+            required:
+            - provider_id
+            - provider_code
+            - rule_id
+            - priority
+        failover_blocked:
+          type: boolean
       required:
       - provider_id
       - provider_code
       - rule_id
       - priority
       - reason
+      - rule
+      - checks
+      - candidates
+      - failover_blocked
     LedgerJournal:
       type: object
       additionalProperties: false
@@ -1955,22 +2286,284 @@ components:
           - outage
           - unknown_recovery
           - duplicate_posting
-        payment:
-          $ref: '#/components/schemas/CreatePayment'
+        seed:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+          description: Default "default". Fixes the amount, so the same seed reproduces the same states.
+        amount_minor:
+          type: string
+          pattern: ^[1-9][0-9]{0,18}$
+          description: Overrides the seed-derived amount.
+        currency:
+          type: string
+          description: Defaults to USD.
       required:
       - scenario
-      - payment
+    ScenarioCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              description:
+                type: string
+              implemented:
+                type: boolean
+              missing_dependency:
+                type: string
+                nullable: true
+              injected_fault:
+                type: string
+            required:
+            - id
+            - label
+            - description
+            - implemented
+            - missing_dependency
+            - injected_fault
+      required:
+      - label
+      - items
+    SimulationInvariant:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - pass
+          - fail
+        evidence:
+          type: string
+      required:
+      - id
+      - title
+      - status
+      - evidence
     Simulation:
       type: object
       additionalProperties: false
       properties:
-        id: *id002
-        status: *id005
-        payment_id: *id002
+        id:
+          type: string
+        label:
+          type: string
+          description: Always SIMULATED / SANDBOX ONLY.
+        scenario:
+          type: string
+        seed:
+          type: string
+        status:
+          type: string
+          enum:
+          - running
+          - completed
+          - failed
+        payment_id:
+          type: string
+          nullable: true
+        injected_fault:
+          type: string
+        created_at:
+          type: string
+        completed_at:
+          type: string
+          nullable: true
+        failure_reason:
+          type: string
+          nullable: true
+        fingerprint:
+          type: string
+          nullable: true
+          description: Hash of the end state; equal for runs with the same scenario and seed.
+        request:
+          type: object
+          additionalProperties: false
+          properties:
+            payment_method_id:
+              type: string
+            amount_minor:
+              type: string
+            currency:
+              type: string
+            idempotency_key:
+              type: string
+            merchant_reference:
+              type: string
+          required:
+          - payment_method_id
+          - amount_minor
+          - currency
+          - idempotency_key
+          - merchant_reference
+        response:
+          type: object
+          nullable: true
+          additionalProperties: false
+          properties:
+            status_code:
+              type: integer
+            body:
+              type: object
+              additionalProperties: true
+          required:
+          - status_code
+          - body
+        payment:
+          type: object
+          nullable: true
+          allOf:
+          - $ref: '#/components/schemas/Payment'
+        routing:
+          type: object
+          additionalProperties: false
+          properties:
+            failover_blocked:
+              type: boolean
+            failover_reason:
+              type: string
+              nullable: true
+            decisions:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                properties:
+                  attempt_number:
+                    type: integer
+                  provider_id:
+                    type: string
+                  rule_id:
+                    type: string
+                    nullable: true
+                  reason:
+                    type: string
+                required:
+                - attempt_number
+                - provider_id
+                - rule_id
+                - reason
+          required:
+          - failover_blocked
+          - failover_reason
+          - decisions
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attempt'
+        transitions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              from_status:
+                type: string
+                nullable: true
+              to_status:
+                type: string
+              reason:
+                type: string
+              actor_reference:
+                type: string
+              created_at:
+                type: string
+            required:
+            - from_status
+            - to_status
+            - reason
+            - actor_reference
+            - created_at
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              event_type:
+                type: string
+              status:
+                type: string
+              attempts:
+                type: integer
+              created_at:
+                type: string
+              delivered_at:
+                type: string
+                nullable: true
+            required:
+            - id
+            - event_type
+            - status
+            - attempts
+            - created_at
+            - delivered_at
+        journals:
+          type: array
+          items:
+            $ref: '#/components/schemas/LedgerJournal'
+        invariants:
+          type: array
+          items:
+            $ref: '#/components/schemas/SimulationInvariant'
+        timeline:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              at:
+                type: string
+              source:
+                type: string
+              title:
+                type: string
+              detail:
+                type: string
+            required:
+            - at
+            - source
+            - title
+            - detail
       required:
       - id
+      - label
+      - scenario
+      - seed
       - status
       - payment_id
+      - injected_fault
+      - created_at
+      - completed_at
+      - failure_reason
+      - fingerprint
+      - request
+      - response
+      - payment
+      - routing
+      - attempts
+      - transitions
+      - events
+      - journals
+      - invariants
+      - timeline
     DataSource:
       type: string
       enum:
