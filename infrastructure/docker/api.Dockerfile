@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.26-alpine AS build
+FROM golang:1.26-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
 RUN apk add --no-cache build-base
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
@@ -9,16 +9,20 @@ RUN CGO_ENABLED=1 go build -mod=readonly -trimpath \
     -ldflags="-s -w -linkmode=external -extldflags=-static" \
     -o /out/railvanta-api ./cmd/api
 
-FROM alpine:3.23 AS runtime
+FROM alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63 AS runtime
 RUN apk add --no-cache ca-certificates \
     && addgroup -g 10001 railvanta \
     && adduser -D -u 10001 -G railvanta railvanta \
     && mkdir -p /var/lib/railvanta \
     && chown railvanta:railvanta /var/lib/railvanta
 COPY --from=build /out/railvanta-api /usr/local/bin/railvanta-api
+ARG RAILVANTA_RELEASE=dev
+ARG RAILVANTA_GIT_SHA=
 USER 10001:10001
 WORKDIR /var/lib/railvanta
-ENV APP_ENV=sandbox \
+ENV RAILVANTA_RELEASE=$RAILVANTA_RELEASE \
+    RAILVANTA_GIT_SHA=$RAILVANTA_GIT_SHA \
+    APP_ENV=sandbox \
     HTTP_ADDR=:8080 \
     HEALTH_ADDR=127.0.0.1:8081 \
     SQLITE_PATH=/var/lib/railvanta/railvanta.db \

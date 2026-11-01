@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /(?:api|ui)\/.*\.spec\.ts/,
+  testMatch: /(?:api|ui|ops)\/.*\.spec\.ts/,
   globalSetup: "./support/global-setup.ts",
   fullyParallel: false,
   workers: 1,
@@ -25,6 +25,8 @@ export default defineConfig({
   },
   projects: [
     { name: "api", testMatch: /api\/.*\.spec\.ts/ },
+    // Container-only operations specs; they skip without E2E_BASE_URL.
+    { name: "ops", testMatch: /ops\/.*\.spec\.ts/ },
     {
       name: "ui",
       testMatch: /ui\/.*\.spec\.ts/,

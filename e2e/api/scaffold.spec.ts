@@ -5,6 +5,12 @@ import { fixtures, rejectProduction, state } from "../support/state";
 test("API boots and exposes private readiness without routing it publicly", async ({
   request,
 }) => {
+  // The container health listener is private to the API container; the same
+  // facts are asserted with exec/inspect in ops/container-runtime.spec.ts.
+  test.skip(
+    Boolean(process.env.E2E_BASE_URL),
+    "native-only: container health is private; see ops/container-runtime.spec.ts",
+  );
   const current = state();
   const response = await request.get(`${current.healthOrigin}/health/ready`);
   expect(response.status()).toBe(200);
