@@ -16,6 +16,7 @@ import (
 
 	"github.com/railvanta/railvanta/backend/internal/auth"
 	"github.com/railvanta/railvanta/backend/internal/payment"
+	"github.com/railvanta/railvanta/backend/internal/simulation"
 	"gorm.io/gorm"
 )
 
@@ -50,6 +51,7 @@ type handler struct {
 	db       *gorm.DB
 	config   Config
 	payments *payment.Service
+	sims     *simulation.Runner
 	mu       sync.Mutex
 	windows  map[string]requestWindow
 }
@@ -67,7 +69,8 @@ func NewHandler(db *gorm.DB, config Config) http.Handler {
 	if payments == nil {
 		payments = payment.NewService(db, payment.Options{})
 	}
-	return &handler{db: db, config: config, payments: payments, windows: make(map[string]requestWindow)}
+	sims := simulation.NewRunner(db, payments, simulation.Options{Notify: config.OnAccepted})
+	return &handler{db: db, config: config, payments: payments, sims: sims, windows: make(map[string]requestWindow)}
 }
 
 func requestID(value string) string {
@@ -206,7 +209,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
 		return
 	}
-	if h.serveReadModels(w, r, principal, id) {
+	if h.serveReadModels(w, r, principal, id) || h.serveRoutingAndSimulation(w, r, principal, id) {
 		return
 	}
 	if r.URL.Path == "/v1/payments" || strings.HasPrefix(r.URL.Path, "/v1/payments/") {
@@ -235,11 +238,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func plannedRoute(method, path string) bool {
 	if method == "GET" {
-		for _, prefix := range []string{"/v1/dashboard/", "/v1/providers/", "/v1/routing/rules", "/v1/ledger/", "/v1/reconciliation/", "/v1/events", "/v1/sandbox/simulations/"} {
+		for _, prefix := range []string{"/v1/dashboard/", "/v1/ledger/", "/v1/reconciliation/", "/v1/events"} {
 			if path == prefix || strings.HasPrefix(path, prefix+"/") || strings.HasSuffix(prefix, "/") && strings.HasPrefix(path, prefix) {
 				return true
 			}
 		}
 	}
-	return method == "POST" && path == "/v1/sandbox/simulations"
+	return false
 }
