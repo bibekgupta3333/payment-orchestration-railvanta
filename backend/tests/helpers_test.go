@@ -44,16 +44,44 @@ func newEnv(t *testing.T, options payment.Options) *env {
 	return e
 }
 
-func (e *env) open(options payment.Options) {
-	e.t.Helper()
-	store, err := storage.Open(context.Background(), e.path)
+// openTestStore is the shared WBS 5.1.1 helper: it opens a file-backed SQLite
+// database through storage.Open (production connection string, all embedded
+// migrations) and independently asserts every production PRAGMA, the
+// single-connection pool, foreign-key integrity and the migration history.
+func openTestStore(t testing.TB, path string) *storage.Store {
+	t.Helper()
+	store, err := storage.Open(context.Background(), path)
 	if err != nil {
-		e.t.Fatal(err)
+		t.Fatal(err)
+	}
+	if err := storage.VerifySettings(context.Background(), store.DB); err != nil {
+		t.Fatal(err)
 	}
 	var mode string
 	if err := store.DB.Raw("PRAGMA journal_mode").Scan(&mode).Error; err != nil || mode != "wal" {
-		e.t.Fatalf("journal_mode %q %v", mode, err)
+		t.Fatalf("journal_mode %q %v", mode, err)
 	}
+	plan, err := storage.EmbeddedMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applied int64
+	if err := store.DB.Raw("SELECT count(*) FROM schema_migrations").Scan(&applied).Error; err != nil || applied != int64(len(plan)) {
+		t.Fatalf("applied %d of %d migrations: %v", applied, len(plan), err)
+	}
+	var violations []map[string]any
+	if err := store.DB.Raw("PRAGMA foreign_key_check").Scan(&violations).Error; err != nil || len(violations) != 0 {
+		t.Fatalf("foreign_key_check %v %v", violations, err)
+	}
+	if handle, err := store.DB.DB(); err != nil || handle.Stats().MaxOpenConnections != 1 {
+		t.Fatalf("pool must have one connection: %v", err)
+	}
+	return store
+}
+
+func (e *env) open(options payment.Options) {
+	e.t.Helper()
+	store := openTestStore(e.t, e.path)
 	if options.Metrics == nil {
 		options.Metrics = payment.NewMetrics()
 	}

@@ -68,10 +68,7 @@ func TestDuplicateSuccessDeliveryPostsOneJournal(t *testing.T) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	for i := 0; i < 3; i++ {
-		store, err := storage.Open(context.Background(), d.path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		store := openTestStore(t, d.path)
 		t.Cleanup(func() { _ = store.Close() })
 		wg.Add(1)
 		go func() {
@@ -117,10 +114,7 @@ func TestConcurrentFirstSuccessDeliveryPostsOnce(t *testing.T) {
 	var mu sync.Mutex
 	changed := 0
 	for i := 0; i < 3; i++ {
-		store, err := storage.Open(context.Background(), d.path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		store := openTestStore(t, d.path)
 		t.Cleanup(func() { _ = store.Close() })
 		wg.Add(1)
 		go func() {
