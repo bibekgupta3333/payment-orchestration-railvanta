@@ -1,10 +1,14 @@
-import { FeaturePage } from "@/components/feature-page";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { ReconciliationView } from "@/components/reconciliation/ReconciliationView";
+import { Skeleton } from "@/components/ui";
 
-export default function Page() {
+export const metadata: Metadata = { title: "Reconciliation" };
+
+export default function ReconciliationPage() {
   return (
-    <FeaturePage
-      title="Reconciliation"
-      description="Compare provider evidence, payment state, and ledger records. Reconciliation runs are not available yet."
-    />
+    <Suspense fallback={<Skeleton label="Loading reconciliation" lines={3} />}>
+      <ReconciliationView />
+    </Suspense>
   );
 }

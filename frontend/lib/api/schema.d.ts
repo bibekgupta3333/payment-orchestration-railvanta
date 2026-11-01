@@ -321,6 +321,48 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/ledger/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read ledger accounts with balances
+     * @description Read-only. Every account of the authenticated workspace with debit and credit totals computed from posted entries only (drafts never count), ordered by currency then code. Totals use checked int64 arithmetic, so when a total or balance does not fit in int64 the account reports balance_error amount_overflow and null amounts, never a rounded number. Balances are per account and per currency and are never added across currencies. balance_minor is debits minus credits for asset and expense accounts and credits minus debits for the others (normal_balance says which).
+     */
+    get: operations["getLedgerAccounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/ledger/transactions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read one posted journal
+     * @description Read-only. A posted journal with its entries, checked debit and credit totals, the reversal links in both directions (reversal_of and reversed_by) and the related payment. Drafts, missing IDs and other workspaces' journals all return 404. There is no endpoint that edits or deletes a journal or entry.
+     */
+    get: operations["getLedgerTransaction"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/reconciliation/runs": {
     parameters: {
       query?: never;
@@ -330,11 +372,15 @@ export interface paths {
     };
     /**
      * Read reconciliation runs
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Runs of the authenticated workspace, newest first with an opaque keyset cursor. Counts are derived from the stored discrepancies. All evidence is simulated mock-provider data.
      */
     get: operations["getReconciliationRuns"];
     put?: never;
-    post?: never;
+    /**
+     * Start or re-run a sandbox reconciliation
+     * @description Operator-only. The Idempotency-Key header is the run key. A new key creates the run and returns 201; the same key with the same window returns the stored run with 200 after re-checking the window, adding only discrepancies not already recorded for that run (unique per run and fingerprint); the same key with a different window returns 409 idempotency_conflict. Read-only against payments, attempts, journals and the provider: it compares mock charges, payment state and posted journals, never creates a journal or changes a payment, and marks pending payment.late_outcome rows for the window consumed as evidence. Cookie sessions need a valid Origin and X-CSRF-Token; read-only credentials get 403.
+     */
+    post: operations["startReconciliationRun"];
     delete?: never;
     options?: never;
     head?: never;
@@ -350,11 +396,55 @@ export interface paths {
     };
     /**
      * Read recorded differences
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Discrepancies of the authenticated workspace, newest first with an opaque keyset cursor, filtered by run, kind and status. Each item carries its stored evidence, its append-only resolution history and the related posted journal, if any. Evidence is simulated mock-provider data.
      */
     get: operations["getDiscrepancies"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/reconciliation/discrepancies/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read one discrepancy
+     * @description One discrepancy of the authenticated workspace; another workspace's ID returns 404.
+     */
+    get: operations["getDiscrepancy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/reconciliation/discrepancies/{id}/resolve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Record a discrepancy status change
+     * @description Operator-only. Changes status (open, investigating or resolved) and appends one history row with the required note and the actor. Resolving also stores resolution_note, resolved_by and resolved_at. A resolved discrepancy is final (409 invalid_transition). Resolution records evidence only: it never changes a payment, attempt or journal and never calls the provider. Another workspace returns 404; read-only credentials return 403.
+     */
+    post: operations["resolveDiscrepancy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -671,6 +761,8 @@ export interface components {
       posting_key: string;
       /** Format: uuid */
       reversal_of: string | null;
+      /** Format: uuid */
+      reversed_by: string | null;
       /** Format: date-time */
       created_at: string;
       /** Format: date-time */
@@ -693,24 +785,197 @@ export interface components {
         amount_minor: string;
       }[];
     };
+    ReconciliationCounts: {
+      /** @description Settled mock-provider payments created in the window. */
+      compared: number;
+      /** @description Compared payments with no discrepancy. */
+      matched: number;
+      /** @description missing_posting, unknown_outcome and missing_at_provider discrepancies. */
+      unmatched: number;
+      /** @description amount_mismatch and status_mismatch discrepancies. */
+      mismatch: number;
+    };
     ReconciliationRun: {
       /** Format: uuid */
       id: string;
+      run_key: string;
       /** @enum {string} */
       status: "pending" | "running" | "completed" | "failed";
+      /** Format: date-time */
+      window_start: string;
+      /** Format: date-time */
+      window_end: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      completed_at: string | null;
+      requested_by: string | null;
+      counts: components["schemas"]["ReconciliationCounts"];
+      /** @description payment.late_outcome rows consumed as evidence by this run. */
+      evidence_consumed_count: number;
+      /** @description Always true; evidence comes from the mock provider. */
+      simulated: boolean;
+    };
+    StartReconciliationRunRequest: {
+      /**
+       * Format: date-time
+       * @description Inclusive RFC 3339 start; payments are matched on created_at.
+       */
+      window_start: string;
+      /**
+       * Format: date-time
+       * @description Exclusive RFC 3339 end; must be after window_start and at most 366 days later.
+       */
+      window_end: string;
+    };
+    /** @enum {string} */
+    DiscrepancyKind:
+      | "missing_posting"
+      | "unknown_outcome"
+      | "amount_mismatch"
+      | "status_mismatch"
+      | "missing_at_provider";
+    /** @enum {string} */
+    DiscrepancyStatus: "open" | "investigating" | "resolved";
+    /** @description Stored evidence (details). Money is a decimal string. Always simulated mock data. */
+    DiscrepancyEvidence: {
+      /** @enum {string} */
+      source: "mock_provider";
+      simulated: boolean;
+      summary: string;
+      expected?: string;
+      payment: {
+        /** Format: uuid */
+        id: string;
+        status: string;
+        amount_minor: string;
+        currency: string;
+      };
+      provider_charge: {
+        id: string;
+        provider_reference: string;
+        status: string;
+        amount_minor: string;
+        currency: string;
+        scenario: string;
+      } | null;
+      journal: {
+        /** Format: uuid */
+        id: string;
+        debit_total_minor: string;
+        credit_total_minor: string;
+      } | null;
+      late_outcomes: {
+        event_id: string;
+        outcome: string;
+        source: string;
+        payment_status: string;
+        attempt_status: string;
+        /** Format: int64 */
+        observed_at: number;
+      }[];
+    };
+    ResolutionEvent: {
+      /** Format: uuid */
+      id: string;
+      from_status: components["schemas"]["DiscrepancyStatus"];
+      to_status: components["schemas"]["DiscrepancyStatus"];
+      note: string;
+      actor: string;
+      /** Format: date-time */
+      created_at: string;
     };
     Discrepancy: {
       /** Format: uuid */
       id: string;
+      /** Format: uuid */
+      run_id: string;
+      /** Format: uuid */
+      payment_id: string | null;
+      kind: components["schemas"]["DiscrepancyKind"];
+      status: components["schemas"]["DiscrepancyStatus"];
+      details: components["schemas"]["DiscrepancyEvidence"];
+      resolution_note: string | null;
+      resolved_by: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      resolved_at: string | null;
+      /** Format: uuid */
+      related_journal_id: string | null;
+      history: components["schemas"]["ResolutionEvent"][];
+      simulated: boolean;
+    };
+    ResolveDiscrepancyRequest: {
+      status: components["schemas"]["DiscrepancyStatus"];
+      /** @description Required for every status change. */
+      note: string;
+    };
+    LedgerAccount: {
+      /** Format: uuid */
+      id: string;
+      /** @description merchant_payable or provider_clearing:{provider_id} */
+      code: string;
       /** @enum {string} */
-      kind:
-        | "missing_posting"
-        | "unknown_outcome"
-        | "amount_mismatch"
-        | "status_mismatch"
-        | "missing_at_provider";
+      kind: "asset" | "liability" | "income" | "expense" | "equity";
       /** @enum {string} */
-      status: "open" | "investigating" | "resolved";
+      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      /** Format: uuid */
+      provider_id: string | null;
+      provider_code: string | null;
+      /** @description Decimal-string int64 minor units; null when balance_error is set. */
+      debit_total_minor: string | null;
+      credit_total_minor: string | null;
+      balance_minor: string | null;
+      /** @enum {string|null} */
+      balance_error: "amount_overflow" | null;
+      /** @enum {string} */
+      normal_balance: "debit" | "credit";
+      entry_count: number;
+    };
+    LedgerJournalDetail: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      payment_id: string | null;
+      /** @enum {string} */
+      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      /** @enum {string} */
+      status: "posted";
+      posting_key: string;
+      /** Format: uuid */
+      reversal_of: string | null;
+      /** Format: uuid */
+      reversed_by: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      posted_at: string;
+      entries: {
+        /** Format: uuid */
+        id: string;
+        /** Format: uuid */
+        account_id: string;
+        account_code: string;
+        /** Format: uuid */
+        provider_id: string | null;
+        /** @enum {string} */
+        side: "debit" | "credit";
+        /**
+         * @description Positive signed int64 minor units, encoded as a decimal string. Server additionally enforces the int64 maximum 9223372036854775807. Currency exponents govern display, not divisibility of minor units.
+         * @example 25000
+         */
+        amount_minor: string;
+      }[];
+      debit_total_minor: string;
+      credit_total_minor: string;
+      payment: {
+        /** Format: uuid */
+        id: string;
+        status: string;
+        amount_minor: string;
+        currency: string;
+      } | null;
     };
     Event: {
       /** Format: uuid */
@@ -1399,6 +1664,7 @@ export interface operations {
         cursor?: string;
         limit?: number;
         payment_id?: string;
+        currency?: string;
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1432,6 +1698,73 @@ export interface operations {
       default: components["responses"]["Error"];
     };
   };
+  getLedgerAccounts: {
+    parameters: {
+      query?: {
+        currency?: string;
+      };
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            items: components["schemas"]["LedgerAccount"][];
+          };
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getLedgerTransaction: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LedgerJournalDetail"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      500: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
   getReconciliationRuns: {
     parameters: {
       query?: {
@@ -1460,12 +1793,60 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  startReconciliationRun: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        /** @description Required with a valid Origin for cookie-authenticated writes. */
+        "X-CSRF-Token"?: string;
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StartReconciliationRunRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReconciliationRun"];
+        };
+      };
+      /** @description Successful response */
+      201: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReconciliationRun"];
+        };
+      };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
+      409: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1474,6 +1855,9 @@ export interface operations {
       query?: {
         cursor?: string;
         limit?: number;
+        run_id?: string;
+        kind?: components["schemas"]["DiscrepancyKind"];
+        status?: components["schemas"]["DiscrepancyStatus"];
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1497,12 +1881,83 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getDiscrepancy: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Discrepancy"];
+        };
+      };
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  resolveDiscrepancy: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required with a valid Origin for cookie-authenticated writes. */
+        "X-CSRF-Token"?: string;
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ResolveDiscrepancyRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Discrepancy"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
