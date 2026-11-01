@@ -1,4 +1,4 @@
-name: M1 checks
+name: CI
 
 on:
   push:
@@ -11,14 +11,16 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: 1
+  CGO_ENABLED: 1
+
 jobs:
-  checks:
+  static:
+    name: Format, lint, contracts, types and build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      CI: true
-      NEXT_TELEMETRY_DISABLED: 1
-      CGO_ENABLED: 1
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - name: Set up Node
@@ -42,13 +44,122 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Download Go dependencies
         run: go -C backend mod download
-      - name: Run formatting, lint, contracts, type checks, tests and builds
-        run: pnpm check
-      - name: Install Chromium
+      - name: Workspace and tracked-file policy
+        run: |
+          node scripts/check-workspaces.mjs
+          pnpm run check:tracked
+      - name: Compose definition
+        run: pnpm run compose:config
+      - name: gofmt check
+        run: make -C backend format-check
+      - name: go vet
+        run: make -C backend vet
+      - name: Lint (golangci-lint, ESLint/Prettier, OpenAPI)
+        run: pnpm run lint
+      - name: Generated contracts are current
+        run: pnpm run check:generated
+      - name: Docs examples match the OpenAPI contract
+        run: pnpm run check:docs
+      - name: Type check
+        run: pnpm run typecheck
+      - name: Build
+        run: pnpm run build
+
+  go-tests:
+    name: Go tests (race detector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: go test -race ./...
+        run: |
+          set -o pipefail
+          mkdir -p test-output
+          go -C backend test -race -count=1 -v ./... 2>&1 | tee test-output/go-test.txt
+      - name: Upload Go test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-output
+          path: test-output/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  vitest:
+    name: Vitest component tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Set up pnpm
+        uses: pnpm/setup@v3
+        with:
+          version: 11.3.0
+          node-version-file: "false"
+          install: false
+          cache: true
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Vitest
+        run: pnpm --filter @railvanta/frontend --fail-if-no-match exec vitest run --reporter=default --reporter=junit --outputFile.junit=../test-output/vitest-junit.xml
+      - name: Upload Vitest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-results
+          path: test-output/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e:
+    name: Playwright E2E (Go API with the mock provider)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Set up pnpm
+        uses: pnpm/setup@v3
+        with:
+          version: 11.3.0
+          node-version-file: "false"
+          install: false
+          cache: true
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter @railvanta/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium and system libraries
         run: pnpm --filter @railvanta/e2e exec playwright install --with-deps chromium
-      - name: Run the cumulative black-box suite
-        run: pnpm test:e2e
-      - name: Upload browser reports and traces
+      - name: Run the cumulative black-box suite with retries disabled
+        run: pnpm run test:e2e:ci
+      - name: Upload Playwright report, traces and JUnit results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -56,5 +167,62 @@ jobs:
           path: |
             e2e/playwright-report/
             e2e/test-results/
+            e2e/junit-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  flake-check:
+    name: Flake check (3 consecutive runs, central demo x20)
+    needs: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Set up pnpm
+        uses: pnpm/setup@v3
+        with:
+          version: 11.3.0
+          node-version-file: "false"
+          install: false
+          cache: true
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter @railvanta/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium and system libraries
+        run: pnpm --filter @railvanta/e2e exec playwright install --with-deps chromium
+      - name: Full suite, run 1 of 3 (--retries=0)
+        run: pnpm run test:e2e:ci
+      - name: Full suite, run 2 of 3 (--retries=0)
+        run: pnpm run test:e2e:ci
+      - name: Full suite, run 3 of 3 (--retries=0)
+        run: pnpm run test:e2e:ci
+      - name: Central-demo spec repeated 20 times (--retries=0)
+        run: pnpm run test:e2e:central-demo-repeat
+      - name: Upload Playwright report and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-check-playwright-results
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/junit-results/
           if-no-files-found: ignore
           retention-days: 7
