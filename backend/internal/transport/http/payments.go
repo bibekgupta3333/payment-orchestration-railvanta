@@ -137,6 +137,12 @@ func (h *handler) createPayment(w http.ResponseWriter, r *http.Request, principa
 		w.Header().Set("Retry-After", "1")
 		fail(w, 503, "unavailable", "Payment acceptance is temporarily unavailable; retry with the same key", id)
 		return
+	case storage.IsWriteFailure(err):
+		// Disk full, I/O error or read-only database: nothing committed.
+		h.config.Logger.Error("payment acceptance storage degraded", "request_id", id)
+		w.Header().Set("Retry-After", "30")
+		fail(w, 503, "unavailable", "Storage is degraded; the payment was not accepted. Retry with the same key", id)
+		return
 	default:
 		h.config.Logger.Error("payment acceptance failed", "request_id", id)
 		fail(w, 500, "internal_error", "Payment acceptance failed; retry with the same key", id)
@@ -348,6 +354,10 @@ func (h *handler) cancelPayment(w http.ResponseWriter, r *http.Request, principa
 	case errors.Is(err, payment.ErrBusy):
 		w.Header().Set("Retry-After", "1")
 		fail(w, 503, "unavailable", "Cancellation is temporarily unavailable; retry", id)
+	case storage.IsWriteFailure(err):
+		h.config.Logger.Error("payment cancellation storage degraded", "request_id", id)
+		w.Header().Set("Retry-After", "30")
+		fail(w, 503, "unavailable", "Storage is degraded; nothing was changed. Retry", id)
 	default:
 		h.config.Logger.Error("payment cancellation failed", "request_id", id)
 		fail(w, 500, "internal_error", "Cancellation failed", id)

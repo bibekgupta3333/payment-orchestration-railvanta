@@ -24,6 +24,9 @@ import (
 )
 
 func main() {
+	if handled, code := runSubcommand(os.Args[1:], os.Stdout, os.Stderr); handled {
+		os.Exit(code)
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -99,6 +102,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		checkCtx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
 		if err := sqlDB.PingContext(checkCtx); err != nil {
+			writeHealth(w, http.StatusServiceUnavailable)
+			return
+		}
+		if err := storage.CheckWritable(checkCtx, store.DB); err != nil {
+			logger.Error("readiness degraded", "error", err.Error())
 			writeHealth(w, http.StatusServiceUnavailable)
 			return
 		}

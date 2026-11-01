@@ -6,6 +6,7 @@ import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
+import containerGlobalSetup from "./containers";
 import type { HarnessState } from "./state";
 
 const root = resolve(__dirname, "../..");
@@ -82,6 +83,8 @@ async function ready(
 }
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
+  // E2E_BASE_URL selects the running docker compose stack (see containers.ts).
+  if (process.env.E2E_BASE_URL) return containerGlobalSetup();
   const directory = mkdtempSync(join(tmpdir(), "railvanta-e2e-"));
   const database = join(directory, "sandbox.sqlite");
   const binary = join(directory, "railvanta-api");

@@ -1,0 +1,27 @@
+# Requires an installed ingress controller. With no ingressClassName the
+# cluster's default IngressClass is used; set one if the cluster has none.
+# Prefix paths are forwarded unchanged: no rewrite or path stripping.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: railvanta
+spec:
+  tls:
+    - hosts: [railvanta.test]
+      secretName: railvanta-tls
+  rules:
+    - host: railvanta.test
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: railvanta-api
+                port: {number: 8080}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: railvanta-web
+                port: {number: 3000}

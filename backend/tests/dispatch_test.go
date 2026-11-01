@@ -13,7 +13,6 @@ import (
 	"github.com/railvanta/railvanta/backend/internal/payment"
 	"github.com/railvanta/railvanta/backend/internal/provider"
 	"github.com/railvanta/railvanta/backend/internal/provider/mock"
-	"github.com/railvanta/railvanta/backend/internal/storage"
 	"gorm.io/gorm"
 )
 
@@ -158,10 +157,7 @@ func TestNoTransactionIsOpenDuringProviderCall(t *testing.T) {
 // Two dispatchers on separate connections race over the same rows.
 func TestRacingDispatchersClaimEachRowOnce(t *testing.T) {
 	d := newDispatchEnv(t, dispatchConfig{})
-	second, err := storage.Open(context.Background(), d.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	second := openTestStore(t, d.path)
 	t.Cleanup(func() { _ = second.Close() })
 	other := &dispatchEnv{env: &env{t: t, path: d.path, store: second, service: payment.NewService(second.DB, payment.Options{})}}
 	other.build(dispatchConfig{db: second.DB})
@@ -211,10 +207,7 @@ func TestConcurrentClaimOfOneRowHasOneWinner(t *testing.T) {
 	d.accept(scenarioMethod["success"], "500", "USD")
 	stores := []*gorm.DB{d.store.DB}
 	for i := 0; i < 3; i++ {
-		s, err := storage.Open(context.Background(), d.path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		s := openTestStore(t, d.path)
 		t.Cleanup(func() { _ = s.Close() })
 		stores = append(stores, s.DB)
 	}

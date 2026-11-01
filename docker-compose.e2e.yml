@@ -1,0 +1,14 @@
+# E2E-only override: fast dispatcher timings so the Playwright suite can run against the built
+# containers (E2E_BASE_URL). Credentials come from `railvanta-api seed-demo`.
+# Never use this file outside tests.
+services:
+  api:
+    environment:
+      DISPATCHER_POLL_INTERVAL: 50ms
+      DISPATCHER_LEASE: 2s
+      DISPATCHER_DRAIN_TIMEOUT: 1s
+      PROVIDER_TIMEOUT: 30s
+      MOCK_DELAYED_SUCCESS_DELAY: 8s
+      MOCK_TIMEOUT_DELAY: 200ms
+      RECOVERY_BASE_BACKOFF: 100ms
+      RECOVERY_MAX_BACKOFF: 500ms
