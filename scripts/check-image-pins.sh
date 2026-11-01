@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Fail unless every external base image (Dockerfile FROM, compose `image:` that
+# is not a locally built tag) is pinned by sha256 digest (WBS 5.2.11).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+status=0
+stages=""
+for file in infrastructure/docker/*.Dockerfile; do
+  while read -r _ image rest; do
+    case "$image" in --platform=*) image="${rest%% *}" ;; esac
+    stage="$(printf '%s' "$rest" | sed -n 's/.* [Aa][Ss] \(.*\)/\1/p')"
+    case " $stages " in *" $image "*) continue ;; esac # FROM an earlier stage
+    [ -n "$stage" ] && stages="$stages $stage"
+    case "$image" in
+      *@sha256:????????????????????????????????????????????????????????????????) ;;
+      *) echo "unpinned base image in $file: $image" >&2; status=1 ;;
+    esac
+  done < <(grep -E '^FROM ' "$file")
+done
+
+while read -r _ image; do
+  case "$image" in
+    *'${RAILVANTA_'*) continue ;; # locally built service images (build: present)
+    *@sha256:????????????????????????????????????????????????????????????????) ;;
+    *) echo "unpinned image in docker-compose.yml: $image" >&2; status=1 ;;
+  esac
+done < <(grep -E '^[[:space:]]+image:' docker-compose.yml)
+
+[ "$status" -eq 0 ] && echo "all base images are pinned by digest"
+exit "$status"

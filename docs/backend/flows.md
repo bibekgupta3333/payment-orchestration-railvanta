@@ -1,6 +1,6 @@
 # System Flows
 
-Runtime behavior of the Go API. This is the single home for the payment and attempt state machines. Module boundaries are in [architecture](../architecture.md), and durable records are in the [data model](data-model.md).
+Runtime behavior of the Go API, as implemented and verified locally (see the [verification matrix](../verification-matrix.md)). This is the single home for the payment and attempt state machines. Module boundaries are in [architecture](../architecture.md), and durable records are in the [data model](data-model.md).
 
 ## System context
 
@@ -19,7 +19,7 @@ flowchart TB
     Plaid -. future signed webhook .-> API
 ```
 
-Solid arrows describe the first proposed implementation; dashed arrows describe deferred integrations. No real-money provider is in scope.
+Solid arrows are implemented; dashed arrows are deferred integrations that do **not** exist. No real-money provider is in scope. The mock runs inside the API process, and the sanitized logs and in-process metrics have no exporter.
 
 ## Accept, dispatch, and record a payment
 
@@ -73,7 +73,7 @@ flowchart TD
     Wait --> Retry[Client retries with same key]
 ```
 
-The acceptance transaction should make partially reserved records unobservable on its normal path. The retryable branch covers contention or a future explicit reservation protocol. Validation and authorization failures are not cached as accepted payments. Clients retain one key across transport retries and generate a new key only for a new logical payment.
+The acceptance transaction makes partially reserved records unobservable on its normal path, so the `idempotency_in_progress` branch is defensive and covered by a direct test rather than by normal traffic. Validation and authorization failures are not cached as accepted payments. Clients retain one key across transport retries and generate a new key only for a new logical payment.
 
 ### Implemented acceptance contract (WBS 2.1)
 
@@ -112,7 +112,7 @@ The in-process `event.Dispatcher` (`backend/internal/event/dispatcher.go`, `outb
 
 `ApplySuccess`, `ApplyDecline` and `ApplyUnknown` (`payment/outcome.go`) are exported for the recovery worker. Repeating a recorded outcome changes nothing (`Applied.Changed == false`). A conflicting late result returns `ErrLateOutcome` and writes nothing.
 
-**`payment.lookup` command (consumed by WBS 2.4).** Payload `{"payment_id","workspace_id","attempt_id","provider_id","reason"}`; deduplication key `payment.lookup:{attempt_id}`, so there is one row per unresolved attempt. The handler reads `provider_idempotency_key` from the attempt row, calls `Lookup` on that provider outside any transaction, then calls `ApplySuccess` or `ApplyDecline` with its claim, or returns `event.RetryAfter(d, err)` to stay `unknown`. Until a handler is registered, these rows stay `pending`.
+**`payment.lookup` command (handled by the recovery worker, WBS 2.4; see below).** Payload `{"payment_id","workspace_id","attempt_id","provider_id","reason"}`; deduplication key `payment.lookup:{attempt_id}`, so there is one row per unresolved attempt. The handler reads `provider_idempotency_key` from the attempt row, calls `Lookup` on that provider outside any transaction, then calls `ApplySuccess` or `ApplyDecline` with its claim, or retries later (`event.RetryAfterUnbounded`) to stay `unknown`.
 
 **Failover guard (2.2.11).** `GuardNewAttempt` rejects any new attempt while one is `created`, `submitted` or `unknown`. If the payment was ever `unknown`, it also rejects any provider other than the one already attempted. Ambiguous outcomes are resolved only at the original provider.
 
@@ -142,7 +142,7 @@ If the attempt was already resolved as `failed`, the worker asks once more only 
 
 **Terminal states never regress.** Three layers: `ValidateTransition` has no edge out of a terminal state; every update compares status and version; the `payments_terminal_status` trigger aborts a status change from `succeeded`, `failed` or `canceled`. `ApplySuccess`/`ApplyDecline`/`ApplyUnknown` return `ErrLateOutcome` for a result that conflicts with the recorded state.
 
-**Late results.** A provider result that conflicts with a terminal state (a success after `failed`, a decline after `succeeded`) is not applied. Both the dispatch path and the lookup path write one `payment.late_outcome` row in `outbox_events` (deduplication key `payment.late_outcome:{attempt_id}:{outcome}`; payload `payment.LateOutcome`: payment, attempt, provider, outcome, provider reference, code, the recorded payment and attempt statuses, source `dispatch|lookup`, observation time) in the same transaction that completes the command. No handler is registered for the type, so the row stays `pending`: durable and visible to the future reconciliation consumer (WBS 4.2), which owns turning it into a discrepancy. `GET /v1/payments/{id}/recovery` lists these rows for the payment. A late success is never auto-reversed or reposted.
+**Late results.** A provider result that conflicts with a terminal state (a success after `failed`, a decline after `succeeded`) is not applied. Both the dispatch path and the lookup path write one `payment.late_outcome` row in `outbox_events` (deduplication key `payment.late_outcome:{attempt_id}:{outcome}`; payload `payment.LateOutcome`: payment, attempt, provider, outcome, provider reference, code, the recorded payment and attempt statuses, source `dispatch|lookup`, observation time) in the same transaction that completes the command. No dispatcher handler is registered for the type, so the row stays `pending` until reconciliation (WBS 4.2) attaches it to a discrepancy as evidence and marks it `delivered` ([ADR 0004](../decisions/0004-late-outcomes-as-outbox-rows.md)). `GET /v1/payments/{id}/recovery` lists these rows for the payment. A late success is never auto-reversed or reposted.
 
 **`GET /v1/payments/{id}/recovery`** returns `lookup_status` (`none|pending|in_progress|resolved|failed`), `lookup_attempts`, `next_lookup_at`, `last_lookup_error`, `retry_allowed` (always `false`) and `late_outcomes`. It never exposes a provider key. No endpoint can retry, resubmit or re-dispatch a payment.
 
@@ -175,7 +175,7 @@ stateDiagram-v2
     canceled --> [*]
 ```
 
-Cancellation uses a conditional update against state/version and races with dispatch safely: only one wins (see "Implemented recovery and cancellation contract"). The initial MVP rejects cancellation once processing starts. Unknown outcomes stay unknown until evidence supports a terminal transition; an operator cannot clear the flag merely to retry. Refunds and reversals are separate future operations and do not rewrite a succeeded payment into a failed one.
+Cancellation uses a conditional update against state/version and races with dispatch safely: only one wins (see "Implemented recovery and cancellation contract"). Cancellation is rejected once processing starts. Unknown outcomes stay unknown until evidence supports a terminal transition; an operator cannot clear the flag merely to retry. Refunds and reversals are separate future operations and do not rewrite a succeeded payment into a failed one.
 
 ## Attempt state machine
 
@@ -192,25 +192,26 @@ stateDiagram-v2
     failed --> [*]
 ```
 
-A stale `submitted` attempt discovered after restart is treated as potentially executed. It follows the uncertainty recovery path before another submission is considered. Today the dispatcher does this when it reclaims an expired `payment.dispatch` lease: the attempt and payment become `unknown` and a `payment.lookup` is scheduled. The startup scan and lookup worker (WBS 2.4) build on this; see below.
+A stale `submitted` attempt discovered after restart is treated as potentially executed. It follows the uncertainty recovery path before another submission is considered. The dispatcher does this when it reclaims an expired `payment.dispatch` lease: the attempt and payment become `unknown` and a `payment.lookup` is scheduled. The startup scan and lookup worker (WBS 2.4, implemented) cover the restart case; see the recovery contract above and [ADR 0009](../decisions/0009-unknown-outcomes-resolved-only-by-evidence.md).
 
 ## Webhooks and reconciliation
 
 ```mermaid
 flowchart LR
-    Delivery[Future signed provider delivery] --> Verify[Verify signature and size]
-    Verify --> Inbox[(Persist deduplicated inbox)]
+    Delivery["Operator-authenticated sandbox delivery<br/>(unsigned mock event)"] --> Inbox[("Persist deduplicated inbox row<br/>payload hash, duplicate count")]
     Inbox --> Apply[Apply guarded state transition]
     Apply --> Ledger[Atomic journal posting if confirmed]
-    Apply --> Audit[Append audit and outbox]
-    Trigger[Operator starts reconciliation] --> Compare[Compare provider, payment, ledger]
+    Apply --> Audit[Append audit and late-outcome row if contradicting a terminal state]
+    Trigger[Operator starts reconciliation] --> Compare["Compare mock charge, payment, posted journal<br/>(read only)"]
     Compare --> Evidence[Persist discrepancy and evidence]
-    Evidence --> Resolution[Validated resolution or explicit reversal]
+    Evidence --> Resolution["Record status, note and actor<br/>(no payment or ledger change)"]
 ```
+
+No signature verification step exists: webhook signatures are not implemented ([ADR 0005](../decisions/0005-sandbox-only-mock-webhook.md)).
 
 **Implemented (WBS 4.3), sandbox mock only.** `POST /v1/sandbox/webhooks/mock` (operator role; workspace-scoped; the mock provider is unsigned, so `signature_status` is `not_applicable`) feeds `payment.ReceiveWebhook`, which runs in one transaction. The first delivery of a `(provider, event_id)` inserts the inbox row and applies the event through the status-guarded `ApplySuccess`/`ApplyDecline` (answer 202). A byte-identical repeat increments `duplicate_count` and `last_received_at` and answers 200 with no further effect. The same event ID with a different payload hash answers 409 `event_payload_conflict`, sets `investigation_flag`, stores the new hash in `conflicting_payload_hash` and increments `conflict_count`; the first payload and hash are never overwritten (a trigger enforces it). An event that does not match the recorded state is recorded with `outcome = ignored` and a reason (`terminal_state`, `already_succeeded`, `not_in_flight`, `no_state_change`, `unknown_payment`, ...) and never moves a terminal payment; a success or decline that contradicts a terminal payment also writes a `payment.late_outcome` row (source `webhook`) for reconciliation. `GET /v1/events` merges inbox and outbox rows newest first (filters `q`, `source`, `state`, `created_from`, `created_to`, keyset cursor) and `GET /v1/events/{id}` (`whk_` or `obx_` prefixed IDs) returns safe fields plus an allow-listed payload summary; raw payloads, errors and lease data are never returned.
 
-Acknowledge a valid webhook after durable inbox acceptance. Duplicate deliveries receive a successful acknowledgement without duplicate financial posting. A reconciliation run may use deterministic mock evidence in the MVP; label it simulated. It must not manufacture journals to make mismatches disappear. External webhook signature and provider lookup behavior will be specified against official provider contracts when integrations begin.
+A webhook is acknowledged after durable inbox acceptance, and duplicate deliveries receive a successful acknowledgement without duplicate financial posting. Reconciliation uses deterministic mock evidence and labels it simulated ([ADR 0008](../decisions/0008-evidence-only-reconciliation.md)); it never manufactures journals to make mismatches disappear. Real webhook signature and provider lookup behavior are not specified or implemented and must follow official provider contracts when integrations begin.
 
 ### Implemented reconciliation contract (WBS 4.2)
 
@@ -227,6 +228,24 @@ Acknowledge a valid webhook after durable inbox acceptance. Duplicate deliveries
 The run never writes a payment, attempt, journal or charge and never calls a provider. Pending `payment.late_outcome` rows for the compared payments are attached to the discrepancy as evidence and marked `delivered` (`last_error` names the run); the payment is not changed. Counts: `matched` is compared payments with no discrepancy, `unmatched` is the three missing/unknown kinds, `mismatch` is the two mismatch kinds. Evidence is stored as JSON in `details`, labelled `simulated`.
 
 `POST /v1/reconciliation/discrepancies/{id}/resolve` (operator only) records a status change (`open`, `investigating`, `resolved`) with a required note. Each change appends a row to `reconciliation_resolution_events`; resolving also stores `resolution_note`, `resolved_by` and `resolved_at`. Triggers in migration 0004 make evidence and history immutable, reject a blank note, and make `resolved` final. Resolution is evidence only: the payment and ledger are never changed, so an unknown payment stays `unknown` and a missing posting stays missing until a separately designed correction exists.
+
+### Implemented simulation contract (WBS 3.2)
+
+`POST /v1/sandbox/simulations` (operator) starts a persisted run and `GET /v1/sandbox/simulations/{id}` reads it; `GET /v1/sandbox/scenarios` lists the catalog. The runner (`backend/internal/simulation`) accepts a payment through `payment.Service.Accept` using the seeded mock method for the scenario ([ADR 0003](../decisions/0003-mock-scenario-by-token-prefix.md)), lets the live dispatcher and recovery worker act, and then checks six invariants against persisted rows (one payment per key, one balanced journal for a succeeded payment and none otherwise, no cross-provider attempt after unknown, no terminal regression, at most one succeeded charge, expected final status). It injects no state of its own. A run is stored in `simulation_runs` with its fault, steps, invariant evidence and a state fingerprint for same-seed comparison (the amount is derived from the seed), and a restart resumes an interrupted run when it is read again.
+
+| Scenario | Implemented | Expected final payment status |
+| --- | --- | --- |
+| `success`, `decline`, `timeout_before_execution`, `timeout_after_success`, `outage`, `unknown_recovery`, `duplicate_request`, `duplicate_posting` | Yes | `succeeded`, `failed`, `unknown`, `succeeded`, `unknown`, `succeeded`, `succeeded`, `succeeded` |
+| `duplicate_webhook`, `reordered_events` | **No.** Listed but disabled; a start request answers 422 `scenario_not_implemented`, and the stored dependency text still names WBS 4.3 although the webhook inbox now exists. Equivalent behavior is tested through the webhook endpoint directly | n/a |
+
+## Not implemented
+
+- Any provider other than the mock (Stripe, Plaid), real funds, capture, refunds and any HTTP path that reverses a journal.
+- Retry, resubmit or re-dispatch of a payment, and any operator override of `unknown`.
+- Routing-rule creation or editing (rules are read-only through `GET /v1/routing/rules`; `POST /v1/routing/evaluate` moves no money), and routing across more than one live provider.
+- Webhook signature verification, a public webhook receiver, and a metrics exporter.
+- API-key creation or rotation (only `DELETE /v1/api-keys/current` exists), member or role management.
+- High availability: one API process, one SQLite writer.
 
 ## Failure recovery checklist
 

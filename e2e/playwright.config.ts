@@ -2,15 +2,22 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /(?:api|ui)\/.*\.spec\.ts/,
+  testMatch: /(?:api|ui|ops)\/.*\.spec\.ts/,
   globalSetup: "./support/global-setup.ts",
   fullyParallel: false,
   workers: 1,
+  // Retries stay disabled locally and in CI so flakes fail loudly (WBS 5.1.10).
   retries: 0,
   forbidOnly: Boolean(process.env.CI),
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: process.env.CI
+    ? [
+        ["list"],
+        ["html", { open: "never" }],
+        ["junit", { outputFile: "junit-results/e2e.xml" }],
+      ]
+    : [["list"], ["html", { open: "never" }]],
   outputDir: "test-results",
   use: {
     trace: "retain-on-failure",
@@ -18,6 +25,8 @@ export default defineConfig({
   },
   projects: [
     { name: "api", testMatch: /api\/.*\.spec\.ts/ },
+    // Container-only operations specs; they skip without E2E_BASE_URL.
+    { name: "ops", testMatch: /ops\/.*\.spec\.ts/ },
     {
       name: "ui",
       testMatch: /ui\/.*\.spec\.ts/,

@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: railvanta-api-headless
+  labels:
+    app.kubernetes.io/name: railvanta-api
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: railvanta-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: railvanta-api
+  labels:
+    app.kubernetes.io/name: railvanta-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: railvanta-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Exactly one replica: SQLite has a single owner. No HPA, no worker, no
+# migration Job and no backup CronJob may be added against this volume.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: railvanta-api
+  labels:
+    app.kubernetes.io/name: railvanta-api
+spec:
+  replicas: 1
+  serviceName: railvanta-api-headless
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: railvanta-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: railvanta-api
+    spec:
+      serviceAccountName: railvanta-api
+      automountServiceAccountToken: false
+      # API drain: 10s shutdown context (HTTP, dispatcher, DB close) plus
+      # margin; equals the Compose stop_grace_period. Raise it together with
+      # any change to the drain timeouts in backend/cmd/api/main.go.
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: railvanta-api:local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: railvanta-config
+          ports:
+            - name: http
+              containerPort: 8080
+          # Health listens on container loopback only (127.0.0.1:8081), which
+          # kubelet httpGet cannot reach, so probes exec busybox wget.
+          startupProbe:
+            exec:
+              command: [wget, -q, -O, /dev/null, "http://127.0.0.1:8081/health/startup"]
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command: [wget, -q, -O, /dev/null, "http://127.0.0.1:8081/health/live"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [wget, -q, -O, /dev/null, "http://127.0.0.1:8081/health/ready"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          # Initial values, not measured. Refine with load tests.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/railvanta
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOncePod]
+        # Needs reclaimPolicy: Retain. See overlays/k3d-local for an example.
+        storageClassName: railvanta-retain
+        volumeMode: Filesystem
+        resources:
+          requests:
+            storage: 1Gi

@@ -2,6 +2,19 @@
 
 Low-fidelity layouts per route. IDs, amounts, times and metrics are illustrative; the real app shows only API data or explicitly labeled seeded/simulated data. Routes, API dependencies and accessibility rules are in [frontend design](design.md).
 
+## Implementation status
+
+All eleven routes below exist in `frontend/`. The wireframes remain design intent, not a specification of pixels or copy. Differences found by comparing them with the code (features, not a pixel review):
+
+- **Shell:** there is no workspace switcher (the topbar shows a fixed "Sandbox workspace" label and the Sandbox badge), no notification control, and the account menu is a static panel with no actions. A "Foundation build / Sandbox infrastructure. No real funds." note sits in the sidebar. See [ADR 0010](../decisions/0010-original-frontend-components.md).
+- **Icons:** navigation uses Unicode glyphs, not an icon set.
+- **Landing page:** no GitHub link (no destination is configured); Stripe and Plaid are shown as planned and not configured.
+- **Payments:** filters and cursor live in the URL as designed. The detail page has Attempts, Events and Journal tabs. There is **no cancel control** and **no recovery panel**, although `POST /v1/payments/{id}/cancel` and `GET /v1/payments/{id}/recovery` exist in the API.
+- **Routing:** rules are inspect-only, as drawn; there is no rule editor.
+- **Simulator:** `duplicate_webhook` and `reordered_events` are listed but disabled.
+- **Settings:** read-only. API-key management, member roles and live activation appear as unavailable capabilities, not controls.
+- **Not compared line by line:** the overview, providers, ledger, reconciliation, events and docs layouts and the shared loading, empty and error states. The Playwright specs and the 375/1440 px accessibility sweep (`e2e/ui/a11y-routes.spec.ts`) cover their behavior, not their resemblance to these drawings.
+
 ## Shared desktop and mobile shells
 
 Desktop target: 1440 pixels. Content uses a bounded readable width, a persistent sidebar, and stacked sections when space becomes tight.

@@ -22,6 +22,219 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Record the first green CI results for M5/M6
+
+**WBS:** 5.1.10, 5.1.11, 5.2.10, 5.2.11, 5.1 consolidation · **PR/commit:** PR #3 (`feat/m5-m6-verification-delivery`)
+
+**Changed**
+- `docs/wbs.md`, `docs/roadmap.md` — recorded the first GitHub Actions results on PR #3 and ticked only the boxes those runs prove (5.1.10, 5.1.11, the flake check, 5.2.10, 5.2.11, the non-root/secret-scan gate line). 5.3.10 stays unticked: CI validation passes but images are local tags, not digests.
+
+**Verification (GitHub Actions, commit `419608d`, 2026-11-01)**
+- CI run 41268891977 (pull_request) and push run 41268888658: static checks, Go `-race`, Vitest, Playwright E2E and the flake-check job (three full runs with `--retries=0`, central demo x20) all succeeded with no skipped steps.
+- Container delivery run 41268891933: pin check, secret scans of history, working tree and images, image build, digest record, E2E against Compose all succeeded; only the failure-only "Compose logs" step was skipped.
+- Kubernetes manifests run 41268891939: kubeconform validation succeeded.
+- Not claimed: "CI green on main" (not merged yet); the flake loop is three runs inside one workflow run, not three separate workflow runs.
+
+## 2026-11-01 — Merge WBS 5.4 documentation and evidence; final M5/M6 verification
+
+**WBS:** 5.4 (and the integrated 5.1–5.3) · **PR/commit:** feat/m5-m6-verification-delivery
+
+**Changed**
+- Merged the three 5.4 branches: README quickstart plus clean-clone spec, architecture/design docs plus ADRs 0002–0010, and measurements, case study and known limitations. Conflicts in `CODECHANGELOG.md` and `docs/wbs.md` were resolved by keeping both sides and each task's ticked state. The 5.4 status row now reads: tasks 5.4.1–5.4.9 done locally; clean-machine gate and CI-based evidence open.
+
+**Verification (final tree)**
+- `go -C backend test -race ./...` — pass.
+- `pnpm check` — pass (Vitest 95 passed).
+- `CI=1 pnpm run test:e2e:ci`, retries disabled — 88 passed, 5 skipped (container-only specs), 0 failed.
+- Markdown relative links — 181 checked, 0 broken.
+- Earlier on the integrated tree (before the docs merges, no code changed since): container E2E on a fresh Compose stack, 92 passed, 1 skipped; `scripts/validate-k8s.sh` pass.
+- Not run: any GitHub Actions workflow (`ci.yml`, `containers.yml`, `k8s.yml`), so the "green on main", three-run flake check, CI digest recording and CI secret-scan items are open; egress NetworkPolicy enforcement was not observed in k3d (5.3.6); in-cluster backup drill and Kubernetes digest pinning (5.3.10); the clean-machine README gate on a second machine.
+
+**Notes:** the simulator catalog still lists `duplicate_webhook` and `reordered_events` as disabled "waiting for WBS 4.3" although 4.3 is merged. That is a documented gap, not changed here.
+
+## 2026-11-01 — Update design docs to implemented behavior and add ADRs 0002–0010
+
+**WBS:** 5.4.3, 5.4.9 (ticked) · **PR/commit:** worktree branch `worktree-agent-a6db49068f8921820`
+
+**Changed**
+- `docs/backend/schema.sql` — drift fix: it lacked migrations 0003 and 0004 (table `reconciliation_resolution_events`, five indexes, nine triggers, new columns on `simulation_runs` and `reconciliation_runs`). Appended both migrations verbatim; no migration or code change.
+- `docs/architecture.md` — rewritten from "proposed" to implemented: real repository layout (config, auth, simulation, backup, event, provider/mock, cmd subcommands, e2e/ops, infrastructure, scripts), corrected component diagram (reconciliation reads the mock's charges, not the adapter; simulation runner and private health listener added), execution steps as implemented, explicit "not implemented" list.
+- `docs/backend/data-model.md`, `persistence.md`, `flows.md` — five migrations and 24 tables, `reconciliation_resolution_events`, outbox types, accounts in use, retry/503 policy, lease tokens, `payment.lookup` now handled, late-outcome consumer, webhook diagram without a signature step, new simulation contract and "Not implemented" sections, new schema comparison script and verification section.
+- `docs/frontend/design.md`, `wireframes.md` — real directory tree and route/API table, endpoints the UI does not use (cancel, recovery, webhook), no Tailwind Plus or `lucide-react`, "Implementation status" differences list in the wireframes.
+- `docs/decisions/0002`–`0010` (new) and `0001` status — ADRs for forward-only migrations, mock scenario by token prefix, late outcomes as outbox rows, sandbox-only webhook, `VACUUM INTO` backups, private API-owned health, evidence-only reconciliation, unknown-outcome policy, original frontend components. `docs/README.md` — ADR index, status, schema comparison record.
+- `docs/wbs.md` — 5.4.3 and 5.4.9 ticked.
+
+**Verification**
+- Schema diff (Python 3, SQLite 3.51.0): before the fix, migrations 0001–0005 gave 63 objects and `schema.sql` 49 (including `schema_migrations`); 15 objects and three tables' columns differed (only in migrations: 1 table, 5 indexes, 9 triggers; column diffs on `reconciliation_resolution_events`, `reconciliation_runs`, `simulation_runs`). After the fix: no objects or columns differ; the only extra object is `schema_migrations`, which `storage/migrate.go` creates. The same script as printed in `docs/backend/persistence.md` was run and printed `Reference schema matches migrations: 64 objects`; `integrity_check` is `ok` and `foreign_key_check` is empty for `schema.sql`.
+- Link check (inline Python over every `*.md` outside `node_modules`/`.git`/`.claude`): 29 files, 152 relative links and anchors, 0 broken.
+- Not run: `pnpm check` and any Go/Vitest/Playwright suites (documentation only; no code changed); Mermaid diagrams were not rendered, only reviewed against the code; wireframes were compared at feature level, not pixel level.
+
+**Notes:** `docs/operations/deployment.md` still carries a few "proposed"/"pending" phrases (outside this change's ownership). The simulator catalog still lists `duplicate_webhook`/`reordered_events` as waiting for WBS 4.3, which is merged; documented in the flows doc and ADR 0005, code unchanged.
+## 2026-10-31 — Rewrite README quickstart, sync AGENTS.md, add opt-in quickstart E2E
+
+**WBS:** 5.4.1, 5.4.2, 5.4.4 · **PR/commit:** d2ae421 and a follow-up on the 5.4 README worktree branch
+
+**Changed**
+- `README.md` — rewritten: prerequisites, a marked quickstart block (`<!-- quickstart:start/end -->`: frozen install, Chromium, `pnpm check`), full E2E, native demo-mode walkthrough (generated credentials, curl payment, browser session cookies), Compose sandbox, container E2E, backup/restore pointers, command table, OpenAPI link. Removed stale status lines (M2-M4 "on a branch", "dependency files could not be generated", "container workflow has not run", handwritten-lockfile text).
+- `AGENTS.md` — command list matches `package.json` (`test:e2e:ci`, `test:e2e:quickstart`, `check:docs`, `lint:openapi`, container E2E mode, backup scripts); removed "backup/restore remains WBS 5.2 work" and "payment execution planned".
+- `e2e/docs/quickstart.spec.ts`, `e2e/playwright.quickstart.config.ts` (no globalSetup; the default config's `testMatch` does not include `docs/`), root `package.json` script `test:e2e:quickstart` — opt-in (`RUN_QUICKSTART=1`, set by the script); clones the repo to a temp dir, runs the README quickstart commands as written, then the smoke and central-demo specs; `QUICKSTART_CHILD` prevents recursion; the clone is deleted afterwards.
+- `docs/wbs.md` — ticked 5.4.1, 5.4.2, 5.4.4.
+
+**Verification (fresh clone of the commit; macOS arm64, Node 22.18, Go 1.26.2, Docker 28.5)**
+- `pnpm test:e2e:quickstart` — 1 passed in 1.5 min: `pnpm install --frozen-lockfile`, `playwright install chromium`, `pnpm check` (Go tests ok, Vitest 95 passed, lint, `check:docs`, builds), smoke `api/scaffold.spec.ts` 3 passed, central demo 1 passed; temp clone removed.
+- Separate clone: `pnpm test:e2e` — 88 passed, 5 skipped (container-only), 0 failed, 3.3 min.
+- Native demo walkthrough (README commands): API and Next.js started, `/v1/payment-methods` via the proxy, `POST /v1/payments` for 2500 USD returned `created` then `succeeded`.
+- `pnpm compose:up` (59 s, warm layer cache): web 200, `/v1/workspace` without credentials 401; `pnpm compose:down`.
+- Container E2E on a fresh volume (`COMPOSE_PROJECT_NAME` and `RAILVANTA_DATA_VOLUME` isolated): 92 passed, 1 skipped, 0 failed, 4.0 min. A first attempt on a volume reused from `compose:up` had 91 passed, 1 skipped and 1 failed (failing spec not captured), so the README requires a fresh volume.
+- `pnpm check:docs` passed inside `pnpm check`: `/docs` examples validate against `backend/api/openapi.yaml`.
+- Not verified: another machine/OS or a cold Go/pnpm cache; the DevTools cookie step for the browser demo session was not performed by hand; GitHub Actions.
+
+**Notes:** the compose data volume name is fixed (`railvanta_railvanta-data`), so `COMPOSE_PROJECT_NAME` alone does not isolate stacks; my first container run removed that default volume with `down -v`. The acceptance gate (clean machine) stays open.
+
+---
+## 2026-11-01 — Record measurements, limitations and case study (WBS 5.4.5–5.4.8)
+
+**WBS:** 5.4.5, 5.4.6, 5.4.7, 5.4.8 · **PR/commit:** worktree branch, not yet merged
+
+**Changed**
+- `scripts/measure-lib.mjs`, `measure-latency.mjs`, `measure-recovery.mjs`, `measure-central-demo.mjs` (new) — reproducible harness that builds the API, boots it on a temporary SQLite file in sandbox demo mode, and measures acceptance latency, time to terminal, same-key concurrency, per-scenario recovery outcomes, and a scripted, asserting central demo. The API's hardcoded limit of 600 requests per minute per address forced the harness to budget its own requests and to read payment status from the database instead of polling.
+- `docs/measurements.md` (new) — environment, caveats and all recorded numbers. `docs/known-limitations.md` (new). `docs/case-study.md` (new) — design choices, lessons and 11 demo scenarios mapped to specs and commands.
+- `docs/roadmap.md` — status text and a new "Recorded results" block; CI rows still "pending first run on this PR". `docs/operations/deployment.md` — one "Last successful drill" line. `docs/README.md` — one block of rows linking the three new docs. `docs/wbs.md` — 5.4.5–5.4.8 ticked.
+
+**Verification** (commit `5b33a29` plus these files, Apple M4 Pro, macOS 26.4, Go 1.26.2, Node v22.18.0, native)
+- `node scripts/measure-latency.mjs 200` — exit 0. Acceptance p50/p95/p99: 1.3/2.5/2.9 ms sequential, 3.9/10.5/13.5 ms at 8 clients, 11.7/30.7/38.1 ms at 32. Server-side time to succeeded on an idle API p50 1 ms, p99 3 ms; for a 200-payment burst at 32 clients p50 1148 ms, p99 2362 ms. Same key at 2, 8 and 32 concurrent requests: 1 payment, 1 charge and 1 journal every round (5 rounds each).
+- `node scripts/measure-recovery.mjs` — exit 0: success 2 ms, decline 2 ms (failed, no journal), delayed success 2003 ms, timeout after success 205 ms (unknown then succeeded by one lookup, 1 charge, 1 journal); timeout before execution and outage stayed `unknown` (0 charges, 0 journals) through 30 s and 15 s windows.
+- `node scripts/measure-central-demo.mjs` — PASS.
+- `go -C backend test -race -count=1 ./... -v` — exit 0, 12 packages ok, 260 PASS lines (134 top-level), 0 FAIL, 0 SKIP. `pnpm test:web` — 95 passed in 8 files. `CI=1 pnpm run test:e2e:ci` — 88 passed, 5 skipped (container-only `ops` specs), 0 failed.
+- Case-study spec files (recovery, dispatch, payment-acceptance, ledger-posting, events, ui ledger/reconciliation/simulator/payments/events) run together — 51 passed, 0 failed. The documented `--grep` commands for the central demo, kill, delayed-success, unknown/outage and double-click rows each ran and passed.
+- Not run: GitHub Actions; the case-study row 11 (`e2e/ops/backup-restore.spec.ts`) and a new drill (needs Docker Compose); measurements under Docker or Kubernetes or on another machine; the 100-repeat same-key gate (5 rounds per level here); `pnpm check` (no source other than new scripts and docs changed).
+
+**Notes:** `pnpm test:e2e -- <spec>` (with `--`) runs the whole suite in this pnpm version; use `pnpm test:e2e <spec> --grep "..."`. Time-to-terminal values use 1 ms audit timestamps (+/-1 ms). 5.4.7 was satisfied by the runbook already in `deployment.md` plus the drill line; no runbook text was rewritten. 5.4.1–5.4.4 and 5.4.9 belong to other work and are untouched.
+
+## 2026-11-01 — Merge WBS 5.2 container delivery and 5.3 Kubernetes manifests
+
+**WBS:** 5.2, 5.3 · **PR/commit:** feat/m5-m6-verification-delivery
+
+**Changed**
+- Merged the containers branch (backup/restore/check/seed-demo subcommands, digest-pinned images, secret scan, `containers.yml`, container E2E mode and `e2e/ops` specs) and the Kubernetes branch (Kustomize manifests, k3d overlay, `validate-k8s.sh`, `k8s.yml`). Conflicts in `CODECHANGELOG.md` and the `docs/wbs.md` status rows were resolved by hand: 5.1 now reads done for 5.1.1–5.1.9 with CI pending.
+
+**Verification (merged tree)**
+- `go -C backend test -race ./...` — pass.
+- `pnpm check` — pass (Vitest 95 passed).
+- `CI=1 pnpm run test:e2e:ci` (native, retries disabled) — 88 passed, 5 skipped (the container-only `ops` specs).
+- `E2E_BASE_URL=http://localhost:3000 CI=1 pnpm run test:e2e:ci` on a fresh `docker-compose.yml` + `docker-compose.e2e.yml` stack — 92 passed, 1 skipped (native-only private-readiness spec), 0 failed, retries disabled. The stack and volumes were removed afterwards.
+- `scripts/validate-k8s.sh` — pass.
+- Not run: GitHub Actions for any workflow; egress NetworkPolicy enforcement (5.3.6) was not observed in k3d; digest recording and the CI secret scan (5.2.10, 5.2.11); in-cluster backup drill.
+
+**Notes:** the containers agent saw `ui/payments.spec.ts` "double-clicking submit…" fail intermittently in two earlier container runs. It passed in the final container runs here and in isolation; the cause was not found.
+
+## 2026-11-01 — Merge WBS 5.1 test suites, Playwright specs and CI workflow
+
+**WBS:** 5.1 · **PR/commit:** feat/m5-m6-verification-delivery
+
+**Changed**
+- Merged the Go/Vitest suites branch (shared test store, isolation and operations tests, workspace-cache tests, `docs/verification-matrix.md`, storage write-health probe) and the Playwright/CI branch (a11y route sweep, flake gating, five-job `ci.yml`). Conflicts in `CODECHANGELOG.md` and `docs/wbs.md` were resolved by keeping both entries and each task's ticked state.
+
+**Verification (merged tree)**
+- `go -C backend test -race ./...` — pass.
+- `pnpm check` — pass (Vitest 95 passed).
+- `CI=1 pnpm run test:e2e:ci` (retries disabled) — 88 passed, 0 failed.
+- Not run: GitHub Actions (5.1.10 and 5.1.11 stay unticked until a CI run exists), the three-run flake loop locally.
+
+## 2026-10-31 — WBS 5.1 Go integration and Vitest correctness suites
+
+**WBS:** 5.1.1–5.1.7 (Playwright 5.1.8/5.1.9 and CI 5.1.10/5.1.11 are not part of this change) · **PR/commit:** worktree branch
+
+**Audit.** M2–M4 already covered most rows (concurrency, conflict, replay, crash points, stale lease, accounting, webhooks, busy retry, migration rollback, money formatting, unknown outcome, double submit). Added: shared helper consolidation, forged-workspace and other-session isolation, disk-full, busy-during-outcome, migration-failure/startup-refusal, a workspace-keyed cache test and loading/empty/error component tests. Full row-by-row mapping, including honest "not covered" entries, is in `docs/verification-matrix.md`.
+
+**Changed**
+- `backend/tests/helpers_test.go` — new shared `openTestStore` (5.1.1): production connection string via `storage.Open`, all migrations, PRAGMAs, migration history, `foreign_key_check` and pool size re-asserted. `cancel_test.go`, `dispatch_test.go`, `ledger_posting_test.go` now use it instead of calling `storage.Open` directly.
+- `backend/tests/isolation_test.go` (new, 5.1.5) — forged workspace IDs in body, header, query and path; every list/detail read plus cancel, resolve and webhook with the other workspace's API key and a browser session cookie.
+- `backend/tests/operations_test.go` (new) — disk full (page-limit `SQLITE_FULL`), writable probe degraded vs busy, busy during outcome recording with one provider call, migration failure and refused startup.
+- `backend/internal/storage/health.go` (new) — `CheckWritable`, `IsWriteFailure`, `IsTransient`.
+- `backend/cmd/api/main.go` — `/health/ready` also runs `storage.CheckWritable` (503 when the database cannot accept writes; a busy database stays ready). Tiny two-line addition after the existing ping.
+- `backend/internal/transport/http/payments.go` — acceptance and cancel now answer 503 + `Retry-After` for SQLite write failures (disk full, I/O, read-only) instead of 500. Found by the disk-full test, which first failed with a 500.
+- `frontend/tests/components/workspace-cache.test.tsx` (new, 5.1.7) — workspace-scoped query keys, no stale workspace A data after the session becomes workspace B, loading/empty/read-error states for the payments explorer.
+- `docs/verification-matrix.md` (new), `docs/wbs.md` (5.1.1–5.1.7 ticked; 5.1 status row).
+
+**Verification**
+- `go -C backend test -race ./...` — all packages ok (tests package 25.2 s).
+- `go -C backend test -race ./tests -run '^TestConcurrentSameKeyCreatesExactlyOnePayment$' -count=100` — ok, 100 of 100 runs passed (`-v` showed 100 `--- PASS`), 5.8 s; without `-race` also `-count=100` ok in 1.8 s. Each run: 50 goroutines, one payment/outbox row, identical 202 bodies.
+- `go -C backend vet ./...` and `gofmt -l backend` — clean.
+- `pnpm check` — exit 0 (Vitest 8 files, 95 tests passed; Go tests, lint, generated contracts, typecheck, build passed).
+- `pnpm test:e2e` — not run (owned by another work package; no `e2e/` change here).
+
+**Notes:** the `/health/ready` handler is in `package main` and has no test; disk-full is simulated with SQLite's page limit rather than a full filesystem; restore is WBS 5.2; Playwright rows are pending in the matrix.
+## 2026-10-31 — Add route accessibility sweep, flake gating and the full CI workflow
+
+**WBS:** 5.1.8, 5.1.9, 5.1.10, 5.1.11 and the 5.1 E2E consolidation block · **PR/commit:** worktree branch (base `eba05b2`)
+
+**Changed**
+- `e2e/ui/a11y-routes.spec.ts` — new. Visits landing, docs, all nine dashboard routes and payment, ledger, provider (seeded and unconfigured) and event detail pages at 375 px and 1440 px: no horizontal scroll, keyboard Tab traversal lands only on visible elements, axe with no serious/critical violations; drawer and create-payment dialog trap focus, close on Escape and restore focus.
+- 5.1.8 audit (no new specs needed): create payment to detail `ui/payments.spec.ts` "a created payment shows as pending..."; timeout after success to resolved `ui/simulator.spec.ts` "timeout after success runs the real pipeline..." (plus API `api/recovery.spec.ts` central demo); ledger journal balance `ui/ledger.spec.ts` "a succeeded payment's journal is balanced..."; API offline `ui/payments.spec.ts` "with the API stopped...".
+- `frontend/app/globals.css` — accessibility/layout fix found by the new spec: `.mono` now wraps (`overflow-wrap: anywhere`); the 64-character payload hash made `/dashboard/events/[id]` scroll horizontally at 375 px.
+- `e2e/playwright.config.ts` — comment that retries stay 0; JUnit reporter when `CI` is set. `e2e/package.json`, `package.json` — `test:ci` / `test:e2e:ci` (`--retries=0`) and `test:central-demo-repeat` / `test:e2e:central-demo-repeat` (`--repeat-each=20`). `.gitignore` — `junit-results/`.
+- `.github/workflows/ci.yml` — rewritten into jobs `static` (policy, compose config, gofmt, go vet, pnpm lint, generated contracts, docs examples, typecheck, build), `go-tests` (`-race`), `vitest` (JUnit), `e2e` (Go API with mock provider, retries 0) and `flake-check` (3 consecutive full runs with `--retries=0`, then central demo x20). Go/pnpm/Playwright browser caching; reports, traces, Go output and Vitest results uploaded with `if: always()`.
+- `docs/roadmap.md` — "Recorded results" section (local results only; CI marked pending). `docs/wbs.md` — 5.1.8, 5.1.9 and the full-suite consolidation box ticked.
+
+**Verification**
+- `pnpm check` — exit 0 (Vitest 91 passed).
+- Full suite, `CI=1 pnpm run test:e2e:ci` — 88 passed, 0 failed.
+- `ui/a11y-routes.spec.ts` — 5 passed; it failed first on the event-detail overflow, fixed as above.
+- `CI=1 pnpm run test:e2e:central-demo-repeat` — 20 passed.
+- actionlint v1.7.7 — exit 0; YAML parses (PyYAML), 5 jobs.
+- Not run: GitHub Actions (5.1.10 and 5.1.11 stay unticked until a CI run; "3 consecutive CI runs" and "green on main" open); `go test -race` was not re-run (no Go changes).
+
+---
+## 2026-10-31 — Add Kubernetes reference manifests, validation script and k3d smoke drill
+
+**WBS:** 5.3.1–5.3.5, 5.3.7–5.3.9 (ticked); 5.3.6 and 5.3.10 (not ticked) · **PR/commit:** worktree branch, not yet merged
+
+**Changed**
+- `infrastructure/k8s/base/` (new, Kustomize) — Namespace, ServiceAccounts (no token automount), ConfigMap, placeholder Secret, API StatefulSet (1 replica, headless + ClusterIP Services, `ReadWriteOncePod` volumeClaimTemplate at `/var/lib/railvanta`, exec probes, 15 s grace), web Deployment and Service, Ingress, NetworkPolicies. `overlays/k3d-local/` adds a Retain StorageClass; `examples/tls-secret.example.yaml` is a placeholder.
+- `scripts/validate-k8s.sh` (new) — Kustomize render, `kubeconform -strict`, single-writer policy checks, optional `REQUIRE_DIGESTS=1`.
+- `scripts/k8s-smoke.sh` (new) — k3d cluster, image import, apply, TLS Ingress check, API pod-delete drill, NetworkPolicy probes, teardown.
+- `.github/workflows/k8s.yml` (new) — runs `validate-k8s.sh` with kubeconform v0.7.0.
+- `docs/operations/kubernetes.md`, `docs/wbs.md` — reference-manifest section; ticked boxes and open items.
+
+**Verification**
+- `scripts/validate-k8s.sh` with kubeconform v0.7.0 (`go install`), Kubernetes schema 1.35.0 — exit 0: base 17 resources valid, overlay 18 valid, example Secret valid, 8 policy checks ok. Not run: the GitHub workflow itself.
+- `scripts/k8s-smoke.sh` on k3d v5.9.0 (k3s v1.35.5, traefik, kube-router NetworkPolicy controller, local-path), images `railvanta-api:local` / `railvanta-web:local` imported: manifests applied cleanly; pods Ready via the exec probes; PVC bound as `RWOP` with PV reclaim `Retain`; `GET /` returned 200 through the Ingress over TLS (throwaway self-signed CA, deleted afterwards); `GET /v1/workspace` returned 200 with an operator key and 401 without; `/health/ready` through the Ingress returned 404. 3 payments succeeded, then 3 more were created and the pod was deleted: the replacement pod (new UID, 0 restarts) came up, all 6 payments `succeeded`, ledger transactions went 3 to 6 with 0 duplicate postings per payment. 1 StatefulSet replica, 0 Jobs, 0 CronJobs, 0 HPAs, one pod mounting the claim. The script ran end to end three times after fixes; the final run is the one reported. Fixes along the way: `kubectl exec -i cat` truncated the seeded database at 32 KiB (switched to `kubectl cp`), and traefik needed a wait before the first request.
+- NetworkPolicy: ingress-side policies enforced (unlabelled pod to API/web blocked; web-labelled pod to API allowed; web-labelled pod to web blocked). Egress was NOT observed to be enforced: a default-deny pod and a web-labelled pod still connected to `traefik.kube-system:80`, and a default-deny pod connected to 1.1.1.1:80. Cause not diagnosed (k3d on Docker Desktop). 5.3.6 stays unticked.
+- Teardown: `k3d cluster list` empty, no `k3d-*` containers, `minikube status` shows only the pre-existing stopped `local-cluster` profile, kubeconfig current context unchanged.
+- Not run: `pnpm test:e2e` against the Ingress (the base has no `E2E_BASE_URL` support; a scripted curl smoke was used instead); the in-cluster backup/restore drill (the container backup command is not in this base); pinned image digests (none exist, images use local tags; 5.3.10 unticked); a `kubectl apply --dry-run=server` run; resource sizing (initial values are unmeasured).
+
+**Notes:** the API requires a loopback `HEALTH_ADDR`, so probes exec `wget` inside the container. Credentials for the smoke test come from a throwaway demo-seeded database copied into the PVC while the API was scaled to zero; the container images create no credentials. The web image bakes `API_INTERNAL_ORIGIN=http://api:8080`, unused behind this Ingress.
+## 2026-11-01 — Container delivery and recovery (WBS 5.2)
+
+**WBS:** 5.2.5–5.2.9 done; 5.2.10 and 5.2.11 partly (CI parts unverified) · **PR/commit:** branch `worktree-agent-a41d20337359e09c1`
+
+**Changed**
+- `backend/internal/backup/` — `Create` (read-only `VACUUM INTO`, fsync, verify, rename, JSON sidecar with snapshot time, schema version, SHA-256, release), `VerifySnapshot`, `Restore` (manifest checksum, newer-schema and non-empty-target refusal, full check, removes the file on failure), `Check` (integrity, foreign keys, `ledger.Verify`, orphaned/terminal attempts, parentless entries/journals; one read transaction); Go tests include a backup under concurrent writes.
+- `backend/cmd/api/subcommands.go` (+ test), `main.go` (3-line dispatch), `go.mod` (`mattn/go-sqlite3` is now a direct dependency) — `railvanta-api backup|restore|check|seed-demo`. `seed-demo` provisions demo fixtures/credentials into a container sandbox DB (containers keep `DEMO_MODE` off).
+- Health endpoints and graceful shutdown already existed in `main.go`; audited and left unchanged.
+- `infrastructure/docker/*.Dockerfile`, `docker-compose.yml` — base images pinned by digest (resolved with `docker buildx imagetools inspect`), release build args, `RAILVANTA_{API,WEB}_IMAGE` and `RAILVANTA_DATA_VOLUME` overrides (default unchanged), pinned proxy image. `nginx.conf` — `proxy_connect_timeout 2s` so a stopped API gives a fast 504 instead of a ~38 s "host unreachable".
+- `docker-compose.e2e.yml` — fast dispatcher timings for container E2E only.
+- `scripts/backup-db.sh`, `restore-backup.sh`, `restore-drill.sh`, `secret-scan.sh` (pinned gitleaks container, history of a clean clone, working tree, image filesystems), `check-image-pins.sh`; `.gitleaks.toml` (one documented example line and build-generated Next.js keys/Node header in the web image allowlisted); `.env.example`.
+- `.github/workflows/containers.yml` — pin check, secret scan, build, image-ID summary, image scan, E2E against the Compose stack. Has not run on GitHub.
+- `e2e/support/containers.ts`, `global-setup.ts` (3 lines), `playwright.config.ts` (additive `ops` project), `api/scaffold.spec.ts` (one explicit native-only skip), `e2e/ops/backup-restore.spec.ts`, `e2e/ops/container-runtime.spec.ts`, `e2e/README.md` — `E2E_BASE_URL` container mode.
+- `docs/operations/deployment.md`, `README.md`, `docs/wbs.md` — runbook, drill record, status.
+
+**Verification** (Docker 28.5.1, Compose v2, isolated project name and ports)
+- `go -C backend test -race ./...` — pass (all packages, including `internal/backup` and `cmd/api`).
+- `pnpm check` — pass.
+- Native `pnpm test:e2e` — 83 passed, 5 skipped (the five `ops` specs skip without `E2E_BASE_URL`).
+- Container `E2E_BASE_URL=http://localhost:3052 pnpm test:e2e` on a fresh `down -v`/`up --build`: final run 87 passed, 1 skipped (native-only scaffold health), 0 failed. Earlier container runs on the same code: one run failed `ui/payments.spec.ts` "with the API stopped" before the nginx connect timeout was added (now passes); two full runs failed `ui/payments.spec.ts` "double-clicking submit and reloading" yet it passed 5/5 in isolation and in the final full run, so it is an intermittent UI timing flake of unknown cause (not investigated against native).
+- Restore drill under write load (`scripts/restore-drill.sh 20 8`, release `m5-wip`, 2026-11-01): mid-flight snapshot (600 payments, 207 journals, 211 attempts) restored into a new volume with manifest checksum, `integrity_check`, `foreign_key_check` and domain checks passing; after start the work completed (600/600/600, `checks=ok`); old volume preserved.
+- Crash drill: SIGKILL of the API container with a delayed-success attempt submitted recovered to `succeeded` with one provider charge, one journal and `check` passing (`ops/container-runtime.spec.ts`; also the existing `dispatch.spec` crash spec against containers).
+- Clean-machine style: `docker compose down -v` then `up --build --wait` with only `docker-compose.yml`: web `/` 200, `/v1/workspace` without credentials 401, `/health/ready` through the proxy 404, API uid 10001, `railvanta-api check` ok; `docker compose stop api` exits 0.
+- Containers non-root (api uid 10001; web and proxy non-zero uid) and only the API mounts the data volume — asserted by `ops/container-runtime.spec.ts`.
+- `scripts/secret-scan.sh` (gitleaks v8.28.0): history of a clean clone, working tree and both image filesystems report no findings after the `.gitleaks.toml` allowlist above. `scripts/check-image-pins.sh` — pass.
+
+**Notes:** Native-only (skipped in container mode): `api/scaffold.spec.ts` "private readiness" (health listener is container-private; covered by `ops/container-runtime.spec.ts`). Unverified: the GitHub workflow, CI digest recording, "secret scan reports no findings in CI", the `# syntax=` frontend pin, any RPO/retention, and UI behavior of the intermittent double-click spec. Container E2E needs a fresh volume on first start; credentials are cached per Compose project in the OS temp dir.
+
+---
+
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 
 **WBS:** 4.3, 4.4 · **PR/commit:** feat/m2-m4-payment-correctness

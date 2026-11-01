@@ -1,0 +1,22 @@
+title = "Railvanta gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# Documented, non-secret placeholders only. Do not allowlist whole files.
+[[allowlists]]
+description = "Idempotency-Key value in the public API usage example"
+regexTarget = "line"
+regexes = ['''Idempotency-Key: order-1042-attempt''']
+
+# Image scans only: Next.js generates random preview-mode and server-action
+# keys at build time (not credentials), the public API example is compiled into
+# page.js, and v8-internal.h is a Node header.
+[[allowlists]]
+description = "Build-generated Next.js keys and Node headers inside the web image"
+paths = [
+  '''(^|/)app/frontend/\.next/prerender-manifest\.json$''',
+  '''(^|/)app/frontend/\.next/server/(preview-props|server-reference-manifest)\.json$''',
+  '''(^|/)app/frontend/\.next/server/app/page\.js$''',
+  '''(^|/)usr/local/include/node/v8-internal\.h$''',
+]
