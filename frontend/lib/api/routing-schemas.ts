@@ -9,7 +9,14 @@ import { attemptSchema, paymentSchema } from "./schemas";
  */
 type Schemas = components["schemas"];
 
-export const providerCodeSchema = z.enum(["mock", "stripe", "plaid"]);
+export const providerCodeSchema = z.enum([
+  "mock",
+  "mock_fast",
+  "mock_economy",
+  "mock_ach",
+  "stripe",
+  "plaid",
+]);
 
 export const routingRuleSchema: z.ZodType<Schemas["RoutingRule"]> = z.object({
   id: z.string(),
@@ -54,6 +61,25 @@ export const routingDecisionSchema: z.ZodType<Schemas["RoutingDecision"]> =
       }),
     ),
     failover_blocked: z.boolean(),
+    alternatives: z
+      .array(
+        z.object({
+          provider_id: z.string(),
+          provider_code: z.string(),
+          status: z.enum([
+            "chosen",
+            "pinned",
+            "eligible_lower_priority",
+            "ineligible",
+            "blocked",
+          ]),
+          eligible: z.boolean(),
+          rule_id: z.string().nullable(),
+          priority: z.number().int().nullable(),
+          reasons: z.array(z.string()),
+        }),
+      )
+      .optional(),
   });
 export type RoutingDecision = Schemas["RoutingDecision"];
 
@@ -72,6 +98,7 @@ export const providerSchema: z.ZodType<Schemas["Provider"]> = z.object({
     })
     .nullable(),
   rule_count: z.number().int(),
+  simulated_latency_ms: z.number().int().nullable(),
 });
 export type Provider = Schemas["Provider"];
 

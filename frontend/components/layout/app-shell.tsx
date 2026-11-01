@@ -9,6 +9,7 @@ import { ThemeSelect } from "@/components/theme";
 
 export const navigation = [
   { href: "/dashboard", label: "Overview", icon: "◫" },
+  { href: "/dashboard/playground", label: "Playground", icon: "★" },
   { href: "/dashboard/payments", label: "Payments", icon: "↗" },
   { href: "/dashboard/routing", label: "Routing", icon: "⑂" },
   { href: "/dashboard/providers", label: "Providers", icon: "◇" },

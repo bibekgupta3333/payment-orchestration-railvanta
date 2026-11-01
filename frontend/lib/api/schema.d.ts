@@ -852,7 +852,8 @@ export interface components {
     ProviderHealth: {
       id: string;
       /** @enum {string} */
-      code: "mock" | "stripe" | "plaid";
+      code:
+        "mock" | "mock_fast" | "mock_economy" | "mock_ach" | "stripe" | "plaid";
       configured: boolean;
       data_source: components["schemas"]["DataSource"];
       /** @description Observations in the 7d window. */
@@ -869,7 +870,8 @@ export interface components {
     Provider: {
       id: string;
       /** @enum {string} */
-      code: "mock" | "stripe" | "plaid";
+      code:
+        "mock" | "mock_fast" | "mock_economy" | "mock_ach" | "stripe" | "plaid";
       display_name: string;
       /** @enum {string} */
       mode: "simulated" | "configured" | "not_configured";
@@ -881,6 +883,8 @@ export interface components {
         rails: string[];
       } | null;
       rule_count: number;
+      /** @description Fixed simulated processing latency of a simulated provider profile; null otherwise. Never measured. */
+      simulated_latency_ms: number | null;
     };
     ProviderDetail: {
       provider: components["schemas"]["Provider"];
@@ -920,7 +924,8 @@ export interface components {
     RoutingDecision: {
       provider_id: string;
       /** @enum {string} */
-      provider_code: "mock" | "stripe" | "plaid";
+      provider_code:
+        "mock" | "mock_fast" | "mock_economy" | "mock_ach" | "stripe" | "plaid";
       rule_id: string | null;
       priority: number | null;
       reason: string;
@@ -933,6 +938,22 @@ export interface components {
         priority: number;
       }[];
       failover_blocked: boolean;
+      /** @description Per-provider verdict for every provider in the workspace, including providers blocked from failover by an unresolved prior attempt. */
+      alternatives?: {
+        provider_id: string;
+        provider_code: string;
+        /** @enum {string} */
+        status:
+          | "chosen"
+          | "pinned"
+          | "eligible_lower_priority"
+          | "ineligible"
+          | "blocked";
+        eligible: boolean;
+        rule_id: string | null;
+        priority: number | null;
+        reasons: string[];
+      }[];
     };
     LedgerJournal: {
       /** Format: uuid */
@@ -1261,7 +1282,13 @@ export interface components {
       role: "read" | "operator";
       providers: {
         /** @enum {string} */
-        code: "mock" | "stripe" | "plaid";
+        code:
+          | "mock"
+          | "mock_fast"
+          | "mock_economy"
+          | "mock_ach"
+          | "stripe"
+          | "plaid";
         label: string;
         /** @enum {string} */
         status: "enabled" | "disabled" | "not_configured";
@@ -1287,7 +1314,8 @@ export interface components {
         | "reordered_events"
         | "outage"
         | "unknown_recovery"
-        | "duplicate_posting";
+        | "duplicate_posting"
+        | "settlement_mismatch";
       /** @description Default "default". Fixes the amount, so the same seed reproduces the same states. */
       seed?: string;
       /** @description Overrides the seed-derived amount. */
