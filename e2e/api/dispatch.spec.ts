@@ -13,6 +13,7 @@ import {
   killApi,
   restartApi,
   state,
+  waitForProviderCharge,
 } from "../support/state";
 
 interface Decision {
@@ -141,7 +142,7 @@ test("killApi() while a delayed-success attempt is submitted never submits a sec
       intervals: [50, 100],
     })
     .toBe("submitted");
-  const before = await inspectPayment(accepted.id);
+  const before = await waitForProviderCharge(accepted.id);
   expect(before.attempts).toHaveLength(1);
   expect(before.charges).toHaveLength(1);
   expect(before.charges[0].status).toBe("processing");

@@ -11,6 +11,7 @@ import {
   inspectPayment,
   killApi,
   seedCreatedPayment,
+  waitForProviderCharge,
 } from "../support/state";
 
 interface RecoveryView {
@@ -81,7 +82,7 @@ test("killApi() after provider acceptance and before the result is recorded reso
       intervals: [50, 100],
     })
     .toBe("submitted");
-  const before = await inspectPayment(accepted.id);
+  const before = await waitForProviderCharge(accepted.id);
   // The provider has accepted the charge (it is processing); no result is recorded.
   expect(before.charges).toHaveLength(1);
   await killApi();

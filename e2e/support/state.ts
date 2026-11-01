@@ -108,6 +108,28 @@ export async function inspectPayment(paymentId: string): Promise<Inspection> {
   return (await control("inspect", { paymentId })) as unknown as Inspection;
 }
 
+/**
+ * Waits until the mock provider has recorded a charge for the payment. An
+ * attempt is marked `submitted` before the provider call starts, so
+ * `submitted` alone does not prove the provider accepted anything; on a slow
+ * runner the charge row can appear a moment later.
+ */
+export async function waitForProviderCharge(
+  paymentId: string,
+  timeoutMs = 15_000,
+): Promise<Inspection> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const inspection = await inspectPayment(paymentId);
+    if (inspection.charges.length > 0) return inspection;
+    if (Date.now() >= deadline)
+      throw new Error(
+        `no provider charge recorded for ${paymentId} within ${timeoutMs}ms`,
+      );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 /** Re-queues a payment's dispatch command as if its completion was lost. */
 export async function redeliverDispatch(paymentId: string): Promise<void> {
   await control("redeliver", { paymentId });

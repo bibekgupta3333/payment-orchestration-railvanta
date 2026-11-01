@@ -14,6 +14,7 @@ import {
   killApi,
   restartApi,
   state,
+  waitForProviderCharge,
 } from "../support/state";
 
 test.skip(
@@ -114,7 +115,7 @@ test("killing the API container mid-dispatch recovers without a second charge or
       intervals: [50, 100],
     })
     .toBe("submitted");
-  const before = await inspectPayment(accepted.id);
+  const before = await waitForProviderCharge(accepted.id);
   expect(before.charges).toHaveLength(1);
   const key = before.attempts[0].provider_idempotency_key;
 

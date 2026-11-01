@@ -66,6 +66,23 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Fix a race in the kill-after-provider-acceptance E2E specs
+
+**WBS:** 2.4, 5.1 (flake fix) · **PR/commit:** fix/e2e-kill-after-acceptance-race
+
+**Changed**
+- `e2e/support/state.ts` — new `waitForProviderCharge(paymentId)`, which polls until the mock provider has recorded a charge.
+- `e2e/api/recovery.spec.ts`, `e2e/api/dispatch.spec.ts`, `e2e/ops/container-runtime.spec.ts` — the three kill-mid-dispatch specs now wait for the charge before killing the API, instead of assuming the `submitted` status means the provider already accepted it.
+
+**Why:** CI run 41271047184 (pull_request, commit `4ee84b8`, a docs-only change) failed `api/recovery.spec.ts:72` with `expected 1 charge, received 0` at `before.charges`. An attempt is marked `submitted` before the provider call starts, so on a slow runner the charge row can appear a moment after that status. The product behavior was correct; the test assumed too much. The same pattern was in the dispatch and container specs.
+
+**Verification**
+- `pnpm --filter @railvanta/e2e typecheck` — pass.
+- The recovery and dispatch kill specs, 10 repetitions each, `CI=1`, retries off: 20 passed (this run was under heavy artificial CPU load, which the user then asked me to stop; no further load tests were run).
+- Not run: the unfixed specs under load for comparison (stopped at the user's request), the container spec, the full suite. CI on the PR is the next check.
+
+**Notes:** the earlier flake-check job passed three full runs plus the central demo x20 on the previous commit, so this race is rare on GitHub's runners but real.
+
 ## 2026-11-01 — Record the first green CI results for M5/M6
 
 **WBS:** 5.1.10, 5.1.11, 5.2.10, 5.2.11, 5.1 consolidation · **PR/commit:** PR #3 (`feat/m5-m6-verification-delivery`)
