@@ -2,6 +2,28 @@
 
 A record of every change to code, configuration or design docs, newest first. Each entry says what changed, which [WBS](docs/wbs.md) item it serves, and what was actually run to verify it. Only record results you observed. If a check was skipped or failed, say so.
 
+## 2026-11-01 — Sandbox API key generator in Settings
+
+**WBS:** demo preparation (supersedes the 4.4 "no key generation" gate wording) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `backend/internal/transport/http/apikeys.go` (new), `handler.go`, `settings.go` — `POST /v1/api-keys` (operator) mints a `rvk_<8 hex>.<48 hex>` key from `crypto/rand`, stores only its SHA-256 hash and returns the secret once (`Cache-Control: no-store`); `GET /v1/api-keys` (operator) lists metadata only; `DELETE /v1/api-keys/{id}` revokes idempotently within the workspace. Keys have role read or operator, always expire (default 24 h, max 720 h), names use a safe character set, and a workspace may hold at most 20 active keys. The cap check and insert run in one transaction (my first version checked then inserted separately, which concurrent requests could have exceeded; the new concurrency test covers it). Settings now reports `api_key_management: available`.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` — new paths and schemas; `frontend/lib/docs/examples.json`, `frontend/app/docs/page.tsx` — the docs no longer list key management as planned; roles and scopes stay planned.
+- `frontend/components/settings/{ApiKeys,SettingsView}.tsx`, `frontend/lib/hooks/apikeys.ts`, `frontend/lib/api/{apikey-schemas,event-schemas}.ts` — Settings gets a generator form, a one-time copy panel with a curl example, a key table with a two-step revoke, and a read-only note for non-operators. The secret lives only in component state. The Playground links to it.
+- `docs/decisions/0011-sandbox-api-key-generator.md` (new) and updates to `docs/{architecture,known-limitations,README}.md`, `docs/backend/flows.md`, `docs/frontend/{design,wireframes}.md`, `docs/demo/README.md`, `README.md`, `docs/wbs.md` (two Settings gates annotated as superseded).
+- Tests: `backend/tests/api_keys_test.go` (9 tests), `frontend/tests/components/api-keys.test.tsx` (5), updated `docs-settings.test.tsx` and `e2e/ui/docs-settings.spec.ts` (new generate/use/revoke test).
+
+**Verification**
+- `go -C backend test -race ./tests -run <the 9 key tests>` — all 9 pass, including 40 concurrent mints ending at exactly 20 active keys.
+- Vitest `api-keys.test.tsx`, `docs-settings.test.tsx`, `playground.test.tsx` — pass; frontend typecheck and eslint clean.
+- `pnpm check:docs` — 12 examples, 16 supported endpoints; `pnpm lint:openapi` valid.
+- `pnpm test:e2e e2e/ui/docs-settings.spec.ts` (native, once) — 8 passed, including generating a key in the browser, calling the API with it (200 for GET, 403 for a write with a read key), the secret gone after hiding and reloading, revoking, and then 401. `e2e/ui/a11y-routes.spec.ts` "every route fits" at 375px and 1440px — 2 passed with the new Settings form.
+- Full `pnpm check` — pass (lint, typecheck, Go tests, 105 Vitest tests, build, docs examples, bundle secret check), run before the final UI polish (copy button now says "Copy key" for the secret, shorter role labels, an "immediate and cannot be undone" revoke warning, the role-permission hint). After the polish: 17 Vitest tests in the two settings files pass, typecheck is clean and `e2e/ui/docs-settings.spec.ts` passes 8 of 8 again.
+- Docker stack rebuilt with `DEMO_BUILD=1 pnpm demo:up` (then the web container once more after the polish). Against it through the proxy with the seeded operator key: mint 201 with `Cache-Control: no-store` and a well-formed key; the minted read key gets 200 on `GET /v1/workspace` and 403 on a write; the list shows the key and no secret or hash field; revoke 200, and the key then answers 401. A headless browser signed in with the launcher's cookies generated a key on the Settings page and showed the one-time panel and the key table (screenshot reviewed).
+- Not run: the full E2E suite, container-mode E2E, CI.
+
+**Notes:** an operator key can mint further keys until it expires or is revoked; there is no rotation, scoping beyond read/operator, or per-key audit beyond a log line with the key ID and prefix. The public landing page cannot mint keys (a visitor needs an operator session first).
+
 ## 2026-11-01 — Update stale "Planned" labels on the landing page and sidebar
 
 **WBS:** demo preparation · **PR/commit:** feat/demo-playground
