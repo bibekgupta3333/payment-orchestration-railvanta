@@ -27,9 +27,17 @@ func (h *handler) servePayments(w http.ResponseWriter, r *http.Request, principa
 		h.createPayment(w, r, principal, id)
 	case rest == "" && r.Method == http.MethodGet:
 		h.listPayments(w, r, principal, id)
+	case strings.HasPrefix(rest, "/") && r.Method == http.MethodPost:
+		paymentID, suffix, _ := strings.Cut(strings.TrimPrefix(rest, "/"), "/")
+		if paymentID == "" || suffix != "cancel" {
+			return false
+		}
+		h.cancelPayment(w, r, principal, id, paymentID)
 	case strings.HasPrefix(rest, "/") && r.Method == http.MethodGet:
 		paymentID, suffix, _ := strings.Cut(strings.TrimPrefix(rest, "/"), "/")
 		switch {
+		case paymentID != "" && suffix == "recovery":
+			h.getRecovery(w, r, principal, id, paymentID)
 		case paymentID != "" && suffix == "" && !strings.HasSuffix(rest, "/"):
 			h.getPayment(w, r, principal, id, paymentID)
 		case paymentID != "" && suffix == "attempts":
@@ -241,4 +249,40 @@ func (h *handler) listAttempts(w http.ResponseWriter, r *http.Request, principal
 		items = append(items, payment.NewAttemptView(a))
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
+}
+
+// cancelPayment serves POST /v1/payments/{id}/cancel (WBS 2.4.5): 200 with the
+// canceled payment (also when it already was), 409 once dispatch has claimed it.
+func (h *handler) cancelPayment(w http.ResponseWriter, r *http.Request, principal auth.Principal, id, paymentID string) {
+	result, err := h.payments.Cancel(r.Context(), payment.CancelRequest{WorkspaceID: principal.WorkspaceID, PaymentID: paymentID, ActorReference: actorReference(principal)})
+	switch {
+	case err == nil:
+		writeJSON(w, 200, payment.NewPaymentView(result.Payment))
+	case errors.Is(err, storage.ErrNotFound):
+		fail(w, 404, "not_found", "Payment not found", id)
+	case errors.Is(err, payment.ErrNotCancelable):
+		fail(w, 409, "not_cancelable", "Payment is "+result.Payment.Status+"; only a created payment can be canceled", id)
+	case errors.Is(err, payment.ErrBusy):
+		w.Header().Set("Retry-After", "1")
+		fail(w, 503, "unavailable", "Cancellation is temporarily unavailable; retry", id)
+	default:
+		h.config.Logger.Error("payment cancellation failed", "request_id", id)
+		fail(w, 500, "internal_error", "Cancellation failed", id)
+	}
+}
+
+// getRecovery serves GET /v1/payments/{id}/recovery: whether the payment is
+// awaiting a provider lookup, how many were made, and late provider results
+// recorded for reconciliation. It exposes no provider key.
+func (h *handler) getRecovery(w http.ResponseWriter, r *http.Request, principal auth.Principal, id, paymentID string) {
+	view, err := h.payments.Recovery(r.Context(), principal.WorkspaceID, paymentID)
+	if errors.Is(err, storage.ErrNotFound) {
+		fail(w, 404, "not_found", "Payment not found", id)
+		return
+	}
+	if err != nil {
+		fail(w, 503, "unavailable", "Recovery state unavailable", id)
+		return
+	}
+	writeJSON(w, 200, view)
 }

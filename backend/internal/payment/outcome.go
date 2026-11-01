@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/railvanta/railvanta/backend/internal/event"
 	"github.com/railvanta/railvanta/backend/internal/ledger"
@@ -69,6 +70,8 @@ type Outcome struct {
 	ActorReference string
 	Now            int64 // UTC Unix milliseconds
 	Claim          *event.Claim
+	// LookupDelay postpones the first payment.lookup that ApplyUnknown schedules.
+	LookupDelay time.Duration
 }
 
 // Applied reports what an Apply* call changed.
@@ -273,7 +276,7 @@ func scheduleLookup(tx *gorm.DB, o Outcome, attempt storage.PaymentAttempt) erro
 	paymentID := attempt.PaymentID
 	_, err = event.Enqueue(tx, storage.OutboxEvent{
 		WorkspaceID: o.WorkspaceID, PaymentID: &paymentID, EventType: OutboxPaymentLookup,
-		DeduplicationKey: LookupDeduplicationKey(attempt.ID), Payload: string(payload), AvailableAt: o.Now, CreatedAt: o.Now,
+		DeduplicationKey: LookupDeduplicationKey(attempt.ID), Payload: string(payload), AvailableAt: o.Now + max(o.LookupDelay.Milliseconds(), 0), CreatedAt: o.Now,
 	})
 	return err
 }

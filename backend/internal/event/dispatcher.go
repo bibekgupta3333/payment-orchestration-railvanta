@@ -24,6 +24,10 @@ type Handler func(ctx context.Context, claim Claim) error
 type RetryError struct {
 	Delay time.Duration
 	Err   error
+	// Unbounded exempts the retry from MaxAttempts parking. Use it only for
+	// work that must keep waiting on an external party (for example a lookup
+	// at a provider that cannot answer yet), never for a failing handler.
+	Unbounded bool
 }
 
 func (e *RetryError) Error() string { return e.Err.Error() }
@@ -31,6 +35,17 @@ func (e *RetryError) Unwrap() error { return e.Err }
 
 // RetryAfter wraps err so the row becomes due again after delay.
 func RetryAfter(delay time.Duration, err error) error { return &RetryError{Delay: delay, Err: err} }
+
+// RetryAfterUnbounded is RetryAfter without MaxAttempts parking: the row stays
+// pending and is retried after delay for as long as the handler asks.
+func RetryAfterUnbounded(delay time.Duration, err error) error {
+	return &RetryError{Delay: delay, Err: err, Unbounded: true}
+}
+
+func unbounded(err error) bool {
+	var retry *RetryError
+	return errors.As(err, &retry) && retry.Unbounded
+}
 
 // Options configures a Dispatcher. Zero values select defaults.
 type Options struct {
@@ -292,7 +307,7 @@ func (d *Dispatcher) run(ctx context.Context, claim Claim) {
 		d.opts.Metrics.handlerErrors.Add(1)
 		d.opts.Logger.Warn("outbox handler failed", "event_id", claim.EventID, "event_type", claim.EventType, "attempts", claim.Attempts, "error", err.Error())
 		var settleErr error
-		if claim.Attempts >= d.opts.MaxAttempts {
+		if claim.Attempts >= d.opts.MaxAttempts && !unbounded(err) {
 			d.opts.Metrics.parked.Add(1)
 			settleErr = Fail(settleCtx, d.db, claim, err.Error())
 		} else {

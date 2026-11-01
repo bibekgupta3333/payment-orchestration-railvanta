@@ -112,11 +112,21 @@ func (e *Executor) Handle(ctx context.Context, claim event.Claim) error {
 		return fmt.Errorf("invalid %s payload for event %s", OutboxPaymentDispatch, claim.EventID)
 	}
 	var prepared *PreparedAttempt
-	err := e.transact(ctx, func(tx *gorm.DB) error {
-		var err error
-		prepared, err = e.prepare(ctx, tx, claim, command)
-		return err
-	})
+	var err error
+	// A stale version means cancellation (or another writer) changed the
+	// payment between our read and our guarded update; re-read and decide
+	// again: a canceled payment completes the command with no attempt.
+	for try := 0; try < 4; try++ {
+		prepared = nil
+		err = e.transact(ctx, func(tx *gorm.DB) error {
+			var err error
+			prepared, err = e.prepare(ctx, tx, claim, command)
+			return err
+		})
+		if !errors.Is(err, storage.ErrStaleVersion) {
+			break
+		}
+	}
 	if err != nil || prepared == nil {
 		return err
 	}
@@ -297,7 +307,22 @@ func (e *Executor) record(ctx context.Context, claim event.Claim, prepared Prepa
 		return err
 	})
 	if errors.Is(err, ErrLateOutcome) {
+		// Never applied. Record it durably for reconciliation and complete the
+		// command so it is not redelivered forever.
 		e.opts.Metrics.lateOutcomes.Add(1)
+		recordErr := e.transact(ctx, func(tx *gorm.DB) error {
+			_, err := RecordLateOutcome(tx, LateOutcome{
+				WorkspaceID: prepared.WorkspaceID, PaymentID: prepared.PaymentID, AttemptID: prepared.AttemptID, ProviderID: prepared.ProviderID,
+				Outcome: string(result.Outcome), ProviderReference: result.ProviderReference, Code: result.Code, Source: "dispatch",
+				ObservedAt: e.opts.Now().UnixMilli(),
+			}, &claim)
+			return err
+		})
+		if recordErr == nil {
+			e.opts.Logger.Warn("late provider outcome recorded for reconciliation", "payment_id", prepared.PaymentID, "attempt_id", prepared.AttemptID)
+			return nil
+		}
+		err = errors.Join(err, recordErr)
 	}
 	if err != nil {
 		e.opts.Logger.Warn("dispatch outcome not recorded", "payment_id", prepared.PaymentID, "attempt_id", prepared.AttemptID, "outcome", string(result.Outcome), "error", err.Error())

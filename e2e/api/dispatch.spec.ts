@@ -149,8 +149,9 @@ test("killApi() while a delayed-success attempt is submitted never submits a sec
 
   await killApi();
   // After the dead owner's lease expires the restarted dispatcher reclaims the
-  // command, finds the attempt still submitted and moves it to the lookup path.
-  await waitForStatus(api, accepted.id, "unknown", 20_000);
+  // command, finds the attempt still submitted and moves it to the lookup
+  // path; the lookup at the original provider (WBS 2.4) then settles it.
+  await waitForStatus(api, accepted.id, "succeeded", 30_000);
   const after = await inspectPayment(accepted.id);
   expect(after.attempts).toHaveLength(1);
   expect(after.attempts[0].id).toBe(before.attempts[0].id);
@@ -161,16 +162,18 @@ test("killApi() while a delayed-success attempt is submitted never submits a sec
   expect(
     after.outbox.filter((row) => row.event_type === "payment.lookup"),
   ).toHaveLength(1);
+  expect(after.transitions).toContain("unknown");
   const [attempt] = await listAttempts(api, accepted.id);
-  expect(attempt.status).toBe("unknown");
-  expect(attempt.error_code).toBe("stale_submitted");
+  expect(attempt.status).toBe("succeeded");
 });
 
 test("an unknown attempt is never retried with a different provider", async ({
   request,
 }) => {
   const api = new ApiClient(request);
-  const accepted = await createPayment(api, fixtures.timeoutAfterSuccessMethod);
+  // The outage method never records a charge, so its lookup keeps answering
+  // "no record" and the payment stays unknown.
+  const accepted = await createPayment(api, fixtures.outageMethod);
   await waitForStatus(api, accepted.id, "unknown");
   const first = await inspectPayment(accepted.id);
   expect(first.attempts).toHaveLength(1);
@@ -178,15 +181,11 @@ test("an unknown attempt is never retried with a different provider", async ({
     provider_id: fixtures.provider,
     status: "unknown",
   });
-  // The provider executed the charge even though the response was lost.
-  expect(first.charges).toHaveLength(1);
-  expect(first.charges[0].status).toBe("succeeded");
 
   await restartApi();
   await new Promise((resolve) => setTimeout(resolve, 1_000));
   const later = await inspectPayment(accepted.id);
   expect(later.attempts).toEqual(first.attempts);
-  expect(later.charges).toHaveLength(1);
   expect(later.attempts.every((a) => a.provider_id === fixtures.provider)).toBe(
     true,
   );

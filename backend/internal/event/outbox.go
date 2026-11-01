@@ -169,6 +169,17 @@ func Complete(tx *gorm.DB, claim Claim, now int64) error {
 	return exactlyOne(owned(tx, claim).Updates(map[string]any{"status": StatusDelivered, "delivered_at": now, "lease_owner": nil, "lease_until": nil}))
 }
 
+// SkipPending marks a still-pending, unclaimed command delivered on the
+// caller's transaction, for example when cancellation makes a dispatch
+// pointless. A row that a dispatcher already claimed is left alone: its handler
+// re-reads state and completes it. It reports whether a row was skipped.
+func SkipPending(tx *gorm.DB, workspaceID, deduplicationKey, reason string, now int64) (bool, error) {
+	result := tx.Model(&storage.OutboxEvent{}).
+		Where("workspace_id = ? AND deduplication_key = ? AND status = ?", workspaceID, deduplicationKey, StatusPending).
+		Updates(map[string]any{"status": StatusDelivered, "delivered_at": now, "last_error": truncate(reason)})
+	return result.RowsAffected == 1, result.Error
+}
+
 // Release returns an owned row to pending, due again at retryAt, recording a
 // sanitized error message.
 func Release(ctx context.Context, db *gorm.DB, claim Claim, retryAt time.Time, lastError string) error {

@@ -90,6 +90,8 @@ export interface Inspection {
   }[];
   outbox: { event_type: string; status: string; attempts: number }[];
   journals: number;
+  /** to_status of every audit transition, oldest first. */
+  transitions: string[];
 }
 
 /** Read-only view of provider keys, mock charges and outbox rows for a payment. */
@@ -100,4 +102,12 @@ export async function inspectPayment(paymentId: string): Promise<Inspection> {
 /** Re-queues a payment's dispatch command as if its completion was lost. */
 export async function redeliverDispatch(paymentId: string): Promise<void> {
   await control("redeliver", { paymentId });
+}
+
+/**
+ * Inserts a payment that stays `created` (its dispatch command is due in an
+ * hour) so cancellation can be tested deterministically. Restarts the API.
+ */
+export async function seedCreatedPayment(method: string): Promise<string> {
+  return (await control("seed-created", { method })).paymentId as string;
 }

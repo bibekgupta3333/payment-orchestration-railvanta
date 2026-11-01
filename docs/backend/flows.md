@@ -122,6 +122,42 @@ The in-process `event.Dispatcher` (`backend/internal/event/dispatcher.go`, `outb
 
 **Seeded scenario methods (demo mode).** `00000000-0000-7000-8000-00000000012{1..6}` select `success`, `decline`, `delayed_success`, `timeout_before_execution`, `timeout_after_success` and `outage`. Each workspace has one priority-0 `mock` rule per supported currency (`…0007{0,1}{1..5}`).
 
+### Implemented recovery and cancellation contract (WBS 2.4)
+
+**Lookup worker** (`payment/recovery.go`, registered on the dispatcher for `payment.lookup`). It reads the attempt and the provider code from the database, checks that the command names the attempt's own provider, and calls `Lookup` on that provider's adapter with the stored `provider_idempotency_key` and a `PROVIDER_TIMEOUT` deadline, with no transaction open. The answer maps as follows:
+
+| Original provider says | Result |
+| --- | --- |
+| Found, `Succeeded` | One transaction: `ApplySuccess` (attempt and payment `unknown -> succeeded`, balanced journal, audit, command completion) |
+| Found, `Declined` (recorded proof of no effect) | One transaction: `ApplyDecline` (`unknown -> failed`) |
+| Found but still processing, `ErrUnavailable`, timeout, or no adapter | Stays `unknown`; the command is released with jittered exponential backoff (`RECOVERY_BASE_BACKOFF` 1s doubling to `RECOVERY_MAX_BACKOFF` 5m) and **no** `MaxAttempts` parking (`event.RetryAfterUnbounded`) |
+| Not found, adapter declares `IdempotentReplay` | Same-provider replay: `Submit` with the same key and the method token for that provider. The provider returns the original charge or executes at most once; a definitive answer resolves as above, otherwise stay `unknown` |
+| Not found, no replay contract | Stay `unknown`; nothing is sent. **Absence of a record is never treated as proof of no effect**, so `unknown -> failed` happens only on a recorded decline |
+
+If the attempt was already resolved as `failed`, the worker asks once more only to catch a contradiction (the provider has a successful charge): that is recorded as a late outcome. It never replays for an attempt that is already failed. A worker that cannot reach the provider for such an attempt completes the command.
+
+**Startup scan** (`Recovery.RecoverStale`, run by `cmd/api` after migrations and seeding, before the dispatcher starts). A `submitted` attempt whose `payment.dispatch` command has no live lease (not `processing` with `lease_until` in the future) is treated as possibly executed: attempt and payment move to `unknown` (`error_code = stale_submitted`, actor `system:recovery`) and a lookup at the attempt's own provider is scheduled (`RECOVERY_LOOKUP_DELAY`, default 0). A command whose lease is still live is left alone; the dispatcher's reclaim path handles it when the lease expires. Nothing is resubmitted and no attempt is created by either path.
+
+**Cancellation** (`POST /v1/payments/{id}/cancel`, operator role). `Service.Cancel` runs one transaction: `created -> canceled` as a compare-and-swap on `(status, version)`, the audit transition, and `event.SkipPending` which marks a still-pending `payment.dispatch` command delivered. The dispatcher's prepare step performs the same `(created, version)` compare-and-swap for `created -> processing`, so exactly one of them wins. If dispatch had already claimed the command, the dispatcher re-reads the payment after a stale-version loss and completes the command with no attempt when it finds `canceled`. Responses: `200` with the canceled payment (also when it already was canceled), `409 not_cancelable` for `processing`, `unknown`, `succeeded` or `failed`, `404` for another workspace's payment, `403` for a reader. Cancellation never contacts a provider and never posts a journal.
+
+**Terminal states never regress.** Three layers: `ValidateTransition` has no edge out of a terminal state; every update compares status and version; the `payments_terminal_status` trigger aborts a status change from `succeeded`, `failed` or `canceled`. `ApplySuccess`/`ApplyDecline`/`ApplyUnknown` return `ErrLateOutcome` for a result that conflicts with the recorded state.
+
+**Late results.** A provider result that conflicts with a terminal state (a success after `failed`, a decline after `succeeded`) is not applied. Both the dispatch path and the lookup path write one `payment.late_outcome` row in `outbox_events` (deduplication key `payment.late_outcome:{attempt_id}:{outcome}`; payload `payment.LateOutcome`: payment, attempt, provider, outcome, provider reference, code, the recorded payment and attempt statuses, source `dispatch|lookup`, observation time) in the same transaction that completes the command. No handler is registered for the type, so the row stays `pending`: durable and visible to the future reconciliation consumer (WBS 4.2), which owns turning it into a discrepancy. `GET /v1/payments/{id}/recovery` lists these rows for the payment. A late success is never auto-reversed or reposted.
+
+**`GET /v1/payments/{id}/recovery`** returns `lookup_status` (`none|pending|in_progress|resolved|failed`), `lookup_attempts`, `next_lookup_at`, `last_lookup_error`, `retry_allowed` (always `false`) and `late_outcomes`. It never exposes a provider key. No endpoint can retry, resubmit or re-dispatch a payment.
+
+**Metrics (2.4.9), in process only.** `payment.RecoveryMetrics`: lookups, lookups the provider could not answer, same-key replays, rounds that left the payment unknown, stale attempts recovered at startup, resolutions by result (`succeeded`, `declined`, `late_outcome`, `already_resolved`), and a histogram of how long a payment stayed unknown before resolution (latest transition into `unknown` to resolution). `Recovery.Snapshot(ctx)` adds database gauges: the number of unknown payments and the oldest unresolved payment ID and age. No exporter exists yet.
+
+**Crash-injection harness** (`backend/tests/crash_harness_test.go`). A crash is a test hook that aborts a handler with nothing further recorded, the same durable state a SIGKILL leaves: `AfterPrepare` (submitted attempt, no charge), `BeforeRecord` (provider executed, result unrecorded) and `BeforeResolve` (lookup answered, resolving transaction never ran). The "restart" builds fresh executor, recovery and dispatcher over the same file-backed WAL database with the clock past every lease, runs the startup scan, and settles. Every point must end with one attempt under the original key, at most one charge, one journal and `ledger.Check` clean.
+
+**Limits.**
+- Lookup depends on the provider's by-key lookup. A provider with neither lookup nor replay leaves payments `unknown` indefinitely; only an operator-driven reconciliation (WBS 4.2) can then decide.
+- An unknown payment is never auto-failed on silence. It can wait unboundedly, so watch `Unresolved` and the oldest-unresolved age.
+- Late outcomes are recorded, not resolved: a provider success against a failed payment needs reconciliation and an explicit reversal or correction, not an automatic one.
+- The startup scan cannot tell a hung owner on a live lease from a healthy one; it waits for the lease to expire, so recovery after a crash takes up to `DISPATCHER_LEASE`.
+- Delayed-success mock charges settle on their first lookup or replay, so the mock cannot model a provider that stays "processing" across many lookups.
+- Metrics reset on restart.
+
 ## Payment state machine
 
 ```mermaid
@@ -139,7 +175,7 @@ stateDiagram-v2
     canceled --> [*]
 ```
 
-Cancellation uses a conditional update against state/version and races with dispatch safely: only one wins. The initial MVP rejects cancellation once processing starts. Unknown outcomes stay unknown until evidence supports a terminal transition; an operator cannot clear the flag merely to retry. Refunds and reversals are separate future operations and do not rewrite a succeeded payment into a failed one.
+Cancellation uses a conditional update against state/version and races with dispatch safely: only one wins (see "Implemented recovery and cancellation contract"). The initial MVP rejects cancellation once processing starts. Unknown outcomes stay unknown until evidence supports a terminal transition; an operator cannot clear the flag merely to retry. Refunds and reversals are separate future operations and do not rewrite a succeeded payment into a failed one.
 
 ## Attempt state machine
 
@@ -156,7 +192,7 @@ stateDiagram-v2
     failed --> [*]
 ```
 
-A stale `submitted` attempt discovered after restart is treated as potentially executed. It follows the uncertainty recovery path before another submission is considered. Today the dispatcher does this when it reclaims an expired `payment.dispatch` lease: the attempt and payment become `unknown` and a `payment.lookup` is scheduled. The WBS 2.4 startup scan and lookup worker build on this.
+A stale `submitted` attempt discovered after restart is treated as potentially executed. It follows the uncertainty recovery path before another submission is considered. Today the dispatcher does this when it reclaims an expired `payment.dispatch` lease: the attempt and payment become `unknown` and a `payment.lookup` is scheduled. The startup scan and lookup worker (WBS 2.4) build on this; see below.
 
 ## Webhooks and reconciliation
 

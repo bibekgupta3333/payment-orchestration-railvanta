@@ -84,8 +84,8 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 1.4 | UI shell | 1.1 | M1 | Source/tests added; formatting, build and browser checks pending |
 | 2.1 | Payment acceptance | 1.2, 1.3 | M2 | Done (verified 2026-10-31) |
 | 2.2 | Routing and mock execution | 2.1 | M2 | Done (verified 2026-10-31; uncommitted) |
-| 2.3 | Atomic ledger posting | 2.2 | M2 | Tasks implemented; canceled-payment E2E and the 2.4 invariant gate pending |
-| 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Not started |
+| 2.3 | Atomic ledger posting | 2.2 | M2 | Implemented; all gates verified |
+| 2.4 | Recovery and cancellation | 2.2, 2.3 | M2 | Implemented; verification recorded in CODECHANGELOG |
 | 3.1 | Payment-facing screens | 1.4, 2.1 | M3 | Not started |
 | 3.2 | Routing and simulation UI | 2.2, 3.1 | M3 | Not started |
 | 4.1 | Ledger explorer | 2.3, 3.1 | M4 | Not started |
@@ -360,46 +360,46 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 - [x] Forcing an error after entries are inserted but before commit leaves no journal, no entries, and the payment unchanged.
 - [x] Unbalanced, mixed-currency, single-entry and overflow-sum postings are rejected by both the service and the database triggers.
 - [x] Updating or deleting a posted journal or entry fails at the database layer.
-- [ ] The invariant checker passes after every scenario in the 2.2 and 2.4 test suites. *(2.2 part verified: every 2.2/2.3 integration test calls `ledger.Check`; the 2.4 suite does not exist yet.)*
+- [x] The invariant checker passes after every scenario in the 2.2 and 2.4 test suites. *(Every 2.2, 2.3 and 2.4 integration test calls `ledger.Check`.)*
 - [x] A reversal produces a linked journal; a second reversal of the same journal is rejected.
 
 **E2E test** — `e2e/api/ledger-posting.spec.ts`
 - [x] A succeeded payment has exactly one posted journal in `GET /v1/ledger/transactions`, with debits equal to credits in the payment's currency
 - [x] The debit goes to that provider's clearing account and the credit to merchant payable
 - [x] A re-delivered success result (a repeated dispatcher completion) leaves exactly one journal
-- [ ] Failed and canceled payments have no journal *(failed verified in `ledger-posting.spec.ts`; canceled needs the 2.4 cancellation endpoint)*
+- [x] Failed and canceled payments have no journal
 - [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 2.4 Recovery and cancellation — backend
 **Depends on:** 2.2, 2.3 · **Deliverable:** Unknown outcomes and crash leftovers resolve only against the original provider, and cancellation safely races dispatch.
 
 **Tasks**
-- [ ] 2.4.1 Implement the lookup worker in `backend/internal/payment/recovery.go` that processes scheduled lookup commands by calling `Lookup` on the original provider with the stored provider idempotency key, outside any transaction.
-- [ ] 2.4.2 Resolve `unknown` → `succeeded` (with atomic posting via 2.3) on confirmed success, `unknown` → `failed` only on proof of no effect, and leave it `unknown` with backoff when the provider cannot answer.
-- [ ] 2.4.3 On startup, scan for attempts stuck in `submitted` with expired leases, treat them as potentially executed, and move them into the lookup path rather than resubmitting.
-- [ ] 2.4.4 Allow same-provider replay only when the adapter declares an idempotent-replay contract, reusing the same provider key; otherwise lookup only.
-- [ ] 2.4.5 Implement cancellation (`created → canceled`) as a version- and status-guarded update that loses safely to a dispatch claim; return `409` once processing has started.
-- [ ] 2.4.6 Make dispatch claims skip canceled payments and abort cleanly if the payment changed state between claim and attempt creation.
-- [ ] 2.4.7 Ensure terminal states never regress: guarded updates reject late or reordered results against `succeeded`, `failed` or `canceled`.
-- [ ] 2.4.8 Add a crash-injection test harness in `backend/tests/` that kills the process (or aborts the goroutine and reopens the database) at each failure point in the recovery checklist.
-- [ ] 2.4.9 Record recovery metrics: unknown-outcome age, lookup attempts, resolutions by result, and the oldest unresolved payment.
-- [ ] 2.4.10 Document the recovery behavior and its limits in `docs/backend/flows.md` once implemented.
+- [x] 2.4.1 Implement the lookup worker in `backend/internal/payment/recovery.go` that processes scheduled lookup commands by calling `Lookup` on the original provider with the stored provider idempotency key, outside any transaction.
+- [x] 2.4.2 Resolve `unknown` → `succeeded` (with atomic posting via 2.3) on confirmed success, `unknown` → `failed` only on proof of no effect, and leave it `unknown` with backoff when the provider cannot answer.
+- [x] 2.4.3 On startup, scan for attempts stuck in `submitted` with expired leases, treat them as potentially executed, and move them into the lookup path rather than resubmitting.
+- [x] 2.4.4 Allow same-provider replay only when the adapter declares an idempotent-replay contract, reusing the same provider key; otherwise lookup only.
+- [x] 2.4.5 Implement cancellation (`created → canceled`) as a version- and status-guarded update that loses safely to a dispatch claim; return `409` once processing has started.
+- [x] 2.4.6 Make dispatch claims skip canceled payments and abort cleanly if the payment changed state between claim and attempt creation.
+- [x] 2.4.7 Ensure terminal states never regress: guarded updates reject late or reordered results against `succeeded`, `failed` or `canceled`.
+- [x] 2.4.8 Add a crash-injection test harness in `backend/tests/` that kills the process (or aborts the goroutine and reopens the database) at each failure point in the recovery checklist.
+- [x] 2.4.9 Record recovery metrics: unknown-outcome age, lookup attempts, resolutions by result, and the oldest unresolved payment.
+- [x] 2.4.10 Document the recovery behavior and its limits in `docs/backend/flows.md` once implemented.
 
 **Acceptance gate**
-- [ ] Crash before submit: after restart the original attempt is resolved or resubmitted under the same key, and the mock records at most one charge.
-- [ ] Crash after mock success, before the result commits: after restart the payment becomes `succeeded` with one journal and one mock charge.
-- [ ] Timeout after success with the provider temporarily unavailable for lookup stays `unknown` (never `failed`) until the lookup succeeds.
-- [ ] No test path creates an attempt at a different provider for a payment that was ever `unknown` or had a stale `submitted` attempt.
-- [ ] 100 concurrent cancel-vs-dispatch races each end with exactly one winner and a consistent payment, attempt and audit history.
-- [ ] A late success result arriving after the payment is `failed` is rejected and recorded for reconciliation, not applied.
-- [ ] The end-to-end demo (accept → lose the response → `unknown` → resolve → one balanced journal) passes as an automated test.
+- [x] Crash before submit: after restart the original attempt is resolved or resubmitted under the same key, and the mock records at most one charge.
+- [x] Crash after mock success, before the result commits: after restart the payment becomes `succeeded` with one journal and one mock charge.
+- [x] Timeout after success with the provider temporarily unavailable for lookup stays `unknown` (never `failed`) until the lookup succeeds.
+- [x] No test path creates an attempt at a different provider for a payment that was ever `unknown` or had a stale `submitted` attempt.
+- [x] 100 concurrent cancel-vs-dispatch races each end with exactly one winner and a consistent payment, attempt and audit history.
+- [x] A late success result arriving after the payment is `failed` is rejected and recorded for reconciliation, not applied.
+- [x] The end-to-end demo (accept → lose the response → `unknown` → resolve → one balanced journal) passes as an automated test.
 
 **E2E test** — `e2e/api/recovery.spec.ts`
-- [ ] **Central demo:** the timeout-after-success method shows `unknown`, then resolves to `succeeded` through a lookup against the original provider, with one mock charge and one balanced journal
-- [ ] `killApi()` after provider acceptance and before the result is recorded: after a restart, the payment resolves through a lookup with no second charge
-- [ ] Canceling while `created` gives `canceled`; canceling once processing has started is rejected; racing cancel against dispatch leaves exactly one winner
-- [ ] An `unknown` payment exposes no retry action through the API, and no new attempt appears while it is unresolved
-- [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
+- [x] **Central demo:** the timeout-after-success method shows `unknown`, then resolves to `succeeded` through a lookup against the original provider, with one mock charge and one balanced journal
+- [x] `killApi()` after provider acceptance and before the result is recorded: after a restart, the payment resolves through a lookup with no second charge
+- [x] Canceling while `created` gives `canceled`; canceling once processing has started is rejected; racing cancel against dispatch leaves exactly one winner
+- [x] An `unknown` payment exposes no retry action through the API, and no new attempt appears while it is unresolved
+- [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ## 3. Payment operations UI (M3)
 

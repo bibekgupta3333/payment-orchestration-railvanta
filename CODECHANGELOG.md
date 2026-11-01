@@ -22,6 +22,36 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Add recovery lookup worker, startup scan, cancellation and late-outcome recording
+
+**WBS:** 2.4.1–2.4.10, 2.4 acceptance gate and E2E, 2.3 gates (invariant checker after every 2.2/2.4 scenario; canceled payments have no journal) · **PR/commit:** uncommitted
+
+**Changed**
+- `backend/internal/payment/recovery.go` (new) — `Recovery.Handle` for `payment.lookup`: `Lookup` on the original provider with the stored key outside any transaction; success resolves `unknown → succeeded` with the journal (`ApplySuccess`), a recorded decline resolves `unknown → failed`, anything else (unavailable, still processing, no record without replay) stays `unknown` with jittered backoff and no parking. Same-key same-provider replay only when `Capabilities.IdempotentReplay`. `RecoverStale` startup scan. `RecordLateOutcome` writes `payment.late_outcome` outbox rows. Test hook `RecoveryHooks.BeforeResolve`.
+- `backend/internal/payment/recovery_metrics.go` (new) — lookups, unavailable, replays, still-unknown, stale recovered, resolutions by result, unknown-age histogram, plus `Recovery.Snapshot` gauges (unresolved count, oldest unresolved payment and age).
+- `backend/internal/payment/cancel.go` (new) — `Service.Cancel` (`created → canceled`, version-guarded, audit, settles the pending dispatch command), `ErrNotCancelable`, `Service.Recovery` and `RecoveryView`.
+- `backend/internal/payment/dispatch.go` — re-reads after a stale-version loss in prepare (a canceled payment completes the command with no attempt); a late result at record time is recorded as `payment.late_outcome` and the command completed.
+- `backend/internal/payment/outcome.go` — `Outcome.LookupDelay`.
+- `backend/internal/event/dispatcher.go`, `outbox.go` — `RetryAfterUnbounded` (exempt from MaxAttempts parking), `SkipPending`.
+- `backend/internal/transport/http/payments.go` — `POST /v1/payments/{id}/cancel` (200, 404, 409 `not_cancelable`) and `GET /v1/payments/{id}/recovery`.
+- `backend/internal/config/config.go`, `backend/cmd/api/main.go`, `backend/.env.example` — `RECOVERY_BASE_BACKOFF`, `RECOVERY_MAX_BACKOFF`, `RECOVERY_LOOKUP_DELAY`; main runs the startup scan before the dispatcher starts and registers the lookup handler.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — `cancelPayment`, `getPaymentRecovery`, `PaymentRecovery`.
+- `backend/tests/recovery_test.go`, `cancel_test.go`, `crash_harness_test.go`, `recovery_helpers_test.go` (new) — central demo, provider outage for lookup, no parking, no-record-is-not-proof and replay-under-same-key, no replay without the contract, startup scan, no other provider, late result via dispatch and lookup, terminal states, cancel behavior and responses, 100 cancel-vs-dispatch races on separate connections, and a crash harness (after prepare, before record, before resolve; decline variant). Every test ends with `ledger.Check`.
+- `e2e/api/recovery.spec.ts` (new); `e2e/api/dispatch.spec.ts`, `ledger-posting.spec.ts`; `e2e/support/{global-setup,state}.ts`, `e2e/README.md` — five recovery specs and a canceled-journal spec; harness adds quick recovery backoff, audit `transitions` in `inspectPayment()` and `seedCreatedPayment()`. Two `dispatch.spec.ts` tests changed because lookups now resolve what they used to leave `unknown`: the kill test now ends `succeeded` with one charge, and the never-another-provider test uses the outage method, which stays `unknown`.
+- `docs/backend/flows.md`, `docs/wbs.md` — recovery and cancellation contract, late-result record, limits; 2.4 and the two 2.3 gates ticked.
+
+**Verification**
+- `go -C backend test -race -count=1 ./...` — pass (all packages; 90 top-level and subtest PASS lines with `-v`, 42 in `backend/tests`). `go -C backend test -race -count=3 ./tests/` — pass.
+- `pnpm check` — exit 0: golangci-lint 0 issues, Vitest 23 passed, generated contracts current, build passed.
+- `pnpm test:e2e` — 41 passed, 0 failed (6 new plus all earlier specs).
+- `pnpm generate:api` regenerated; `pnpm lint:openapi` valid (1 existing warning).
+
+**Notes**
+- Late results are stored as `payment.late_outcome` outbox rows (pending, with no handler) until the WBS 4.2 reconciliation consumer exists; `GET /v1/payments/{id}/recovery` lists them.
+- Unknown payments retry lookups without a limit; a provider with neither lookup nor replay leaves them unknown until reconciliation.
+- "Kill after provider acceptance" is exercised with the delayed-success method (the mock holds the charge as processing); the exact instant between a success commit at the provider and the result commit is covered by the Go crash harness.
+- Metrics are in-process only.
+
 ## 2026-10-31 — Add outbox dispatcher, mock execution, atomic success posting and ledger reads
 
 **WBS:** 2.2.6–2.2.13, 2.2 acceptance gate and E2E, 2.3.5, 2.3.8, 2.3.9, 2.3 acceptance (partial) and E2E (partial) · **PR/commit:** uncommitted

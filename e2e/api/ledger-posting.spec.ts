@@ -12,6 +12,7 @@ import {
   inspectPayment,
   redeliverDispatch,
   restartApi,
+  seedCreatedPayment,
   state,
 } from "../support/state";
 
@@ -122,4 +123,16 @@ test("failed payments have no journal", async ({ request }) => {
   await waitForStatus(api, accepted.id, "failed");
   expect(await journalsFor(api, accepted.id)).toHaveLength(0);
   expect((await inspectPayment(accepted.id)).journals).toBe(0);
+});
+
+test("canceled payments have no journal", async ({ request }) => {
+  const api = new ApiClient(request);
+  const id = await seedCreatedPayment(fixtures.successMethod);
+  const response = await api.call("POST", `/v1/payments/${id}/cancel`);
+  expect(response.status()).toBe(200);
+  expect(((await response.json()) as { status: string }).status).toBe(
+    "canceled",
+  );
+  expect(await journalsFor(api, id)).toHaveLength(0);
+  expect((await inspectPayment(id)).journals).toBe(0);
 });

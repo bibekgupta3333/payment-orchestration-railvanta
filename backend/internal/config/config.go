@@ -31,6 +31,13 @@ type Dispatcher struct {
 	// MockDelayedSuccessDelay and MockTimeoutDelay tune the deterministic mock.
 	MockDelayedSuccessDelay time.Duration // MOCK_DELAYED_SUCCESS_DELAY (default 2s)
 	MockTimeoutDelay        time.Duration // MOCK_TIMEOUT_DELAY (default 5s)
+	// RecoveryBaseBackoff and RecoveryMaxBackoff bound the delay between
+	// lookups while an outcome stays unknown (WBS 2.4).
+	RecoveryBaseBackoff time.Duration // RECOVERY_BASE_BACKOFF (default 1s)
+	RecoveryMaxBackoff  time.Duration // RECOVERY_MAX_BACKOFF (default 5m)
+	// RecoveryLookupDelay postpones the first lookup of a stale attempt found
+	// at startup. RECOVERY_LOOKUP_DELAY (default 0)
+	RecoveryLookupDelay time.Duration
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -88,6 +95,9 @@ func loadDispatcher(getenv func(string) string) (Dispatcher, error) {
 		{"PROVIDER_TIMEOUT", &d.ProviderTimeout, 10 * time.Second, 10 * time.Millisecond, 5 * time.Minute},
 		{"MOCK_DELAYED_SUCCESS_DELAY", &d.MockDelayedSuccessDelay, 2 * time.Second, time.Millisecond, 5 * time.Minute},
 		{"MOCK_TIMEOUT_DELAY", &d.MockTimeoutDelay, 5 * time.Second, time.Millisecond, 5 * time.Minute},
+		{"RECOVERY_BASE_BACKOFF", &d.RecoveryBaseBackoff, time.Second, 10 * time.Millisecond, time.Hour},
+		{"RECOVERY_MAX_BACKOFF", &d.RecoveryMaxBackoff, 5 * time.Minute, 10 * time.Millisecond, 24 * time.Hour},
+		{"RECOVERY_LOOKUP_DELAY", &d.RecoveryLookupDelay, 0, 0, time.Hour},
 	}
 	for _, item := range durations {
 		*item.target = item.fallback

@@ -488,6 +488,106 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payments/{id}/cancel:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    post:
+      operationId: cancelPayment
+      summary: Cancel a created payment
+      description: Moves a payment from created to canceled with a status- and version-guarded
+        update that also settles the pending dispatch command, so it races dispatch
+        safely and exactly one side wins. Returns 200 with the canceled payment (also
+        when it was already canceled) and 409 not_cancelable once dispatch has claimed
+        it or it is in any other state. No request body. Another workspace's payment
+        ID returns 404.
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: The payment is canceled
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '409': *id001
+        '429': *id001
+        '500': *id001
+        '503': *id001
+      parameters:
+      - name: X-CSRF-Token
+        in: header
+        required: false
+        schema: *id003
+        description: Required with a valid Origin for cookie-authenticated writes.
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/payments/{id}/recovery:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id002
+    get:
+      operationId: getPaymentRecovery
+      summary: Read a payment's recovery state
+      description: 'Shows whether an unknown outcome is awaiting a lookup at the original
+        provider (lookup_status, lookup_attempts, next_lookup_at) and lists provider
+        results that arrived after a conflicting terminal state. Those late outcomes
+        are never applied; they are recorded for reconciliation. retry_allowed is
+        always false: unknown outcomes are resolved by lookup, never by a new attempt.'
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentRecovery'
+        '401': *id001
+        '403': *id001
+        '404': *id001
+        '429': *id001
+        '503': *id001
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -1359,6 +1459,81 @@ components:
       - submitted_at
       - completed_at
       - created_at
+    PaymentRecovery:
+      type: object
+      additionalProperties: false
+      properties:
+        payment_id: *id002
+        lookup_status:
+          type: string
+          enum:
+          - none
+          - pending
+          - in_progress
+          - resolved
+          - failed
+        lookup_attempts:
+          type: integer
+          minimum: 0
+        next_lookup_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_lookup_error:
+          type: string
+          nullable: true
+        retry_allowed:
+          type: boolean
+          enum:
+          - false
+        late_outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              attempt_id: *id002
+              outcome:
+                type: string
+                enum:
+                - succeeded
+                - declined
+                - ambiguous
+              provider_reference:
+                type: string
+                nullable: true
+              code:
+                type: string
+                nullable: true
+              payment_status:
+                $ref: '#/components/schemas/PaymentStatus'
+              attempt_status:
+                type: string
+              source:
+                type: string
+                enum:
+                - dispatch
+                - lookup
+              observed_at:
+                type: string
+                format: date-time
+            required:
+            - attempt_id
+            - outcome
+            - provider_reference
+            - code
+            - payment_status
+            - attempt_status
+            - source
+            - observed_at
+      required:
+      - payment_id
+      - lookup_status
+      - lookup_attempts
+      - next_lookup_at
+      - last_lookup_error
+      - retry_allowed
+      - late_outcomes
     MetricSummary:
       type: object
       additionalProperties: false

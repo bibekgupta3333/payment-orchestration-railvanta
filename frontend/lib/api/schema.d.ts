@@ -157,6 +157,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/payments/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel a created payment
+     * @description Moves a payment from created to canceled with a status- and version-guarded update that also settles the pending dispatch command, so it races dispatch safely and exactly one side wins. Returns 200 with the canceled payment (also when it was already canceled) and 409 not_cancelable once dispatch has claimed it or it is in any other state. No request body. Another workspace's payment ID returns 404.
+     */
+    post: operations["cancelPayment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/payments/{id}/recovery": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read a payment's recovery state
+     * @description Shows whether an unknown outcome is awaiting a lookup at the original provider (lookup_status, lookup_attempts, next_lookup_at) and lists provider results that arrived after a conflicting terminal state. Those late outcomes are never applied; they are recorded for reconciliation. retry_allowed is always false: unknown outcomes are resolved by lookup, never by a new attempt.
+     */
+    get: operations["getPaymentRecovery"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/dashboard/summary": {
     parameters: {
       query?: never;
@@ -493,6 +537,32 @@ export interface components {
       completed_at: string | null;
       /** Format: date-time */
       created_at: string;
+    };
+    PaymentRecovery: {
+      /** Format: uuid */
+      payment_id: string;
+      /** @enum {string} */
+      lookup_status: "none" | "pending" | "in_progress" | "resolved" | "failed";
+      lookup_attempts: number;
+      /** Format: date-time */
+      next_lookup_at: string | null;
+      last_lookup_error: string | null;
+      /** @enum {boolean} */
+      retry_allowed: false;
+      late_outcomes: {
+        /** Format: uuid */
+        attempt_id: string;
+        /** @enum {string} */
+        outcome: "succeeded" | "declined" | "ambiguous";
+        provider_reference: string | null;
+        code: string | null;
+        payment_status: components["schemas"]["PaymentStatus"];
+        attempt_status: string;
+        /** @enum {string} */
+        source: "dispatch" | "lookup";
+        /** Format: date-time */
+        observed_at: string;
+      }[];
     };
     MetricSummary: {
       /** @enum {string} */
@@ -961,6 +1031,74 @@ export interface operations {
             items: components["schemas"]["Attempt"][];
             next_cursor: string | null;
           };
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  cancelPayment: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required with a valid Origin for cookie-authenticated writes. */
+        "X-CSRF-Token"?: string;
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The payment is canceled */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Payment"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      500: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getPaymentRecovery: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaymentRecovery"];
         };
       };
       401: components["responses"]["Error"];

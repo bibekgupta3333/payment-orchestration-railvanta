@@ -55,11 +55,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// The dispatcher starts only after migrations (storage.Open) and seeding.
 	providers := payment.ProviderSet{"mock": mock.New(store.DB, mock.Options{DelayedSuccessDelay: cfg.Dispatcher.MockDelayedSuccessDelay, TimeoutDelay: cfg.Dispatcher.MockTimeoutDelay})}
 	executor := payment.NewExecutor(store.DB, payment.ExecutorOptions{Providers: providers, ProviderTimeout: cfg.Dispatcher.ProviderTimeout, Logger: logger})
+	recovery := payment.NewRecovery(store.DB, payment.RecoveryOptions{
+		Providers: providers, LookupTimeout: cfg.Dispatcher.ProviderTimeout, BaseBackoff: cfg.Dispatcher.RecoveryBaseBackoff,
+		MaxBackoff: cfg.Dispatcher.RecoveryMaxBackoff, LookupDelay: cfg.Dispatcher.RecoveryLookupDelay, Logger: logger,
+	})
+	// Startup scan (WBS 2.4.3): before the dispatcher starts, nothing holds a
+	// live lease, so every submitted attempt is stale and possibly executed.
+	if recovered, err := recovery.RecoverStale(ctx); err != nil {
+		return fmt.Errorf("recover stale attempts: %w", err)
+	} else if recovered > 0 {
+		logger.Warn("stale submitted attempts moved to the lookup path", "count", recovered)
+	}
 	dispatcher := event.NewDispatcher(store.DB, event.Options{
 		PollInterval: cfg.Dispatcher.PollInterval, LeaseDuration: cfg.Dispatcher.LeaseDuration, DrainTimeout: cfg.Dispatcher.DrainTimeout,
 		MaxInFlight: cfg.Dispatcher.MaxInFlight, Logger: logger,
 	})
 	executor.Register(dispatcher)
+	recovery.Register(dispatcher)
 	apiListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("listen API: %w", err)
