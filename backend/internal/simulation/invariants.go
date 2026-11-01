@@ -53,6 +53,8 @@ type Snapshot struct {
 	Transitions  []string
 	Attempts     []string
 	JournalCount int
+	// Webhooks lists "type:deliveries:duplicate_count:outcome/reason" per planned event.
+	Webhooks []string
 }
 
 func verdict(ok bool, evidence string, args ...any) (string, string) {
@@ -116,6 +118,11 @@ func CheckInvariants(db *gorm.DB, scenario Scenario, run storage.SimulationRun, 
 	add := func(id string, status, evidence string) {
 		title := id
 		for _, t := range Titles {
+			if t.ID == id {
+				title = t.Title
+			}
+		}
+		for _, t := range webhookTitles {
 			if t.ID == id {
 				title = t.Title
 			}
@@ -207,6 +214,13 @@ func CheckInvariants(db *gorm.DB, scenario Scenario, run storage.SimulationRun, 
 	status, evidence = verdict(succeededCharges <= 1, "%d succeeded provider charge(s) across %d attempt key(s)", succeededCharges, len(keys))
 	add(InvAtMostOneCharge, status, evidence)
 
+	// Webhook scenarios: evidence from the inbox and the late-outcome events.
+	if len(input.Webhooks) > 0 {
+		if err := webhookInvariants(db, scenario, run, input, p, journals, transitions, add, &snapshot); err != nil {
+			return nil, Snapshot{}, err
+		}
+	}
+
 	// 6. Expected outcome.
 	status, evidence = verdict(p.Status == string(scenario.ExpectedStatus), "payment is %s; scenario %s expects %s", p.Status, scenario.ID, scenario.ExpectedStatus)
 	add(InvExpectedOutcome, status, evidence)
@@ -241,4 +255,105 @@ func orStart(s *string) string {
 		return "start"
 	}
 	return *s
+}
+
+// Webhook scenario invariant identifiers.
+const (
+	InvOneInboxRow       = "one_inbox_row_per_event"
+	InvDuplicateCount    = "duplicate_count_matches_repeats"
+	InvSingleEffect      = "single_financial_effect"
+	InvLateEventIgnored  = "late_event_ignored_and_recorded"
+	InvStateUnchangedByE = "state_unchanged_by_events"
+)
+
+var webhookTitles = []Invariant{
+	{ID: InvOneInboxRow, Title: "Exactly one inbox row per provider event"},
+	{ID: InvDuplicateCount, Title: "Inbox duplicate count equals the repeat deliveries"},
+	{ID: InvSingleEffect, Title: "Exactly one financial effect despite repeated events"},
+	{ID: InvLateEventIgnored, Title: "Late contradicting events are ignored and recorded as late outcomes"},
+	{ID: InvStateUnchangedByE, Title: "Payment state is unchanged by webhook events"},
+}
+
+func webhookInvariants(db *gorm.DB, scenario Scenario, run storage.SimulationRun, input Input, p storage.Payment,
+	journals []ledger.JournalView, transitions []storage.PaymentStateTransition, add func(id, status, evidence string), snapshot *Snapshot) error {
+	ws := run.WorkspaceID
+	ids := make([]string, len(input.Webhooks))
+	for i, plan := range input.Webhooks {
+		ids[i] = plan.EventID
+	}
+	var rows []storage.WebhookInbox
+	if err := db.Where("workspace_id = ? AND provider_event_id IN ?", ws, ids).Find(&rows).Error; err != nil {
+		return err
+	}
+	byEvent := map[string][]storage.WebhookInbox{}
+	for _, row := range rows {
+		byEvent[row.ProviderEventID] = append(byEvent[row.ProviderEventID], row)
+	}
+	oneRow, countsOK := true, true
+	var rowEvidence, countEvidence []string
+	for _, plan := range input.Webhooks {
+		list := byEvent[plan.EventID]
+		rowEvidence = append(rowEvidence, fmt.Sprintf("%s: %d row(s)", plan.Type, len(list)))
+		if len(list) != 1 {
+			oneRow, countsOK = false, false
+			continue
+		}
+		row := list[0]
+		outcome := "none"
+		if row.Outcome != nil {
+			outcome = *row.Outcome
+			if row.OutcomeReason != nil {
+				outcome += "/" + *row.OutcomeReason
+			}
+		}
+		snapshot.Webhooks = append(snapshot.Webhooks, fmt.Sprintf("%s:%d:%d:%s", plan.Type, plan.Deliveries, row.DuplicateCount, outcome))
+		countEvidence = append(countEvidence, fmt.Sprintf("%s delivered %d time(s), duplicate_count %d, outcome %s", plan.Type, plan.Deliveries, row.DuplicateCount, outcome))
+		if row.DuplicateCount != int64(plan.Deliveries-1) || row.ConflictCount != 0 {
+			countsOK = false
+		}
+	}
+	status, evidence := verdict(oneRow, "%s", strings.Join(rowEvidence, "; "))
+	add(InvOneInboxRow, status, evidence)
+	status, evidence = verdict(countsOK, "%s", strings.Join(countEvidence, "; "))
+	add(InvDuplicateCount, status, evidence)
+
+	var lates []storage.OutboxEvent
+	if err := db.Where("workspace_id = ? AND payment_id = ? AND event_type = ?", ws, p.ID, payment.OutboxPaymentLateOutcome).Find(&lates).Error; err != nil {
+		return err
+	}
+	terminalTransitions := 0
+	for _, t := range transitions {
+		if payment.Status(t.ToStatus).Terminal() {
+			terminalTransitions++
+		}
+	}
+	switch scenario.ID {
+	case DuplicateWebhook:
+		status, evidence = verdict(len(journals) == 1 && terminalTransitions == 1 && len(lates) == 0,
+			"%d journal(s), %d terminal transition(s), %d late outcome(s) after the repeated deliveries", len(journals), terminalTransitions, len(lates))
+		add(InvSingleEffect, status, evidence)
+		status, evidence = verdict(p.Status == string(scenario.ExpectedStatus), "payment is %s after the duplicates; expected %s", p.Status, scenario.ExpectedStatus)
+		add(InvStateUnchangedByE, status, evidence)
+	case ReorderedEvents:
+		late := input.Webhooks[len(input.Webhooks)-1]
+		ignored := false
+		reason := "no inbox row"
+		if list := byEvent[late.EventID]; len(list) == 1 && list[0].Outcome != nil && list[0].OutcomeReason != nil {
+			reason = *list[0].Outcome + "/" + *list[0].OutcomeReason
+			ignored = *list[0].Outcome == payment.InboxIgnored && *list[0].OutcomeReason == "terminal_state"
+		}
+		declined := 0
+		for _, l := range lates {
+			if strings.Contains(l.Payload, `"outcome":"declined"`) {
+				declined++
+			}
+		}
+		status, evidence = verdict(ignored && declined == 1,
+			"late %s event outcome %s; %d payment.late_outcome row(s) for a declined outcome", late.Type, reason, declined)
+		add(InvLateEventIgnored, status, evidence)
+		status, evidence = verdict(p.Status == string(scenario.ExpectedStatus) && terminalTransitions == 1 && len(journals) == 1,
+			"payment is %s with %d terminal transition(s) and %d journal(s) after the reordered events", p.Status, terminalTransitions, len(journals))
+		add(InvStateUnchangedByE, status, evidence)
+	}
+	return nil
 }

@@ -225,6 +225,19 @@ export const simulationSchema = z.object({
       delivered_at: z.string().nullable(),
     }),
   ),
+  webhooks: z.array(
+    z.object({
+      id: z.string(),
+      provider_event_id: z.string(),
+      event_type: z.string(),
+      status: z.string(),
+      outcome: z.string().nullable(),
+      outcome_reason: z.string().nullable(),
+      duplicate_count: z.number().int(),
+      signature_status: z.string(),
+      received_at: z.string(),
+    }),
+  ),
   journals: z.array(journalSchema),
   invariants: z.array(invariantSchema),
   timeline: z.array(

@@ -3725,6 +3725,43 @@ components:
             - attempts
             - created_at
             - delivered_at
+        webhooks:
+          type: array
+          description: Webhook inbox rows received for the payment (duplicate and reordered webhook scenarios).
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              provider_event_id:
+                type: string
+              event_type:
+                type: string
+              status:
+                type: string
+              outcome:
+                type: string
+                nullable: true
+              outcome_reason:
+                type: string
+                nullable: true
+              duplicate_count:
+                type: integer
+              signature_status:
+                type: string
+              received_at:
+                type: string
+            required:
+            - id
+            - provider_event_id
+            - event_type
+            - status
+            - outcome
+            - outcome_reason
+            - duplicate_count
+            - signature_status
+            - received_at
         journals:
           type: array
           items:
@@ -3771,6 +3808,7 @@ components:
       - attempts
       - transitions
       - events
+      - webhooks
       - journals
       - invariants
       - timeline

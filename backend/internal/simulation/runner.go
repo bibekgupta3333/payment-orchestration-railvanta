@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,8 @@ type Input struct {
 	IdempotencyKey    string `json:"idempotency_key"`
 	MerchantReference string `json:"merchant_reference"`
 	Steps             []Step `json:"steps"`
+	// Webhooks is the event plan of the webhook scenarios.
+	Webhooks []WebhookPlan `json:"webhooks,omitempty"`
 }
 
 // Result is the persisted outcome of a finished run (simulation_runs.result_json).
@@ -128,6 +131,7 @@ func (r *Runner) Start(ctx context.Context, req StartRequest) (storage.Simulatio
 		PaymentMethodID: methodID, AmountMinor: strconv.FormatInt(amount, 10), Currency: currency,
 		IdempotencyKey: "sim_" + runID, MerchantReference: "sim:" + runID,
 	}
+	input.Webhooks = PlanWebhooks(scenario.ID, runID, req.Seed)
 	now := time.Now().UnixMilli()
 	input.Steps = append(input.Steps, Step{"run_accepted", fmt.Sprintf("Run accepted for scenario %s with seed %q", scenario.ID, req.Seed), now})
 	run := storage.SimulationRun{
@@ -288,6 +292,13 @@ func (r *Runner) finalize(ctx context.Context, run storage.SimulationRun, scenar
 		}
 		input.Steps = append(input.Steps, step)
 	}
+	if len(input.Webhooks) > 0 && p.Status == string(payment.StatusSucceeded) {
+		steps, err := r.deliverWebhooks(db, p, input)
+		if err != nil {
+			return err
+		}
+		input.Steps = append(input.Steps, steps...)
+	}
 	invariants, snapshot, err := CheckInvariants(db, scenario, run, input, p)
 	if err != nil {
 		return err
@@ -343,6 +354,61 @@ func (r *Runner) replayPosting(db *gorm.DB, p storage.Payment) (Step, error) {
 	return Step{"duplicate_ledger_post", "Posted the success journal again twice: [" + notes[0] + "] [" + notes[1] + "]", time.Now().UnixMilli()}, nil
 }
 
+// deliverWebhooks sends each planned provider event through payment.ReceiveWebhook,
+// the same inbox path the sandbox webhook route uses. It is skipped when the
+// first event is already in the inbox, so a resumed run never double-counts.
+func (r *Runner) deliverWebhooks(db *gorm.DB, p storage.Payment, input Input) ([]Step, error) {
+	attempts, err := storage.ListPaymentAttempts(db, p.WorkspaceID, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	var attempt storage.PaymentAttempt
+	for _, a := range attempts {
+		if a.Status == payment.AttemptSucceeded {
+			attempt = a
+		}
+	}
+	if attempt.ID == "" {
+		return []Step{{"webhook_delivery", "No succeeded attempt, so no webhook was delivered", time.Now().UnixMilli()}}, nil
+	}
+	var existing int64
+	if err := db.Model(&storage.WebhookInbox{}).Where("workspace_id = ? AND provider_id = ? AND provider_event_id = ?",
+		p.WorkspaceID, attempt.ProviderID, input.Webhooks[0].EventID).Count(&existing).Error; err != nil {
+		return nil, err
+	}
+	if existing > 0 {
+		return []Step{{"webhook_delivery", "Events were already delivered by an earlier worker", time.Now().UnixMilli()}}, nil
+	}
+	var steps []Step
+	for _, plan := range input.Webhooks {
+		event := payment.WebhookEvent{EventID: plan.EventID, Type: plan.Type, PaymentID: p.ID, AttemptID: attempt.ID}
+		body, err := json.Marshal(event)
+		if err != nil {
+			return nil, err
+		}
+		var notes []string
+		for i := 1; i <= plan.Deliveries; i++ {
+			res, err := payment.ReceiveWebhook(context.Background(), r.db, payment.WebhookDelivery{
+				WorkspaceID: p.WorkspaceID, ProviderID: attempt.ProviderID, Body: body, Event: event, Now: time.Now().UnixMilli(),
+			})
+			if err != nil {
+				return nil, err
+			}
+			note := fmt.Sprintf("#%d duplicate=%t", i, res.Duplicate)
+			if !res.Duplicate && res.Row.Outcome != nil {
+				note += " outcome=" + *res.Row.Outcome
+				if res.Row.OutcomeReason != nil {
+					note += "/" + *res.Row.OutcomeReason
+				}
+			}
+			notes = append(notes, note)
+		}
+		steps = append(steps, Step{"webhook_delivery", fmt.Sprintf("Delivered %s event %s %d time(s) through the webhook inbox: [%s]",
+			plan.Type, plan.EventID, plan.Deliveries, strings.Join(notes, "] [")), time.Now().UnixMilli()})
+	}
+	return steps, nil
+}
+
 func (r *Runner) fail(run storage.SimulationRun, input Input, reason string) {
 	now := time.Now().UnixMilli()
 	input.Steps = append(input.Steps, Step{"run_failed", reason, now})
@@ -372,7 +438,7 @@ func Fingerprint(scenario Scenario, input Input, snapshot Snapshot, invariants [
 	sum := sha256.Sum256([]byte(mustJSON(map[string]any{
 		"scenario": scenario.ID, "amount_minor": input.AmountMinor, "currency": input.Currency,
 		"final_status": snapshot.FinalStatus, "transitions": snapshot.Transitions, "attempts": snapshot.Attempts,
-		"journals": snapshot.JournalCount, "invariants": items,
+		"journals": snapshot.JournalCount, "webhooks": snapshot.Webhooks, "invariants": items,
 	})))
 	return hex.EncodeToString(sum[:])
 }

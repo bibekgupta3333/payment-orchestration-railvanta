@@ -192,37 +192,72 @@ function AttemptsTab({ run }: { run: Simulation }) {
 }
 
 function EventsTab({ run }: { run: Simulation }) {
-  if (run.events.length === 0)
+  if (run.events.length === 0 && run.webhooks.length === 0)
     return (
       <EmptyState title="No durable events yet">
         Outbox rows for this payment appear as the pipeline writes them.
       </EmptyState>
     );
   return (
-    <Table label="Durable events">
-      <thead>
-        <tr>
-          <th scope="col">Event</th>
-          <th scope="col">Status</th>
-          <th scope="col">Delivery attempts</th>
-          <th scope="col">Recorded</th>
-          <th scope="col">Delivered</th>
-        </tr>
-      </thead>
-      <tbody>
-        {run.events.map((event) => (
-          <tr key={event.id}>
-            <td className="mono">{event.event_type}</td>
-            <td>{event.status}</td>
-            <td className="numeric">{event.attempts}</td>
-            <td className="nowrap">{formatTimestamp(event.created_at)}</td>
-            <td className="nowrap">
-              {event.delivered_at ? formatTimestamp(event.delivered_at) : "—"}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </Table>
+    <>
+      {run.webhooks.length > 0 ? (
+        <Table label="Webhook inbox">
+          <thead>
+            <tr>
+              <th scope="col">Provider event</th>
+              <th scope="col">Type</th>
+              <th scope="col">Outcome</th>
+              <th scope="col">Repeat deliveries</th>
+              <th scope="col">Signature</th>
+              <th scope="col">Received</th>
+            </tr>
+          </thead>
+          <tbody>
+            {run.webhooks.map((hook) => (
+              <tr key={hook.id}>
+                <td className="mono">{hook.provider_event_id}</td>
+                <td className="mono">{hook.event_type}</td>
+                <td>
+                  {hook.outcome ?? hook.status}
+                  {hook.outcome_reason ? ` (${hook.outcome_reason})` : ""}
+                </td>
+                <td className="numeric">{hook.duplicate_count}</td>
+                <td>{hook.signature_status}</td>
+                <td className="nowrap">{formatTimestamp(hook.received_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : null}
+      {run.events.length > 0 ? (
+        <Table label="Durable events">
+          <thead>
+            <tr>
+              <th scope="col">Event</th>
+              <th scope="col">Status</th>
+              <th scope="col">Delivery attempts</th>
+              <th scope="col">Recorded</th>
+              <th scope="col">Delivered</th>
+            </tr>
+          </thead>
+          <tbody>
+            {run.events.map((event) => (
+              <tr key={event.id}>
+                <td className="mono">{event.event_type}</td>
+                <td>{event.status}</td>
+                <td className="numeric">{event.attempts}</td>
+                <td className="nowrap">{formatTimestamp(event.created_at)}</td>
+                <td className="nowrap">
+                  {event.delivered_at
+                    ? formatTimestamp(event.delivered_at)
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : null}
+    </>
   );
 }
 

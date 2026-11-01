@@ -31,6 +31,28 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 **Verification**
 - Hook run by hand with only generated report folders changed → allowed.
+## 2026-10-31 — Enable the duplicate_webhook and reordered_events simulator scenarios
+
+**WBS:** 3.2.7, 3.2.11, 4.3 · **PR/commit:** worktree branch (see git log)
+
+**Changed**
+- `backend/internal/simulation/catalog.go` — both scenarios are implemented (mock `success` method, expected `succeeded`); removed `WebhookDependency`; added seed-derived `WebhookRepeats` (3 to 5) and `PlanWebhooks`.
+- `backend/internal/simulation/runner.go` — after the real pipeline succeeds, `deliverWebhooks` sends the planned events through `payment.ReceiveWebhook` (the same inbox path the sandbox webhook route uses); skipped on resume if the first event is already stored.
+- `backend/internal/simulation/invariants.go` — new stored invariants: one inbox row per event, duplicate_count = deliveries-1, single financial effect, late event ignored and recorded as `payment.late_outcome`, state unchanged by events.
+- `backend/internal/transport/http/simulations.go`, `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (regenerated), `frontend/lib/api/routing-schemas.ts` — new `webhooks` array (inbox rows) on the simulation view.
+- `frontend/components/simulator/SimulatorView.tsx` — Events tab shows the webhook inbox table beside durable events.
+- `backend/tests/simulation_test.go`, `frontend/tests/components/routing-simulator.test.tsx`, `e2e/ui/simulator.spec.ts` — 422 assertions replaced; new Go and UI tests for both scenarios incl. same-seed determinism.
+- `docs/wbs.md` — note on 3.2.11. No other docs (architecture, known-limitations, case-study) mentioned the scenarios as disabled; known-limitations.md and case-study.md do not exist in this tree.
+
+**Verification**
+- `go -C backend test -race ./...` — all packages ok (tests package 14.4s)
+- `pnpm check` — pass (frontend vitest 7 files, 91 tests passed; build ok)
+- `pnpm lint` (re-run after the final spec edit) and playwright `ui/simulator.spec.ts` — 6 passed
+- `CI=1 pnpm run test:e2e` — 85 passed, 0 failed (script `test:e2e:ci` does not exist; `test:e2e` was used). An earlier run failed 2 new specs on a wrong locator, fixed.
+
+**Notes:** the first delivery of the event arrives after the pipeline already succeeded, so it is recorded as ignored (already_succeeded) rather than applied.
+
+---
 
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 

@@ -70,7 +70,7 @@ func (d *dispatchEnv) awaitSimulation(id string) httpapi.SimulationView {
 
 func requireAllPass(t *testing.T, view httpapi.SimulationView) {
 	t.Helper()
-	if len(view.Invariants) != len(simulation.Titles) {
+	if len(view.Invariants) < len(simulation.Titles) {
 		t.Fatalf("%d invariants", len(view.Invariants))
 	}
 	for _, inv := range view.Invariants {
@@ -98,6 +98,8 @@ func TestSimulationScenariosEndWithPassingInvariants(t *testing.T) {
 		{simulation.Outage, "unknown", 0, 1},
 		{simulation.UnknownRecovery, "succeeded", 1, 1},
 		{simulation.DuplicatePosting, "succeeded", 1, 1},
+		{simulation.DuplicateWebhook, "succeeded", 1, 1},
+		{simulation.ReorderedEvents, "succeeded", 1, 1},
 	}
 	for _, c := range cases {
 		t.Run(c.scenario, func(t *testing.T) {
@@ -162,7 +164,7 @@ func TestSimulationTimeoutAfterSuccessGate(t *testing.T) {
 // Acceptance gate: the same seed gives identical states and invariant results.
 func TestSimulationSameSeedIsDeterministic(t *testing.T) {
 	d := newSimEnv(t)
-	for _, scenario := range []string{simulation.Success, simulation.TimeoutAfterSuccess, simulation.Outage, simulation.DuplicateRequest} {
+	for _, scenario := range []string{simulation.Success, simulation.TimeoutAfterSuccess, simulation.Outage, simulation.DuplicateRequest, simulation.DuplicateWebhook, simulation.ReorderedEvents} {
 		_, a := d.simulate(scenario, "repeat")
 		first := d.awaitSimulation(a.ID)
 		_, b := d.simulate(scenario, "repeat")
@@ -188,23 +190,19 @@ func TestSimulationSameSeedIsDeterministic(t *testing.T) {
 	}
 }
 
-// Scenarios the backend cannot run are rejected with 422 and create nothing.
-func TestSimulationRejectsUnimplementedAndUnknownScenarios(t *testing.T) {
+// Unknown scenarios are rejected with 422 and create nothing; every catalogued
+// scenario is implemented.
+func TestSimulationRejectsUnknownScenarios(t *testing.T) {
 	d := newSimEnv(t)
 	before := d.dump()
 	for scenario, code := range map[string]string{
-		simulation.DuplicateWebhook: "scenario_not_implemented",
-		simulation.ReorderedEvents:  "scenario_not_implemented",
-		"made_up":                   "unknown_scenario",
+		"made_up": "unknown_scenario",
 	} {
 		response := d.do("POST", "/v1/sandbox/simulations", credentials.OperatorKey, "", `{"scenario":"`+scenario+`"}`)
 		var envelope httpapi.ErrorEnvelope
 		_ = json.Unmarshal(response.Body.Bytes(), &envelope)
 		if response.Code != 422 || envelope.Code != code {
 			t.Fatalf("%s: %d %s", scenario, response.Code, response.Body.String())
-		}
-		if code == "scenario_not_implemented" && (len(envelope.FieldErrors) != 1 || envelope.FieldErrors[0].Message != "Waiting for "+simulation.WebhookDependency) {
-			t.Fatalf("missing dependency: %+v", envelope.FieldErrors)
 		}
 	}
 	for table, sum := range before {
@@ -231,17 +229,10 @@ func TestSimulationRejectsUnimplementedAndUnknownScenarios(t *testing.T) {
 	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &catalog) != nil || len(catalog.Items) != len(simulation.Catalog) {
 		t.Fatalf("scenarios: %d %s", response.Code, response.Body.String())
 	}
-	disabled := 0
 	for _, item := range catalog.Items {
-		if !item.Implemented {
-			disabled++
-			if item.MissingDependency == nil || *item.MissingDependency == "" {
-				t.Fatalf("%s lacks a missing dependency", item.ID)
-			}
+		if !item.Implemented || item.MissingDependency != nil {
+			t.Fatalf("%s is still disabled: %+v", item.ID, item)
 		}
-	}
-	if disabled != 2 {
-		t.Fatalf("%d disabled scenarios", disabled)
 	}
 }
 
@@ -435,4 +426,70 @@ func TestRoutingRulesAndProviderHealth(t *testing.T) {
 	if r := d.do("GET", "/v1/providers/"+auth.OtherProviderID, credentials.ReaderKey, "", ""); r.Code != 404 {
 		t.Fatalf("other workspace provider: %d", r.Code)
 	}
+}
+
+func (d *dispatchEnv) invariant(view httpapi.SimulationView, id string) simulation.Invariant {
+	for _, inv := range view.Invariants {
+		if inv.ID == id {
+			return inv
+		}
+	}
+	d.t.Fatalf("invariant %s missing", id)
+	return simulation.Invariant{}
+}
+
+// duplicate_webhook: the same provider event delivered N times leaves one inbox
+// row with duplicate_count N-1, one journal and an unchanged payment.
+func TestSimulationDuplicateWebhookScenario(t *testing.T) {
+	d := newSimEnv(t)
+	_, started := d.simulate(simulation.DuplicateWebhook, "dupes")
+	view := d.awaitSimulation(started.ID)
+	requireAllPass(t, view)
+	if view.Status != storage.SimulationCompleted || view.Payment.Status != "succeeded" {
+		t.Fatalf("run %s payment %+v", view.Status, view.Payment)
+	}
+	n := simulation.WebhookRepeats("dupes")
+	if len(view.Webhooks) != 1 || view.Webhooks[0].DuplicateCount != int64(n-1) || view.Webhooks[0].SignatureStatus != payment.SignatureNotApplicable {
+		t.Fatalf("webhooks %+v want duplicate_count %d", view.Webhooks, n-1)
+	}
+	if got := d.count("webhook_inbox", "payment_id = ?", view.Payment.ID); got != 1 {
+		t.Fatalf("%d inbox rows", got)
+	}
+	if got := len(d.journals(view.Payment.ID)); got != 1 {
+		t.Fatalf("%d journals", got)
+	}
+	if got := d.statuses(view.Payment.ID); len(got) != 3 || got[2] != "succeeded" {
+		t.Fatalf("transitions %v", got)
+	}
+	d.invariant(view, simulation.InvOneInboxRow)
+	d.invariant(view, simulation.InvDuplicateCount)
+	d.invariant(view, simulation.InvSingleEffect)
+	d.requireLedger()
+}
+
+// reordered_events: a stale event and a late contradicting failure after success
+// never regress the payment; the failure is recorded as ignored and as a late outcome.
+func TestSimulationReorderedEventsScenario(t *testing.T) {
+	d := newSimEnv(t)
+	_, started := d.simulate(simulation.ReorderedEvents, "reorder")
+	view := d.awaitSimulation(started.ID)
+	requireAllPass(t, view)
+	if view.Payment.Status != "succeeded" || len(view.Webhooks) != 3 {
+		t.Fatalf("payment %s webhooks %+v", view.Payment.Status, view.Webhooks)
+	}
+	late := view.Webhooks[2]
+	if late.EventType != payment.WebhookFailed || late.Outcome == nil || *late.Outcome != payment.InboxIgnored || late.OutcomeReason == nil || *late.OutcomeReason != "terminal_state" {
+		t.Fatalf("late event %+v", late)
+	}
+	if got := d.count("outbox_events", "payment_id = ? AND event_type = ?", view.Payment.ID, payment.OutboxPaymentLateOutcome); got != 1 {
+		t.Fatalf("%d late outcome rows", got)
+	}
+	if got := len(d.journals(view.Payment.ID)); got != 1 {
+		t.Fatalf("%d journals", got)
+	}
+	if got := d.statuses(view.Payment.ID); got[len(got)-1] != "succeeded" || len(got) != 3 {
+		t.Fatalf("transitions %v", got)
+	}
+	d.invariant(view, simulation.InvLateEventIgnored)
+	d.requireLedger()
 }
