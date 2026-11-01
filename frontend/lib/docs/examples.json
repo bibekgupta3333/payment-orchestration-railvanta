@@ -1,0 +1,383 @@
+{
+  "unique": ["order-1042", "order-1043", "evt_docs_0001"],
+  "supported": [
+    {
+      "method": "GET",
+      "path": "/v1/workspace",
+      "note": "Read the authenticated workspace"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payment-methods",
+      "note": "List sandbox payment methods"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/payments",
+      "note": "Accept a payment (idempotent, executes asynchronously)"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payments",
+      "note": "List payments with filters and cursor pagination"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payments/{id}",
+      "note": "Read one payment"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payments/{id}/attempts",
+      "note": "Provider attempts for a payment"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payments/{id}/history",
+      "note": "Append-only state transitions and events"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/payments/{id}/cancel",
+      "note": "Cancel a payment that has not been dispatched"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/payments/{id}/recovery",
+      "note": "Lookup and late-outcome state for an unknown payment"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/events",
+      "note": "Webhook inbox and outbox events"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/events/{id}",
+      "note": "One event with a redacted payload summary"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sandbox/webhooks/mock",
+      "note": "Sandbox-only inbound mock provider event"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/settings",
+      "note": "Read-only workspace settings"
+    }
+  ],
+  "planned": [
+    {
+      "name": "Capture",
+      "note": "Separate authorization and capture is not implemented."
+    },
+    {
+      "name": "Refunds",
+      "note": "Refund creation and refund ledger entries are not implemented."
+    },
+    {
+      "name": "Routing rule editing",
+      "note": "Rules are seeded and read-only; evaluation is a preview."
+    },
+    {
+      "name": "Signed provider webhooks",
+      "note": "Stripe and Plaid are not configured; only the unsigned sandbox mock route exists."
+    },
+    {
+      "name": "API key management",
+      "note": "Keys are provisioned out of band; there are no key or role endpoints."
+    },
+    { "name": "Live funds", "note": "Railvanta is sandbox only." }
+  ],
+  "plannedAbsentFromOpenApi": [
+    "/v1/refunds",
+    "/v1/payments/{id}/capture",
+    "/v1/api-keys"
+  ],
+  "examples": [
+    {
+      "id": "get-workspace",
+      "section": "getting-started",
+      "title": "Confirm your credentials",
+      "description": "Reads the workspace the API key belongs to. A 200 with environment sandbox confirms the key and base URL.",
+      "method": "GET",
+      "path": "/v1/workspace",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "00000000-0000-7000-8000-000000000001",
+          "name": "Demo workspace",
+          "environment": "sandbox"
+        }
+      }
+    },
+    {
+      "id": "list-payment-methods",
+      "section": "payments",
+      "title": "List payment methods",
+      "description": "Payment methods are seeded sandbox tokens. Use one of these IDs as payment_method_id; never send card numbers or other raw credentials.",
+      "method": "GET",
+      "path": "/v1/payment-methods",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": {
+          "items": [
+            {
+              "id": "00000000-0000-7000-8000-000000000121",
+              "rail": "mock",
+              "brand": "Mock",
+              "last_four": "1111"
+            }
+          ],
+          "next_cursor": null
+        }
+      }
+    },
+    {
+      "id": "create-payment",
+      "section": "payments",
+      "title": "Create a payment",
+      "description": "Amounts are decimal strings of integer minor units (25000 is 250.00 USD). The Idempotency-Key is required. A 202 means the payment was accepted, not that it succeeded; poll the payment for its status.",
+      "method": "POST",
+      "path": "/v1/payments",
+      "headers": { "Idempotency-Key": "order-1042" },
+      "body": {
+        "amount_minor": "25000",
+        "currency": "USD",
+        "payment_method_id": "00000000-0000-7000-8000-000000000121",
+        "merchant_reference": "order-1042"
+      },
+      "binds": { "payment_id": "id" },
+      "expect": {
+        "status": 202,
+        "body": {
+          "id": "00000000-0000-7000-8000-0000000a0001",
+          "amount_minor": "25000",
+          "currency": "USD",
+          "payment_method_id": "00000000-0000-7000-8000-000000000121",
+          "merchant_reference": "order-1042",
+          "status": "created",
+          "created_at": "2026-01-01T12:00:00.000Z",
+          "updated_at": "2026-01-01T12:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "retry-create-payment",
+      "section": "idempotency",
+      "title": "Retry after a timeout with the same key",
+      "description": "If the connection times out you do not know whether the payment was accepted. Resend the identical request with the same Idempotency-Key. The API replays the stored response (Idempotent-Replayed: true) and never creates a second payment. A different request body under the same key returns 409 idempotency_conflict.",
+      "method": "POST",
+      "path": "/v1/payments",
+      "headers": { "Idempotency-Key": "order-1042" },
+      "body": {
+        "amount_minor": "25000",
+        "currency": "USD",
+        "payment_method_id": "00000000-0000-7000-8000-000000000121",
+        "merchant_reference": "order-1042"
+      },
+      "expect": {
+        "status": 202,
+        "body": {
+          "id": "00000000-0000-7000-8000-0000000a0001",
+          "amount_minor": "25000",
+          "currency": "USD",
+          "payment_method_id": "00000000-0000-7000-8000-000000000121",
+          "merchant_reference": "order-1042",
+          "status": "created",
+          "created_at": "2026-01-01T12:00:00.000Z",
+          "updated_at": "2026-01-01T12:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "get-payment",
+      "section": "payments",
+      "title": "Poll a payment",
+      "description": "Statuses are created, processing, succeeded, failed, canceled and unknown. Poll until the status is terminal. unknown is not a failure: the provider outcome is ambiguous, so keep polling instead of retrying the payment or switching provider.",
+      "method": "GET",
+      "path": "/v1/payments/{payment_id}",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": {
+          "id": "00000000-0000-7000-8000-0000000a0001",
+          "amount_minor": "25000",
+          "currency": "USD",
+          "payment_method_id": "00000000-0000-7000-8000-000000000121",
+          "merchant_reference": "order-1042",
+          "status": "processing",
+          "created_at": "2026-01-01T12:00:00.000Z",
+          "updated_at": "2026-01-01T12:00:01.000Z"
+        }
+      }
+    },
+    {
+      "id": "list-payments",
+      "section": "payments",
+      "title": "List payments",
+      "description": "Newest first. Pass next_cursor back as cursor for the next page; a cursor is only valid with the filters that produced it.",
+      "method": "GET",
+      "path": "/v1/payments?limit=5",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": { "items": [], "next_cursor": null }
+      }
+    },
+    {
+      "id": "get-payment-history",
+      "section": "payments",
+      "title": "Read the audit history",
+      "description": "Transitions are append-only. The idempotency key is masked to its last four characters.",
+      "method": "GET",
+      "path": "/v1/payments/{payment_id}/history",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": {
+          "payment_id": "00000000-0000-7000-8000-0000000a0001",
+          "idempotency_key_masked": "****1042",
+          "transitions": [],
+          "events": []
+        }
+      }
+    },
+    {
+      "id": "send-mock-webhook",
+      "section": "webhooks",
+      "title": "Send a sandbox webhook",
+      "description": "Sandbox only. The mock provider has no signature, so events are recorded as Signature: Not applicable. Resending byte-identical content increments duplicate_count and has no further effect. Reusing the event_id with different content returns 409 and flags the event for investigation. A late payment.processing never moves a payment that already finished.",
+      "method": "POST",
+      "path": "/v1/sandbox/webhooks/mock",
+      "headers": {},
+      "body": {
+        "event_id": "evt_docs_0001",
+        "type": "payment.processing",
+        "payment_id": "00000000-0000-7000-8000-0000000a0001"
+      },
+      "bodyBinds": { "payment_id": "payment_id" },
+      "expect": {
+        "status": 202,
+        "body": {
+          "event_id": "whk_0192f0a0aaaa",
+          "provider_event_id": "evt_docs_0001",
+          "result": "processed",
+          "outcome": "ignored",
+          "outcome_reason": "terminal_state",
+          "duplicate_count": 0,
+          "signature_status": "not_applicable"
+        }
+      }
+    },
+    {
+      "id": "resend-mock-webhook",
+      "section": "webhooks",
+      "title": "Resend the same webhook",
+      "description": "A duplicate delivery answers 200 and reports the running duplicate_count. It never creates a second event or a second state change.",
+      "method": "POST",
+      "path": "/v1/sandbox/webhooks/mock",
+      "headers": {},
+      "body": {
+        "event_id": "evt_docs_0001",
+        "type": "payment.processing",
+        "payment_id": "00000000-0000-7000-8000-0000000a0001"
+      },
+      "bodyBinds": { "payment_id": "payment_id" },
+      "expect": {
+        "status": 200,
+        "body": {
+          "event_id": "whk_0192f0a0aaaa",
+          "provider_event_id": "evt_docs_0001",
+          "result": "duplicate",
+          "outcome": "ignored",
+          "outcome_reason": "terminal_state",
+          "duplicate_count": 1,
+          "signature_status": "not_applicable"
+        }
+      }
+    },
+    {
+      "id": "list-events",
+      "section": "webhooks",
+      "title": "Inspect events for a payment",
+      "description": "Combines inbox and outbox records. Payloads are never returned; open an event for a redacted summary.",
+      "method": "GET",
+      "path": "/v1/events?q={payment_id}",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": { "items": [], "next_cursor": null }
+      }
+    },
+    {
+      "id": "invalid-amount",
+      "section": "errors",
+      "invalidBody": true,
+      "title": "Handle a validation error",
+      "description": "Every error uses one envelope: a stable code, a safe message, the request_id to quote when asking for help, and per-field errors. A rejected request never reserves its Idempotency-Key.",
+      "method": "POST",
+      "path": "/v1/payments",
+      "headers": { "Idempotency-Key": "order-1043" },
+      "body": {
+        "amount_minor": "12.50",
+        "currency": "USD",
+        "payment_method_id": "00000000-0000-7000-8000-000000000121"
+      },
+      "expect": {
+        "status": 400,
+        "body": {
+          "code": "validation_error",
+          "message": "Invalid payment request",
+          "request_id": "4b0f6c2f1d2a4a0e",
+          "field_errors": [
+            {
+              "field": "amount_minor",
+              "message": "Use a positive integer decimal string of minor units"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-settings",
+      "section": "getting-started",
+      "title": "Read workspace settings",
+      "description": "Read-only. The environment is always sandbox and no key material is ever returned.",
+      "method": "GET",
+      "path": "/v1/settings",
+      "headers": {},
+      "body": null,
+      "expect": {
+        "status": 200,
+        "body": {
+          "workspace": {
+            "id": "00000000-0000-7000-8000-000000000001",
+            "name": "Demo workspace",
+            "environment": "sandbox"
+          },
+          "role": "operator",
+          "providers": [
+            { "code": "mock", "label": "Mock provider", "status": "enabled" },
+            { "code": "stripe", "label": "Stripe", "status": "not_configured" },
+            { "code": "plaid", "label": "Plaid", "status": "not_configured" }
+          ],
+          "capabilities": {
+            "api_key_management": "unavailable",
+            "role_management": "unavailable",
+            "live_activation": "unavailable"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,10 +1,14 @@
-import { FeaturePage } from "@/components/feature-page";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { PaymentExplorer } from "@/components/payments/PaymentExplorer";
+import { Skeleton } from "@/components/ui";
 
-export default function Page() {
+export const metadata: Metadata = { title: "Payments" };
+
+export default function PaymentsPage() {
   return (
-    <FeaturePage
-      title="Payments"
-      description="Inspect logical payments, attempts, and outcomes. Payment creation is not available yet."
-    />
+    <Suspense fallback={<Skeleton label="Loading payments" lines={3} />}>
+      <PaymentExplorer />
+    </Suspense>
   );
 }

@@ -16,6 +16,23 @@ test("startup migrates a fresh file and graceful restart preserves seeded rows",
   const methodsBefore = await api.call("GET", "/v1/payment-methods");
   expect((await methodsBefore.json()).items).toEqual([
     { id: fixtures.method, rail: "mock", brand: "Mock", last_four: "4242" },
+    ...[
+      [fixtures.successMethod, "success", "1111"],
+      [fixtures.declineMethod, "decline", "0002"],
+      [fixtures.delayedSuccessMethod, "delayed_success", "0003"],
+      [
+        fixtures.timeoutBeforeExecutionMethod,
+        "timeout_before_execution",
+        "0004",
+      ],
+      [fixtures.timeoutAfterSuccessMethod, "timeout_after_success", "0005"],
+      [fixtures.outageMethod, "outage", "0006"],
+    ].map(([id, scenario, lastFour]) => ({
+      id,
+      rail: "mock",
+      brand: `Mock ${scenario}`,
+      last_four: lastFour,
+    })),
   ]);
   await restartApi();
   expect(await api.workspace()).toEqual(before);

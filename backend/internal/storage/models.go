@@ -198,6 +198,17 @@ type WebhookInbox struct {
 	LastReceivedAt  int64   `gorm:"column:last_received_at"`
 	ReceivedAt      int64   `gorm:"column:received_at"`
 	ProcessedAt     *int64  `gorm:"column:processed_at"`
+
+	// Added by migration 0005.
+	EventType              string  `gorm:"column:event_type"`
+	PaymentID              *string `gorm:"column:payment_id"`
+	AttemptID              *string `gorm:"column:attempt_id"`
+	SignatureStatus        string  `gorm:"column:signature_status"`
+	Outcome                *string `gorm:"column:outcome"`
+	OutcomeReason          *string `gorm:"column:outcome_reason"`
+	InvestigationFlag      int64   `gorm:"column:investigation_flag"`
+	ConflictingPayloadHash *string `gorm:"column:conflicting_payload_hash"`
+	ConflictCount          int64   `gorm:"column:conflict_count"`
 }
 
 func (WebhookInbox) TableName() string { return "webhook_inbox" }
@@ -232,6 +243,13 @@ type ReconciliationRun struct {
 	WindowEnd   int64  `gorm:"column:window_end"`
 	CreatedAt   int64  `gorm:"column:created_at;autoCreateTime:milli"`
 	CompletedAt *int64 `gorm:"column:completed_at"`
+
+	ComparedCount         int64   `gorm:"column:compared_count"`
+	MatchedCount          int64   `gorm:"column:matched_count"`
+	UnmatchedCount        int64   `gorm:"column:unmatched_count"`
+	MismatchCount         int64   `gorm:"column:mismatch_count"`
+	EvidenceConsumedCount int64   `gorm:"column:evidence_consumed_count"`
+	RequestedBy           *string `gorm:"column:requested_by"`
 }
 
 func (ReconciliationRun) TableName() string { return "reconciliation_runs" }
@@ -253,6 +271,20 @@ type ReconciliationDiscrepancy struct {
 }
 
 func (ReconciliationDiscrepancy) TableName() string { return "reconciliation_discrepancies" }
+
+// ReconciliationResolutionEvent maps explicitly to reconciliation_resolution_events (append-only).
+type ReconciliationResolutionEvent struct {
+	ID             string `gorm:"column:id;primaryKey"`
+	WorkspaceID    string `gorm:"column:workspace_id"`
+	DiscrepancyID  string `gorm:"column:discrepancy_id"`
+	FromStatus     string `gorm:"column:from_status"`
+	ToStatus       string `gorm:"column:to_status"`
+	Note           string `gorm:"column:note"`
+	ActorReference string `gorm:"column:actor_reference"`
+	CreatedAt      int64  `gorm:"column:created_at"`
+}
+
+func (ReconciliationResolutionEvent) TableName() string { return "reconciliation_resolution_events" }
 
 // User maps explicitly to users; migrations own constraints.
 type User struct {
@@ -330,6 +362,12 @@ type SimulationRun struct {
 	Status      string  `gorm:"column:status"`
 	CreatedAt   int64   `gorm:"column:created_at;autoCreateTime:milli"`
 	CompletedAt *int64  `gorm:"column:completed_at"`
+	// Added by migration 0003.
+	InjectedFault  *string `gorm:"column:injected_fault"`
+	InvariantsJSON *string `gorm:"column:invariants_json"`
+	Fingerprint    *string `gorm:"column:fingerprint"`
+	FailureReason  *string `gorm:"column:failure_reason"`
+	UpdatedAt      *int64  `gorm:"column:updated_at"`
 }
 
 func (SimulationRun) TableName() string { return "simulation_runs" }

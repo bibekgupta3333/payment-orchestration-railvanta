@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -29,10 +30,12 @@ func TestHTTPAuthorityValidationAndSafeErrors(t *testing.T) {
 	}
 	var logs bytes.Buffer
 	handler := httpapi.NewHandler(store.DB, httpapi.Config{PublicOrigin: "http://localhost:3000", Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
+	calls := 0
 	call := func(method, path, key, body string) *httptest.ResponseRecorder {
+		calls++
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("Idempotency-Key", "never-log-this-idempotency-key")
+		request.Header.Set("Idempotency-Key", "never-log-this-idempotency-key-"+strconv.Itoa(calls))
 		if key != "" {
 			request.Header.Set("Authorization", "Bearer "+key)
 		}
@@ -64,8 +67,8 @@ func TestHTTPAuthorityValidationAndSafeErrors(t *testing.T) {
 	if response := call("POST", "/v1/payments", credentials.ReaderKey, valid); response.Code != 403 {
 		t.Fatalf("reader wrote %d", response.Code)
 	}
-	if response := call("POST", "/v1/payments", credentials.OperatorKey, valid); response.Code != 501 {
-		t.Fatalf("valid intent should honestly remain unavailable: %d %s", response.Code, response.Body.String())
+	if response := call("POST", "/v1/payments", credentials.OperatorKey, valid); response.Code != 202 || response.Header().Get("Location") == "" {
+		t.Fatalf("valid payment not accepted: %d %s", response.Code, response.Body.String())
 	}
 	for _, amount := range []string{`123`, `"9223372036854775808"`, `"1.5"`, `"-1"`, `"0"`, `" 1"`, `"+1"`} {
 		body := `{"amount_minor":` + amount + `,"currency":"USD","payment_method_id":"` + auth.DemoMethodID + `"}`
@@ -97,8 +100,8 @@ func TestHTTPAuthorityValidationAndSafeErrors(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != 501 {
-		t.Fatalf("valid cookie intent %d %s", response.Code, response.Body.String())
+	if response.Code != 202 {
+		t.Fatalf("valid cookie payment %d %s", response.Code, response.Body.String())
 	}
 	for _, secret := range []string{credentials.OperatorKey, credentials.ReaderKey, credentials.SessionToken, credentials.CSRFToken, "never-log-this-idempotency-key", "merchant_reference"} {
 		if strings.Contains(logs.String(), secret) {

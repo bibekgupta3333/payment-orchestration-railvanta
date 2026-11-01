@@ -98,13 +98,13 @@ export interface paths {
     };
     /**
      * List workspace payments
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Keyset pagination over the authenticated workspace's payments, newest first by default. Pass next_cursor back as cursor; it is opaque and bound to the sort. Optional search and status, currency, rail, provider, date and amount filters.
      */
     get: operations["listPayments"];
     put?: never;
     /**
-     * Validate a sandbox payment intent
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * Accept a sandbox payment
+     * @description Idempotently accepts a payment. One short transaction reserves (workspace, operation, Idempotency-Key), inserts the payment and its initial audit transition, appends a payment.dispatch outbox command and stores this 202 response. Reusing the key with the same canonical request (amount, currency, payment method, merchant reference) replays the stored body byte-for-byte with Idempotent-Replayed true; a different request returns 409 idempotency_conflict. Validation and authorization failures never reserve the key. The method must belong to the workspace (else 404) and hold a provider token (else 422).
      */
     post: operations["createPayment"];
     delete?: never;
@@ -124,7 +124,7 @@ export interface paths {
     };
     /**
      * Read a payment
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Returns current state, independent of the original acceptance snapshot. Another workspace's payment ID returns 404.
      */
     get: operations["getPayment"];
     put?: never;
@@ -146,9 +146,53 @@ export interface paths {
     };
     /**
      * Read provider attempts
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Attempts in attempt-number order. Empty until the dispatcher claims the payment; then one attempt records the routed provider, rule and reason, submitted_at (set before the provider call) and completed_at (set when the attempt succeeds or fails; null while unknown). The provider idempotency key is never exposed. Another workspace's payment ID returns 404.
      */
     get: operations["listAttempts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/payments/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel a created payment
+     * @description Moves a payment from created to canceled with a status- and version-guarded update that also settles the pending dispatch command, so it races dispatch safely and exactly one side wins. Returns 200 with the canceled payment (also when it was already canceled) and 409 not_cancelable once dispatch has claimed it or it is in any other state. No request body. Another workspace's payment ID returns 404.
+     */
+    post: operations["cancelPayment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/payments/{id}/recovery": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read a payment's recovery state
+     * @description Shows whether an unknown outcome is awaiting a lookup at the original provider (lookup_status, lookup_attempts, next_lookup_at) and lists provider results that arrived after a conflicting terminal state. Those late outcomes are never applied; they are recorded for reconciliation. retry_allowed is always false: unknown outcomes are resolved by lookup, never by a new attempt.
+     */
+    get: operations["getPaymentRecovery"];
     put?: never;
     post?: never;
     delete?: never;
@@ -166,7 +210,7 @@ export interface paths {
     };
     /**
      * Read observed sandbox metrics
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Workspace-scoped metrics over payments created in the window. Volumes are grouped per currency as exact decimal strings (never summed across currencies). success_rate_percent and completion_latency_p95_ms are null when no succeeded or failed payment was observed.
      */
     get: operations["getDashboardSummary"];
     put?: never;
@@ -186,9 +230,49 @@ export interface paths {
     };
     /**
      * Read volume grouped by currency
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Accepted payment volume per time bucket and currency for the workspace. Only non-empty buckets are returned; amounts are exact decimal strings.
      */
     get: operations["getPaymentVolume"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read providers and their capabilities
+     * @description Stored providers plus every known provider code without a row. Mock is simulated; a provider with no adapter in this build is not_configured.
+     */
+    get: operations["listProviders"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox/scenarios": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List simulator scenarios
+     * @description Every scenario the simulator knows. Scenarios the backend cannot run yet are implemented false and name the missing dependency.
+     */
+    get: operations["listScenarios"];
     put?: never;
     post?: never;
     delete?: never;
@@ -206,9 +290,29 @@ export interface paths {
     };
     /**
      * Read provider observations
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Provider health computed from attempt submitted_at and completed_at over 1h, 24h and 7d windows. A provider with no attempts reports status no_observations and null rates, never zeros.
      */
     get: operations["getProviderHealth"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider ID or code */
+        id: string;
+      };
+      cookie?: never;
+    };
+    /** Read one provider with health and rules */
+    get: operations["getProvider"];
     put?: never;
     post?: never;
     delete?: never;
@@ -226,7 +330,7 @@ export interface paths {
     };
     /**
      * Read routing rules
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Read-only. Every routing rule of the workspace in dispatch order (priority, then ID). Rule mutation has no contract yet.
      */
     get: operations["getRoutingRules"];
     put?: never;
@@ -248,7 +352,7 @@ export interface paths {
     put?: never;
     /**
      * Evaluate without moving money
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Read-only. Returns the provider, matched rule, capability checks and reason the dispatcher would choose for a payment with this method, amount and currency, using the same router as real dispatch. With payment_id naming a payment that has an unresolved attempt, failover_blocked is true and the original provider is returned, because such a payment is never routed elsewhere. Writes nothing and moves no money; requires operator role. 404 for a method or payment outside the workspace; 422 no_eligible_provider lists each provider's reason in field_errors.
      */
     post: operations["evaluateRouting"];
     delete?: never;
@@ -266,9 +370,51 @@ export interface paths {
     };
     /**
      * Read immutable posted journals
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Posted journals only (drafts are never visible), newest first by (created_at, id) with an opaque keyset cursor, scoped to the authenticated workspace. Optional payment_id filter. Amounts are decimal-string int64 minor units; each journal's debits equal its credits in its single currency. A payment success debits provider_clearing:{provider_id} and credits merchant_payable.
      */
     get: operations["getLedgerTransactions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/ledger/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read ledger accounts with balances
+     * @description Read-only. Every account of the authenticated workspace with debit and credit totals computed from posted entries only (drafts never count), ordered by currency then code. Totals use checked int64 arithmetic, so when a total or balance does not fit in int64 the account reports balance_error amount_overflow and null amounts, never a rounded number. Balances are per account and per currency and are never added across currencies. balance_minor is debits minus credits for asset and expense accounts and credits minus debits for the others (normal_balance says which).
+     */
+    get: operations["getLedgerAccounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/ledger/transactions/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read one posted journal
+     * @description Read-only. A posted journal with its entries, checked debit and credit totals, the reversal links in both directions (reversal_of and reversed_by) and the related payment. Drafts, missing IDs and other workspaces' journals all return 404. There is no endpoint that edits or deletes a journal or entry.
+     */
+    get: operations["getLedgerTransaction"];
     put?: never;
     post?: never;
     delete?: never;
@@ -286,11 +432,15 @@ export interface paths {
     };
     /**
      * Read reconciliation runs
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Runs of the authenticated workspace, newest first with an opaque keyset cursor. Counts are derived from the stored discrepancies. All evidence is simulated mock-provider data.
      */
     get: operations["getReconciliationRuns"];
     put?: never;
-    post?: never;
+    /**
+     * Start or re-run a sandbox reconciliation
+     * @description Operator-only. The Idempotency-Key header is the run key. A new key creates the run and returns 201; the same key with the same window returns the stored run with 200 after re-checking the window, adding only discrepancies not already recorded for that run (unique per run and fingerprint); the same key with a different window returns 409 idempotency_conflict. Read-only against payments, attempts, journals and the provider: it compares mock charges, payment state and posted journals, never creates a journal or changes a payment, and marks pending payment.late_outcome rows for the window consumed as evidence. Cookie sessions need a valid Origin and X-CSRF-Token; read-only credentials get 403.
+     */
+    post: operations["startReconciliationRun"];
     delete?: never;
     options?: never;
     head?: never;
@@ -306,11 +456,55 @@ export interface paths {
     };
     /**
      * Read recorded differences
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Discrepancies of the authenticated workspace, newest first with an opaque keyset cursor, filtered by run, kind and status. Each item carries its stored evidence, its append-only resolution history and the related posted journal, if any. Evidence is simulated mock-provider data.
      */
     get: operations["getDiscrepancies"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/reconciliation/discrepancies/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read one discrepancy
+     * @description One discrepancy of the authenticated workspace; another workspace's ID returns 404.
+     */
+    get: operations["getDiscrepancy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/reconciliation/discrepancies/{id}/resolve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Record a discrepancy status change
+     * @description Operator-only. Changes status (open, investigating or resolved) and appends one history row with the required note and the actor. Resolving also stores resolution_note, resolved_by and resolved_at. A resolved discrepancy is final (409 invalid_transition). Resolution records evidence only: it never changes a payment, attempt or journal and never calls the provider. Another workspace returns 404; read-only credentials return 403.
+     */
+    post: operations["resolveDiscrepancy"];
     delete?: never;
     options?: never;
     head?: never;
@@ -325,10 +519,72 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read sanitized event summaries
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * List webhook inbox and outbox events
+     * @description Newest-first feed that merges the webhook inbox and the outbox for the authenticated workspace. Safe fields only; raw payloads, lease tokens, errors and idempotency keys are never returned. Mock events are simulated and carry no signature (signature_status not_applicable). q matches a payment ID, an event ID or a provider event ID.
      */
-    get: operations["getEvents"];
+    get: operations["listEvents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/events/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read one event with a redacted payload summary
+     * @description Returns provider event ID, processing status and outcome, duplicate and conflict counts, the stored payload hashes, the related payment and its attempts, and an allow-listed payload summary. Other workspaces' events return 404.
+     */
+    get: operations["getEvent"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox/webhooks/mock": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Sandbox-only inbound mock provider event
+     * @description Operator-only sandbox route that feeds the webhook inbox so duplicate, changed-payload and reordered deliveries can be exercised. Mock events are not signed (signature_status not_applicable). The first delivery of an event ID is processed through status-guarded transitions and answers 202. A byte-identical repeat increments duplicate_count and answers 200 with no further effect. The same event ID with a different payload answers 409 event_payload_conflict, is flagged for investigation and is never applied or stored over the first payload. An event that does not match the recorded state (for example a failure after success) is recorded as ignored and never moves a terminal payment.
+     */
+    post: operations["receiveMockWebhook"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read workspace settings
+     * @description Read-only workspace name, fixed sandbox environment, role and provider configuration status. Requires a live workspace membership on every read and never returns key material, tokens or provider credentials.
+     */
+    get: operations["getSettings"];
     put?: never;
     post?: never;
     delete?: never;
@@ -348,7 +604,7 @@ export interface paths {
     put?: never;
     /**
      * Run an implemented fault scenario
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Runs an implemented scenario through the real payment pipeline against the deterministic mock provider (SIMULATED / SANDBOX ONLY). The seed fixes the amount; the same seed gives identical states and invariant results. 422 unknown_scenario or scenario_not_implemented (field_errors names the missing dependency).
      */
     post: operations["createSimulation"];
     delete?: never;
@@ -368,7 +624,7 @@ export interface paths {
     };
     /**
      * Read a persisted simulation
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Persisted run with the evidence read from the real pipeline. Invariants stay pending until the backend stored evidence for them.
      */
     get: operations["getSimulation"];
     put?: never;
@@ -394,6 +650,28 @@ export interface paths {
      * @description Only the API key presented on this request is revoked. Cookie authentication cannot revoke an API key.
      */
     delete: operations["revokeCurrentAPIKey"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/payments/{id}/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read payment state history and durable events
+     * @description Append-only state transitions, outbox events for the payment and the masked idempotency key (at most the last four characters). Another workspace's payment ID returns 404.
+     */
+    get: operations["getPaymentHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -445,6 +723,14 @@ export interface components {
       payment_method_id: string;
       merchant_reference?: string;
     };
+    /** @enum {string} */
+    PaymentStatus:
+      | "created"
+      | "processing"
+      | "succeeded"
+      | "failed"
+      | "canceled"
+      | "unknown";
     Payment: {
       /** Format: uuid */
       id: string;
@@ -457,14 +743,12 @@ export interface components {
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
       /** Format: uuid */
       payment_method_id: string;
-      /** @enum {string} */
-      status:
-        | "created"
-        | "processing"
-        | "succeeded"
-        | "failed"
-        | "canceled"
-        | "unknown";
+      merchant_reference: string | null;
+      status: components["schemas"]["PaymentStatus"];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
     };
     Attempt: {
       /** Format: uuid */
@@ -473,50 +757,145 @@ export interface components {
       payment_id: string;
       /** Format: uuid */
       provider_id: string;
+      attempt_number: number;
       /** @enum {string} */
       status: "created" | "submitted" | "succeeded" | "failed" | "unknown";
+      /** Format: uuid */
+      routing_rule_id: string | null;
       routing_reason: string;
+      provider_reference: string | null;
+      error_code: string | null;
+      /** Format: date-time */
+      submitted_at: string | null;
+      /** Format: date-time */
+      completed_at: string | null;
+      /** Format: date-time */
+      created_at: string;
     };
-    MetricSummary: {
+    PaymentRecovery: {
+      /** Format: uuid */
+      payment_id: string;
       /** @enum {string} */
-      data_source: "observed" | "simulated" | "seeded";
-      payment_count: number;
-      volumes: {
+      lookup_status: "none" | "pending" | "in_progress" | "resolved" | "failed";
+      lookup_attempts: number;
+      /** Format: date-time */
+      next_lookup_at: string | null;
+      last_lookup_error: string | null;
+      /** @enum {boolean} */
+      retry_allowed: false;
+      late_outcomes: {
+        /** Format: uuid */
+        attempt_id: string;
         /** @enum {string} */
-        currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
-        /**
-         * @description Positive signed int64 minor units, encoded as a decimal string. Server additionally enforces the int64 maximum 9223372036854775807. Currency exponents govern display, not divisibility of minor units.
-         * @example 25000
-         */
-        amount_minor: string;
+        outcome: "succeeded" | "declined" | "ambiguous";
+        provider_reference: string | null;
+        code: string | null;
+        payment_status: components["schemas"]["PaymentStatus"];
+        attempt_status: string;
+        /** @enum {string} */
+        source: "dispatch" | "lookup";
+        /** Format: date-time */
+        observed_at: string;
       }[];
     };
+    MetricSummary: {
+      data_source: components["schemas"]["DataSource"];
+      window: components["schemas"]["MetricWindow"];
+      /** Format: date-time */
+      window_start: string;
+      /** Format: date-time */
+      window_end: string;
+      /** Format: date-time */
+      generated_at: string;
+      payment_count: number;
+      status_counts: {
+        [key: string]: number;
+      };
+      /** @description Accepted volume (all statuses) per currency. */
+      volumes: components["schemas"]["CurrencyVolume"][];
+      succeeded_volumes: components["schemas"]["CurrencyVolume"][];
+      /** @description Succeeded plus failed payments in the window. */
+      terminal_count: number;
+      /** @description Succeeded / (succeeded + failed) with one decimal; null without observations. */
+      success_rate_percent: string | null;
+      /** @description Nearest-rank p95 of acceptance-to-terminal time; null without observations. */
+      completion_latency_p95_ms: number | null;
+      completion_latency_samples: number;
+    };
     VolumePoint: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Bucket start in Unix milliseconds (UTC).
+       */
       timestamp: number;
       /** @enum {string} */
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
-      /**
-       * @description Positive signed int64 minor units, encoded as a decimal string. Server additionally enforces the int64 maximum 9223372036854775807. Currency exponents govern display, not divisibility of minor units.
-       * @example 25000
-       */
-      amount_minor: string;
+      amount_minor: components["schemas"]["AggregateAmount"];
+      payment_count: number;
+    };
+    ProviderHealthWindow: {
+      /** @enum {string} */
+      window: "1h" | "24h" | "7d";
+      observations: number;
+      succeeded: number;
+      failed: number;
+      unknown: number;
+      /** @description One-decimal percentage; null when there are no observations. */
+      success_rate_percent: string | null;
+      /** @description null when no attempt has both submitted_at and completed_at. */
+      p95_ms: number | null;
+      latency_samples: number;
+      error_counts: {
+        [key: string]: number;
+      };
     };
     ProviderHealth: {
-      /** Format: uuid */
       id: string;
+      /** @enum {string} */
+      code: "mock" | "stripe" | "plaid";
       configured: boolean;
-      data_source: string;
+      data_source: components["schemas"]["DataSource"];
+      /** @description Observations in the 7d window. */
       observation_count: number;
+      /** @enum {string} */
+      status:
+        | "no_observations"
+        | "insufficient_data"
+        | "healthy"
+        | "degraded"
+        | "unhealthy";
+      windows: components["schemas"]["ProviderHealthWindow"][];
+    };
+    Provider: {
+      id: string;
+      /** @enum {string} */
+      code: "mock" | "stripe" | "plaid";
+      display_name: string;
+      /** @enum {string} */
+      mode: "simulated" | "configured" | "not_configured";
+      enabled: boolean;
+      configured: boolean;
+      capabilities: {
+        idempotent_replay: boolean;
+        lookup_by_idempotency_key: boolean;
+        rails: string[];
+      } | null;
+      rule_count: number;
+    };
+    ProviderDetail: {
+      provider: components["schemas"]["Provider"];
+      health: components["schemas"]["ProviderHealth"];
+      rules: components["schemas"]["RoutingRule"][];
     };
     RoutingRule: {
-      /** Format: uuid */
       id: string;
-      /** Format: uuid */
       provider_id: string;
-      /** @enum {string} */
-      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      provider_code: string;
+      rail: string;
+      currency: string;
       priority: number;
+      min_amount_minor: string;
+      max_amount_minor: string | null;
       enabled: boolean;
     };
     RoutingEvaluation: {
@@ -529,26 +908,59 @@ export interface components {
       amount_minor: string;
       /** @enum {string} */
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      /** @description Optional existing payment; an unresolved prior attempt blocks failover. */
+      payment_id?: string;
+    };
+    RoutingCheck: {
+      id: string;
+      label: string;
+      passed: boolean;
+      detail: string;
     };
     RoutingDecision: {
-      /** Format: uuid */
       provider_id: string;
-      /** Format: uuid */
-      rule_id: string;
+      /** @enum {string} */
+      provider_code: "mock" | "stripe" | "plaid";
+      rule_id: string | null;
+      priority: number | null;
       reason: string;
+      rule: components["schemas"]["RoutingRule"] | null;
+      checks: components["schemas"]["RoutingCheck"][];
+      candidates: {
+        provider_id: string;
+        provider_code: string;
+        rule_id: string;
+        priority: number;
+      }[];
+      failover_blocked: boolean;
     };
     LedgerJournal: {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
-      payment_id: string;
+      payment_id: string | null;
       /** @enum {string} */
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
       /** @enum {string} */
       status: "posted";
+      posting_key: string;
+      /** Format: uuid */
+      reversal_of: string | null;
+      /** Format: uuid */
+      reversed_by: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      posted_at: string;
       entries: {
         /** Format: uuid */
+        id: string;
+        /** Format: uuid */
         account_id: string;
+        /** @description merchant_payable or provider_clearing:{provider_id} */
+        account_code: string;
+        /** Format: uuid */
+        provider_id: string | null;
         /** @enum {string} */
         side: "debit" | "credit";
         /**
@@ -558,31 +970,310 @@ export interface components {
         amount_minor: string;
       }[];
     };
+    ReconciliationCounts: {
+      /** @description Settled mock-provider payments created in the window. */
+      compared: number;
+      /** @description Compared payments with no discrepancy. */
+      matched: number;
+      /** @description missing_posting, unknown_outcome and missing_at_provider discrepancies. */
+      unmatched: number;
+      /** @description amount_mismatch and status_mismatch discrepancies. */
+      mismatch: number;
+    };
     ReconciliationRun: {
       /** Format: uuid */
       id: string;
+      run_key: string;
       /** @enum {string} */
       status: "pending" | "running" | "completed" | "failed";
+      /** Format: date-time */
+      window_start: string;
+      /** Format: date-time */
+      window_end: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      completed_at: string | null;
+      requested_by: string | null;
+      counts: components["schemas"]["ReconciliationCounts"];
+      /** @description payment.late_outcome rows consumed as evidence by this run. */
+      evidence_consumed_count: number;
+      /** @description Always true; evidence comes from the mock provider. */
+      simulated: boolean;
+    };
+    StartReconciliationRunRequest: {
+      /**
+       * Format: date-time
+       * @description Inclusive RFC 3339 start; payments are matched on created_at.
+       */
+      window_start: string;
+      /**
+       * Format: date-time
+       * @description Exclusive RFC 3339 end; must be after window_start and at most 366 days later.
+       */
+      window_end: string;
+    };
+    /** @enum {string} */
+    DiscrepancyKind:
+      | "missing_posting"
+      | "unknown_outcome"
+      | "amount_mismatch"
+      | "status_mismatch"
+      | "missing_at_provider";
+    /** @enum {string} */
+    DiscrepancyStatus: "open" | "investigating" | "resolved";
+    /** @description Stored evidence (details). Money is a decimal string. Always simulated mock data. */
+    DiscrepancyEvidence: {
+      /** @enum {string} */
+      source: "mock_provider";
+      simulated: boolean;
+      summary: string;
+      expected?: string;
+      payment: {
+        /** Format: uuid */
+        id: string;
+        status: string;
+        amount_minor: string;
+        currency: string;
+      };
+      provider_charge: {
+        id: string;
+        provider_reference: string;
+        status: string;
+        amount_minor: string;
+        currency: string;
+        scenario: string;
+      } | null;
+      journal: {
+        /** Format: uuid */
+        id: string;
+        debit_total_minor: string;
+        credit_total_minor: string;
+      } | null;
+      late_outcomes: {
+        event_id: string;
+        outcome: string;
+        source: string;
+        payment_status: string;
+        attempt_status: string;
+        /** Format: int64 */
+        observed_at: number;
+      }[];
+    };
+    ResolutionEvent: {
+      /** Format: uuid */
+      id: string;
+      from_status: components["schemas"]["DiscrepancyStatus"];
+      to_status: components["schemas"]["DiscrepancyStatus"];
+      note: string;
+      actor: string;
+      /** Format: date-time */
+      created_at: string;
     };
     Discrepancy: {
       /** Format: uuid */
       id: string;
-      /** @enum {string} */
-      kind:
-        | "missing_posting"
-        | "unknown_outcome"
-        | "amount_mismatch"
-        | "status_mismatch"
-        | "missing_at_provider";
-      /** @enum {string} */
-      status: "open" | "investigating" | "resolved";
+      /** Format: uuid */
+      run_id: string;
+      /** Format: uuid */
+      payment_id: string | null;
+      kind: components["schemas"]["DiscrepancyKind"];
+      status: components["schemas"]["DiscrepancyStatus"];
+      details: components["schemas"]["DiscrepancyEvidence"];
+      resolution_note: string | null;
+      resolved_by: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      resolved_at: string | null;
+      /** Format: uuid */
+      related_journal_id: string | null;
+      history: components["schemas"]["ResolutionEvent"][];
+      simulated: boolean;
     };
-    Event: {
+    ResolveDiscrepancyRequest: {
+      status: components["schemas"]["DiscrepancyStatus"];
+      /** @description Required for every status change. */
+      note: string;
+    };
+    LedgerAccount: {
       /** Format: uuid */
       id: string;
+      /** @description merchant_payable or provider_clearing:{provider_id} */
+      code: string;
+      /** @enum {string} */
+      kind: "asset" | "liability" | "income" | "expense" | "equity";
+      /** @enum {string} */
+      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      /** Format: uuid */
+      provider_id: string | null;
+      provider_code: string | null;
+      /** @description Decimal-string int64 minor units; null when balance_error is set. */
+      debit_total_minor: string | null;
+      credit_total_minor: string | null;
+      balance_minor: string | null;
+      /** @enum {string|null} */
+      balance_error: "amount_overflow" | null;
+      /** @enum {string} */
+      normal_balance: "debit" | "credit";
+      entry_count: number;
+    };
+    LedgerJournalDetail: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      payment_id: string | null;
+      /** @enum {string} */
+      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      /** @enum {string} */
+      status: "posted";
+      posting_key: string;
+      /** Format: uuid */
+      reversal_of: string | null;
+      /** Format: uuid */
+      reversed_by: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      posted_at: string;
+      entries: {
+        /** Format: uuid */
+        id: string;
+        /** Format: uuid */
+        account_id: string;
+        account_code: string;
+        /** Format: uuid */
+        provider_id: string | null;
+        /** @enum {string} */
+        side: "debit" | "credit";
+        /**
+         * @description Positive signed int64 minor units, encoded as a decimal string. Server additionally enforces the int64 maximum 9223372036854775807. Currency exponents govern display, not divisibility of minor units.
+         * @example 25000
+         */
+        amount_minor: string;
+      }[];
+      debit_total_minor: string;
+      credit_total_minor: string;
+      payment: {
+        /** Format: uuid */
+        id: string;
+        status: string;
+        amount_minor: string;
+        currency: string;
+      } | null;
+    };
+    Event: {
+      id: string;
+      /** @enum {string} */
+      source: "inbox" | "outbox";
       event_type: string;
-      status: string;
-      data_source: string;
+      /** @enum {string} */
+      status: "pending" | "processing" | "processed" | "delivered" | "failed";
+      /** @enum {string|null} */
+      outcome: "applied" | "ignored" | null;
+      outcome_reason: string | null;
+      provider_event_id: string | null;
+      payment_id: string | null;
+      duplicate_count: number;
+      needs_investigation: boolean;
+      /** @enum {string} */
+      signature_status: "not_applicable" | "verified" | "rejected";
+      /** @enum {string} */
+      data_source: "simulated";
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      last_received_at: string;
+    };
+    EventPage: {
+      items: components["schemas"]["Event"][];
+      next_cursor: string | null;
+    };
+    EventDetail: {
+      id: string;
+      /** @enum {string} */
+      source: "inbox" | "outbox";
+      event_type: string;
+      /** @enum {string} */
+      status: "pending" | "processing" | "processed" | "delivered" | "failed";
+      /** @enum {string|null} */
+      outcome: "applied" | "ignored" | null;
+      outcome_reason: string | null;
+      provider_event_id: string | null;
+      payment_id: string | null;
+      duplicate_count: number;
+      needs_investigation: boolean;
+      /** @enum {string} */
+      signature_status: "not_applicable" | "verified" | "rejected";
+      /** @enum {string} */
+      data_source: "simulated";
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      last_received_at: string;
+      provider_id: string | null;
+      /** @description SHA-256 of the first delivery's body (inbox events only) */
+      payload_hash: string | null;
+      /** @description SHA-256 of the most recent body that reused this event ID with different content */
+      conflicting_payload_hash: string | null;
+      conflict_count: number;
+      delivery_attempts: number;
+      /** Format: date-time */
+      processed_at: string | null;
+      payment_status: string | null;
+      attempts: {
+        id: string;
+        attempt_number: number;
+        provider_id: string;
+        status: string;
+      }[];
+      payload_summary: {
+        fields: {
+          name: string;
+          value: string;
+        }[];
+        redacted_count: number;
+      };
+    };
+    MockWebhookEvent: {
+      event_id: string;
+      /** @enum {string} */
+      type: "payment.succeeded" | "payment.failed" | "payment.processing";
+      payment_id: string;
+      attempt_id?: string;
+      provider_reference?: string;
+    };
+    WebhookReceipt: {
+      event_id: string;
+      provider_event_id: string;
+      /** @enum {string} */
+      result: "processed" | "duplicate";
+      /** @enum {string|null} */
+      outcome: "applied" | "ignored" | null;
+      outcome_reason: string | null;
+      duplicate_count: number;
+      /** @enum {string} */
+      signature_status: "not_applicable" | "verified" | "rejected";
+    };
+    Settings: {
+      workspace: components["schemas"]["Workspace"];
+      /** @enum {string} */
+      role: "read" | "operator";
+      providers: {
+        /** @enum {string} */
+        code: "mock" | "stripe" | "plaid";
+        label: string;
+        /** @enum {string} */
+        status: "enabled" | "disabled" | "not_configured";
+      }[];
+      capabilities: {
+        /** @enum {string} */
+        api_key_management: "unavailable";
+        /** @enum {string} */
+        role_management: "unavailable";
+        /** @enum {string} */
+        live_activation: "unavailable";
+      };
     };
     SimulationRequest: {
       /** @enum {string} */
@@ -597,14 +1288,138 @@ export interface components {
         | "outage"
         | "unknown_recovery"
         | "duplicate_posting";
-      payment: components["schemas"]["CreatePayment"];
+      /** @description Default "default". Fixes the amount, so the same seed reproduces the same states. */
+      seed?: string;
+      /** @description Overrides the seed-derived amount. */
+      amount_minor?: string;
+      /** @description Defaults to USD. */
+      currency?: string;
+    };
+    ScenarioCatalog: {
+      label: string;
+      items: {
+        id: string;
+        label: string;
+        description: string;
+        implemented: boolean;
+        missing_dependency: string | null;
+        injected_fault: string;
+      }[];
+    };
+    SimulationInvariant: {
+      id: string;
+      title: string;
+      /** @enum {string} */
+      status: "pending" | "pass" | "fail";
+      evidence: string;
     };
     Simulation: {
-      /** Format: uuid */
       id: string;
-      status: string;
+      /** @description Always SIMULATED / SANDBOX ONLY. */
+      label: string;
+      scenario: string;
+      seed: string;
+      /** @enum {string} */
+      status: "running" | "completed" | "failed";
+      payment_id: string | null;
+      injected_fault: string;
+      created_at: string;
+      completed_at: string | null;
+      failure_reason: string | null;
+      /** @description Hash of the end state; equal for runs with the same scenario and seed. */
+      fingerprint: string | null;
+      request: {
+        payment_method_id: string;
+        amount_minor: string;
+        currency: string;
+        idempotency_key: string;
+        merchant_reference: string;
+      };
+      response: {
+        status_code: number;
+        body: {
+          [key: string]: unknown;
+        };
+      } | null;
+      payment: components["schemas"]["Payment"] | null;
+      routing: {
+        failover_blocked: boolean;
+        failover_reason: string | null;
+        decisions: {
+          attempt_number: number;
+          provider_id: string;
+          rule_id: string | null;
+          reason: string;
+        }[];
+      };
+      attempts: components["schemas"]["Attempt"][];
+      transitions: {
+        from_status: string | null;
+        to_status: string;
+        reason: string;
+        actor_reference: string;
+        created_at: string;
+      }[];
+      events: {
+        id: string;
+        event_type: string;
+        status: string;
+        attempts: number;
+        created_at: string;
+        delivered_at: string | null;
+      }[];
+      journals: components["schemas"]["LedgerJournal"][];
+      invariants: components["schemas"]["SimulationInvariant"][];
+      timeline: {
+        at: string;
+        source: string;
+        title: string;
+        detail: string;
+      }[];
+    };
+    /** @enum {string} */
+    DataSource: "observed" | "simulated" | "seeded";
+    /** @enum {string} */
+    MetricWindow: "24h" | "7d" | "30d";
+    /** @description Exact non-negative sum of minor units as a decimal string; may exceed int64. */
+    AggregateAmount: string;
+    CurrencyVolume: {
+      /** @enum {string} */
+      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      amount_minor: components["schemas"]["AggregateAmount"];
+      payment_count: number;
+    };
+    PaymentHistory: {
       /** Format: uuid */
       payment_id: string;
+      idempotency_key_masked: string | null;
+      transitions: {
+        /** @enum {string|null} */
+        from_status:
+          | "created"
+          | "processing"
+          | "succeeded"
+          | "failed"
+          | "canceled"
+          | "unknown"
+          | null;
+        to_status: components["schemas"]["PaymentStatus"];
+        reason: string;
+        actor_reference: string;
+        /** Format: date-time */
+        created_at: string;
+      }[];
+      events: {
+        /** Format: uuid */
+        id: string;
+        event_type: string;
+        status: string;
+        attempts: number;
+        /** Format: date-time */
+        created_at: string;
+        /** Format: date-time */
+        delivered_at: string | null;
+      }[];
     };
   };
   responses: {
@@ -791,6 +1606,24 @@ export interface operations {
       query?: {
         cursor?: string;
         limit?: number;
+        status?: components["schemas"]["PaymentStatus"];
+        /** @description Exact payment ID or exact merchant_reference. */
+        q?: string;
+        currency?: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+        /** @description Rail of the payment method. */
+        rail?: "card" | "ach" | "mock";
+        /** @description Payments with at least one attempt routed to this provider. */
+        provider_id?: string;
+        /** @description Inclusive lower bound; YYYY-MM-DD (UTC) or RFC 3339. */
+        created_from?: string;
+        /** @description Upper bound; a YYYY-MM-DD date includes that UTC day, an RFC 3339 timestamp is exclusive. */
+        created_to?: string;
+        /** @description Inclusive minimum in minor units. */
+        amount_min?: string;
+        /** @description Inclusive maximum in minor units. */
+        amount_max?: string;
+        /** @description Keyset order. A cursor is valid only for the sort that issued it. */
+        sort?: "created_desc" | "created_asc";
       };
       header?: {
         "X-Request-ID"?: string;
@@ -814,12 +1647,12 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -842,15 +1675,31 @@ export interface operations {
       };
     };
     responses: {
+      /** @description Accepted (or replayed); poll the Location for current state */
+      202: {
+        headers: {
+          "X-Request-ID"?: string;
+          /** @description Relative URL of the accepted payment */
+          Location?: string;
+          /** @description Present and true when the stored response is replayed */
+          "Idempotent-Replayed"?: "true";
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Payment"];
+        };
+      };
       400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
       413: components["responses"]["Error"];
       415: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      500: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -881,9 +1730,8 @@ export interface operations {
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -917,17 +1765,84 @@ export interface operations {
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  cancelPayment: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required with a valid Origin for cookie-authenticated writes. */
+        "X-CSRF-Token"?: string;
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The payment is canceled */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Payment"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      500: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getPaymentRecovery: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaymentRecovery"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
   getDashboardSummary: {
     parameters: {
       query?: {
-        cursor?: string;
-        limit?: number;
+        /** @description Observation window ending now; 24h uses hourly buckets, 7d and 30d daily buckets. */
+        window?: "24h" | "7d" | "30d";
       };
       header?: {
         "X-Request-ID"?: string;
@@ -948,20 +1863,19 @@ export interface operations {
           "application/json": components["schemas"]["MetricSummary"];
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
-      404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
   getPaymentVolume: {
     parameters: {
       query?: {
-        cursor?: string;
-        limit?: number;
+        /** @description Observation window ending now; 24h uses hourly buckets, 7d and 30d daily buckets. */
+        window?: "24h" | "7d" | "30d";
       };
       header?: {
         "X-Request-ID"?: string;
@@ -980,17 +1894,85 @@ export interface operations {
         };
         content: {
           "application/json": {
+            data_source: components["schemas"]["DataSource"];
+            window: components["schemas"]["MetricWindow"];
+            /** @enum {string} */
+            bucket: "hour" | "day";
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            /** Format: date-time */
+            generated_at: string;
             items: components["schemas"]["VolumePoint"][];
+            next_cursor: string | null;
+          };
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  listProviders: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            items: components["schemas"]["Provider"][];
             next_cursor: string | null;
           };
         };
       };
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
-      404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  listScenarios: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ScenarioCatalog"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1027,7 +2009,38 @@ export interface operations {
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getProvider: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        /** @description Provider ID or code */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderDetail"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1064,7 +2077,6 @@ export interface operations {
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1102,7 +2114,7 @@ export interface operations {
       415: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1111,6 +2123,8 @@ export interface operations {
       query?: {
         cursor?: string;
         limit?: number;
+        payment_id?: string;
+        currency?: string;
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1134,12 +2148,80 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getLedgerAccounts: {
+    parameters: {
+      query?: {
+        currency?: string;
+      };
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            items: components["schemas"]["LedgerAccount"][];
+          };
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getLedgerTransaction: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LedgerJournalDetail"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      500: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1171,12 +2253,60 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  startReconciliationRun: {
+    parameters: {
+      query?: never;
+      header: {
+        "Idempotency-Key": string;
+        /** @description Required with a valid Origin for cookie-authenticated writes. */
+        "X-CSRF-Token"?: string;
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StartReconciliationRunRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReconciliationRun"];
+        };
+      };
+      /** @description Successful response */
+      201: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReconciliationRun"];
+        };
+      };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
+      409: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1185,6 +2315,9 @@ export interface operations {
       query?: {
         cursor?: string;
         limit?: number;
+        run_id?: string;
+        kind?: components["schemas"]["DiscrepancyKind"];
+        status?: components["schemas"]["DiscrepancyStatus"];
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1208,24 +2341,107 @@ export interface operations {
           };
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
-      404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
-  getEvents: {
+  getDiscrepancy: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Discrepancy"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  resolveDiscrepancy: {
+    parameters: {
+      query?: never;
+      header?: {
+        /** @description Required with a valid Origin for cookie-authenticated writes. */
+        "X-CSRF-Token"?: string;
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ResolveDiscrepancyRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Discrepancy"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  listEvents: {
     parameters: {
       query?: {
+        q?: string;
+        source?: "inbox" | "outbox";
+        state?:
+          | "pending"
+          | "processing"
+          | "processed"
+          | "delivered"
+          | "failed"
+          | "applied"
+          | "ignored"
+          | "investigation";
+        created_from?: string;
+        created_to?: string;
         cursor?: string;
         limit?: number;
       };
       header?: {
         "X-Request-ID"?: string;
-        "X-Correlation-ID"?: string;
       };
       path?: never;
       cookie?: never;
@@ -1239,18 +2455,122 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            items: components["schemas"]["Event"][];
-            next_cursor: string | null;
-          };
+          "application/json": components["schemas"]["EventPage"];
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
       404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getEvent: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EventDetail"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  receiveMockWebhook: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MockWebhookEvent"];
+      };
+    };
+    responses: {
+      /** @description Duplicate delivery counted; nothing applied */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookReceipt"];
+        };
+      };
+      /** @description First delivery recorded and processed */
+      202: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookReceipt"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      409: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  getSettings: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Settings"];
+        };
+      };
+      400: components["responses"]["Error"];
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1270,8 +2590,8 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Successful response */
-      200: {
+      /** @description Run accepted; poll GET /v1/sandbox/simulations/{id} */
+      202: {
         headers: {
           "X-Request-ID"?: string;
           [name: string]: unknown;
@@ -1288,7 +2608,6 @@ export interface operations {
       415: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1321,7 +2640,6 @@ export interface operations {
       404: components["responses"]["Error"];
       422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1342,6 +2660,38 @@ export interface operations {
         };
         content?: never;
       };
+      default: components["responses"]["Error"];
+    };
+  };
+  getPaymentHistory: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaymentHistory"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

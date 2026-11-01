@@ -1,10 +1,14 @@
-import { FeaturePage } from "@/components/feature-page";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { LedgerExplorer } from "@/components/ledger/LedgerExplorer";
+import { Skeleton } from "@/components/ui";
 
-export default function Page() {
+export const metadata: Metadata = { title: "Ledger" };
+
+export default function LedgerPage() {
   return (
-    <FeaturePage
-      title="Ledger"
-      description="Inspect balanced journals and immutable entries. Financial posting is not available yet."
-    />
+    <Suspense fallback={<Skeleton label="Loading ledger" lines={3} />}>
+      <LedgerExplorer />
+    </Suspense>
   );
 }

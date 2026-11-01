@@ -1,10 +1,19 @@
-import { FeaturePage } from "@/components/feature-page";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { PaymentDetail } from "@/components/payments/PaymentDetail";
+import { Skeleton } from "@/components/ui";
 
-export default function DetailPage() {
+export const metadata: Metadata = { title: "Payment detail" };
+
+export default async function PaymentDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   return (
-    <FeaturePage
-      title="Payment details"
-      description="Detail inspection is unavailable until this capability is implemented. No financial records are shown."
-    />
+    <Suspense fallback={<Skeleton label="Loading payment" lines={4} />}>
+      <PaymentDetail id={id} />
+    </Suspense>
   );
 }

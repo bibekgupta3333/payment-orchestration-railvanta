@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
 import "@fontsource-variable/inter";
 import "./globals.css";
+import "./events-docs.css";
 
 export const metadata: Metadata = {
   title: {
