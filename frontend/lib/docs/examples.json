@@ -65,6 +65,21 @@
       "method": "GET",
       "path": "/v1/settings",
       "note": "Read-only workspace settings"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/api-keys",
+      "note": "Generate a sandbox API key (operator); the secret is returned once"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/api-keys",
+      "note": "List API key metadata (operator); never returns secrets"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/api-keys/{id}",
+      "note": "Revoke an API key of this workspace (operator)"
     }
   ],
   "planned": [
@@ -85,16 +100,15 @@
       "note": "Stripe and Plaid are not configured; only the unsigned sandbox mock route exists."
     },
     {
-      "name": "API key management",
-      "note": "Keys are provisioned out of band; there are no key or role endpoints."
+      "name": "Live funds",
+      "note": "Railvanta is sandbox only."
     },
-    { "name": "Live funds", "note": "Railvanta is sandbox only." }
+    {
+      "name": "Roles and per-key scopes",
+      "note": "Keys are read or operator only; there are no custom roles, scopes or key rotation."
+    }
   ],
-  "plannedAbsentFromOpenApi": [
-    "/v1/refunds",
-    "/v1/payments/{id}/capture",
-    "/v1/api-keys"
-  ],
+  "plannedAbsentFromOpenApi": ["/v1/refunds", "/v1/payments/{id}/capture"],
   "examples": [
     {
       "id": "get-workspace",
@@ -145,14 +159,18 @@
       "description": "Amounts are decimal strings of integer minor units (25000 is 250.00 USD). The Idempotency-Key is required. A 202 means the payment was accepted, not that it succeeded; poll the payment for its status.",
       "method": "POST",
       "path": "/v1/payments",
-      "headers": { "Idempotency-Key": "order-1042" },
+      "headers": {
+        "Idempotency-Key": "order-1042"
+      },
       "body": {
         "amount_minor": "25000",
         "currency": "USD",
         "payment_method_id": "00000000-0000-7000-8000-000000000121",
         "merchant_reference": "order-1042"
       },
-      "binds": { "payment_id": "id" },
+      "binds": {
+        "payment_id": "id"
+      },
       "expect": {
         "status": 202,
         "body": {
@@ -174,7 +192,9 @@
       "description": "If the connection times out you do not know whether the payment was accepted. Resend the identical request with the same Idempotency-Key. The API replays the stored response (Idempotent-Replayed: true) and never creates a second payment. A different request body under the same key returns 409 idempotency_conflict.",
       "method": "POST",
       "path": "/v1/payments",
-      "headers": { "Idempotency-Key": "order-1042" },
+      "headers": {
+        "Idempotency-Key": "order-1042"
+      },
       "body": {
         "amount_minor": "25000",
         "currency": "USD",
@@ -229,7 +249,10 @@
       "body": null,
       "expect": {
         "status": 200,
-        "body": { "items": [], "next_cursor": null }
+        "body": {
+          "items": [],
+          "next_cursor": null
+        }
       }
     },
     {
@@ -264,7 +287,9 @@
         "type": "payment.processing",
         "payment_id": "00000000-0000-7000-8000-0000000a0001"
       },
-      "bodyBinds": { "payment_id": "payment_id" },
+      "bodyBinds": {
+        "payment_id": "payment_id"
+      },
       "expect": {
         "status": 202,
         "body": {
@@ -291,7 +316,9 @@
         "type": "payment.processing",
         "payment_id": "00000000-0000-7000-8000-0000000a0001"
       },
-      "bodyBinds": { "payment_id": "payment_id" },
+      "bodyBinds": {
+        "payment_id": "payment_id"
+      },
       "expect": {
         "status": 200,
         "body": {
@@ -316,7 +343,10 @@
       "body": null,
       "expect": {
         "status": 200,
-        "body": { "items": [], "next_cursor": null }
+        "body": {
+          "items": [],
+          "next_cursor": null
+        }
       }
     },
     {
@@ -327,7 +357,9 @@
       "description": "Every error uses one envelope: a stable code, a safe message, the request_id to quote when asking for help, and per-field errors. A rejected request never reserves its Idempotency-Key.",
       "method": "POST",
       "path": "/v1/payments",
-      "headers": { "Idempotency-Key": "order-1043" },
+      "headers": {
+        "Idempotency-Key": "order-1043"
+      },
       "body": {
         "amount_minor": "12.50",
         "currency": "USD",
@@ -367,9 +399,21 @@
           },
           "role": "operator",
           "providers": [
-            { "code": "mock", "label": "Mock provider", "status": "enabled" },
-            { "code": "stripe", "label": "Stripe", "status": "not_configured" },
-            { "code": "plaid", "label": "Plaid", "status": "not_configured" }
+            {
+              "code": "mock",
+              "label": "Mock provider",
+              "status": "enabled"
+            },
+            {
+              "code": "stripe",
+              "label": "Stripe",
+              "status": "not_configured"
+            },
+            {
+              "code": "plaid",
+              "label": "Plaid",
+              "status": "not_configured"
+            }
           ],
           "capabilities": {
             "api_key_management": "unavailable",

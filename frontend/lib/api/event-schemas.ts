@@ -68,7 +68,7 @@ export const settingsSchema: z.ZodType<Schemas["Settings"]> = z.object({
     }),
   ),
   capabilities: z.object({
-    api_key_management: z.literal("unavailable"),
+    api_key_management: z.enum(["available", "unavailable"]),
     role_management: z.literal("unavailable"),
     live_activation: z.literal("unavailable"),
   }),

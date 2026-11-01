@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { ApiKeys } from "@/components/settings/ApiKeys";
 import { ThemeSelect } from "@/components/theme";
 import { Badge, Table } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
@@ -15,11 +17,6 @@ const providerStatus = {
 /** Things this build deliberately does not offer. They are facts, not controls. */
 export const unavailableCapabilities = [
   {
-    key: "api_key_management",
-    label: "API keys",
-    note: "Keys are provisioned out of band. They cannot be viewed, created or rotated here.",
-  },
-  {
     key: "role_management",
     label: "Member roles",
     note: "Roles and membership cannot be changed from this UI.",
@@ -31,7 +28,14 @@ export const unavailableCapabilities = [
   },
 ] as const;
 
-export function SettingsDetails({ settings }: { settings: Settings }) {
+export function SettingsDetails({
+  settings,
+  keysPanel,
+}: {
+  settings: Settings;
+  /** The API key generator, rendered between Providers and the unavailable list. */
+  keysPanel?: ReactNode;
+}) {
   return (
     <>
       <section
@@ -78,6 +82,8 @@ export function SettingsDetails({ settings }: { settings: Settings }) {
         </Table>
       </section>
 
+      {keysPanel}
+
       <section
         className="card settings-card"
         aria-labelledby="settings-unavailable"
@@ -111,8 +117,8 @@ export function SettingsView() {
         <p className="eyebrow">Workspace preferences</p>
         <h1>Settings</h1>
         <p>
-          Choose your appearance and review this workspace. Financial and
-          account controls are unavailable.
+          Choose your appearance, generate sandbox API keys and review this
+          workspace. Roles and live activation are unavailable.
         </p>
       </div>
       <section
@@ -129,7 +135,12 @@ export function SettingsView() {
         loadingLabel="Loading settings"
         lines={4}
       >
-        {(result) => <SettingsDetails settings={result.data} />}
+        {(result) => (
+          <SettingsDetails
+            settings={result.data}
+            keysPanel={<ApiKeys role={result.data.role} />}
+          />
+        )}
       </QueryState>
     </>
   );

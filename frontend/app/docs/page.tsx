@@ -97,8 +97,12 @@ export default function DocsPage() {
                 are never confirmed across workspaces.
               </li>
               <li>
-                API keys are provisioned out of band in this milestone. There
-                are no key or role management endpoints.
+                An operator can generate a sandbox key (Settings, or{" "}
+                <code>POST /v1/api-keys</code>), choose its role (read or
+                operator) and expiry (at most 30 days), and revoke it. The
+                secret is shown once and only its hash is stored; a workspace
+                can hold at most 20 active keys. There are no custom roles or
+                scopes.
               </li>
             </ul>
           </section>

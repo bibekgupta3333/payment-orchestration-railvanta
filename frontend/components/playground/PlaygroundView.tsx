@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { Button, Card, Skeleton } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
@@ -120,6 +121,13 @@ export function PlaygroundView() {
         <p className="muted">
           Run demos 1, 2, 3, 5 and 6 in order; it stops at the first failure.
           Demo 4 is an interactive evaluator.
+        </p>
+        <p className="muted small">
+          Want to call the API yourself?{" "}
+          <Link href="/dashboard/settings#api-keys">
+            Generate a sandbox API key in Settings
+          </Link>
+          .
         </p>
         <Button onClick={startAll} disabled={running || runAllDisabled}>
           {running ? "Running all…" : "Run all in order"}
