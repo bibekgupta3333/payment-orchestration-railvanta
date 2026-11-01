@@ -1368,6 +1368,18 @@ export interface components {
         created_at: string;
         delivered_at: string | null;
       }[];
+      /** @description Webhook inbox rows received for the payment (duplicate and reordered webhook scenarios). */
+      webhooks: {
+        id: string;
+        provider_event_id: string;
+        event_type: string;
+        status: string;
+        outcome: string | null;
+        outcome_reason: string | null;
+        duplicate_count: number;
+        signature_status: string;
+        received_at: string;
+      }[];
       journals: components["schemas"]["LedgerJournal"][];
       invariants: components["schemas"]["SimulationInvariant"][];
       timeline: {

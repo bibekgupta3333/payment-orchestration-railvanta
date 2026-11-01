@@ -113,6 +113,7 @@ const baseRun: Simulation = {
   attempts: [],
   transitions: [],
   events: [],
+  webhooks: [],
   journals: [],
   invariants: [
     {
