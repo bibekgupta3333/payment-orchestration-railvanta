@@ -123,7 +123,7 @@ describe("API key generator", () => {
       within(panel).getByText(/Authorization: Bearer rvk_1a2b3c4d\./),
     ).toBeVisible();
     expect(calls.posts[0]).toEqual({
-      name: "Demo key",
+      name: "Default demo key",
       role: "operator",
       expires_in_hours: 24,
     });

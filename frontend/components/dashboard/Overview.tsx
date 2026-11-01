@@ -15,6 +15,7 @@ import {
   DemoRunCard,
   HubHeading,
   QuickActions,
+  SampleDataCard,
 } from "@/components/dashboard/Hub";
 import { EmptyState } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
@@ -158,6 +159,7 @@ export function Overview() {
         <CredentialsCard />
         <DemoRunCard />
       </div>
+      <SampleDataCard />
       <ArchitectureStrip />
 
       <section className="hub-metrics" aria-labelledby="hub-metrics-title">

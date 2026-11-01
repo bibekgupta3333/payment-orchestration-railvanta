@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { Badge, Button, Table } from "@/components/ui";
 import { GeneratedKey, formatTime } from "@/components/settings/GeneratedKey";
+import { defaultKeyInput } from "@/lib/hooks/dashboard-demo";
 import { QueryState } from "@/components/ui/query-state";
 import { ApiError } from "@/lib/api/client";
 import type { ApiKey } from "@/lib/api/apikey-schemas";
@@ -99,7 +100,7 @@ export function ApiKeys({ role }: { role: "read" | "operator" }) {
   const isOperator = role === "operator";
   const list = useApiKeys(isOperator);
   const create = useCreateApiKey();
-  const [name, setName] = useState("Demo key");
+  const [name, setName] = useState<string>(defaultKeyInput.name);
   const [keyRole, setKeyRole] = useState<"read" | "operator">("operator");
   const [hours, setHours] = useState<number>(24);
   const created = create.data;
@@ -137,6 +138,20 @@ export function ApiKeys({ role }: { role: "read" | "operator" }) {
         </p>
       ) : (
         <>
+          <div className="default-demo-actions">
+            <Button
+              type="button"
+              onClick={() => create.mutate({ ...defaultKeyInput })}
+              disabled={create.isPending}
+            >
+              {create.isPending ? "Generating…" : "Generate default demo key"}
+            </Button>
+            <span className="muted small">
+              One click: &ldquo;{defaultKeyInput.name}&rdquo;, operator role,
+              expires in 24 hours. Nothing is created until you click. The form
+              below is preset to the same values.
+            </span>
+          </div>
           <form
             onSubmit={submit}
             className="filter-bar"

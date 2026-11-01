@@ -4,6 +4,8 @@ import "@fontsource-variable/inter";
 import "./globals.css";
 import "./events-docs.css";
 import "./dashboard-hub.css";
+import "./default-demo.css";
+import "./landing.css";
 
 export const metadata: Metadata = {
   title: {

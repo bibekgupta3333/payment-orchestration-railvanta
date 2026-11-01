@@ -18,6 +18,7 @@ import {
   liveLabel,
   type HeroScenario,
 } from "@/lib/hooks/dashboard-demo";
+import { sampleScenarios, useSampleData } from "@/lib/hooks/sample-data";
 import { useSettings } from "@/lib/hooks/events";
 import { usePaymentMethods } from "@/lib/hooks/payments";
 import { paymentStatusLabels } from "@/components/ui";
@@ -382,5 +383,88 @@ export function ArchitectureStrip() {
       </ol>
       <p className="muted">Stripe and Plaid adapters: Planned</p>
     </section>
+  );
+}
+
+export function SampleDataCard() {
+  const { start, phase, rows, settledCount, total } = useSampleData();
+  const running = phase === "running";
+  const skipped = rows.filter((row) => row.outcome.state === "skipped");
+  const latest = [...rows]
+    .reverse()
+    .find(
+      (row) => row.outcome.state === "done" || row.outcome.state === "error",
+    );
+  const announcement =
+    phase === "finished"
+      ? `Sample data finished. ${settledCount} of ${total} scenarios done.`
+      : phase === "stopped"
+        ? "Sample data stopped after an error."
+        : running && latest
+          ? `${settledCount} of ${total} done: ${latest.scenario}. ${latest.outcome.state === "done" || latest.outcome.state === "error" ? latest.outcome.text : ""}`
+          : "";
+  return (
+    <Card
+      aria-labelledby="hub-sample-title"
+      className="hub-card"
+      data-testid="sample-data-card"
+    >
+      <div className="card-heading">
+        <h2 id="hub-sample-title">Load sample data</h2>
+        <Badge>Simulated / sandbox</Badge>
+      </div>
+      <p className="muted">
+        Runs {sampleScenarios.length} real backend scenarios one after another
+        (successes, declines, duplicates, an outage, a ledger replay, a
+        duplicate webhook and a settlement mismatch) so every dashboard page has
+        something to show. It takes about 20 seconds; two scenarios
+        intentionally wait about 6 seconds. Running it again adds more sandbox
+        payments.
+      </p>
+      <Button type="button" onClick={() => void start()} disabled={running}>
+        {running ? "Loading sample data…" : "Load sample data"}
+      </Button>
+      <div className="sr-only" aria-live="polite">
+        {announcement}
+      </div>
+      {phase !== "idle" && (
+        <>
+          <p className="small" data-testid="sample-data-progress">
+            {settledCount} of {total} done
+            {phase === "finished"
+              ? "."
+              : phase === "stopped"
+                ? " (stopped)."
+                : "…"}
+          </p>
+          <ol className="small" data-testid="sample-data-list">
+            {rows.map((row) => (
+              <li key={row.scenario}>
+                <span className="mono">{row.scenario}</span>:{" "}
+                {row.outcome.state === "pending"
+                  ? "waiting"
+                  : row.outcome.state === "running"
+                    ? "running…"
+                    : row.outcome.text}
+              </li>
+            ))}
+          </ol>
+          {skipped.length > 0 && (
+            <p className="small" role="note">
+              Skipped (not in the backend catalog):{" "}
+              {skipped.map((row) => row.scenario).join(", ")}.
+            </p>
+          )}
+          {phase === "finished" && (
+            <p className="small">
+              Done.{" "}
+              <Link className="text-link" href="/dashboard/payments">
+                View payments
+              </Link>
+            </p>
+          )}
+        </>
+      )}
+    </Card>
   );
 }

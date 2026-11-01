@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useId, type FormEvent, type KeyboardEvent } from "react";
+import { DefaultDemo } from "@/components/demo/DefaultDemo";
 import { Badge, Button, EmptyState, Table } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
 import type { LedgerAccount, LedgerJournal } from "@/lib/api/ledger-schemas";
@@ -89,6 +90,13 @@ export function LedgerExplorer() {
           data; no real funds.
         </p>
       </div>
+
+      <DefaultDemo
+        id="ledger"
+        scenario="duplicate_posting"
+        description="Starts a real $100.00 USD sandbox payment, posts its journal, then tries to post it again to prove a duplicate adds nothing."
+        producesLabel="a balanced journal and proof that a duplicate post adds nothing"
+      />
 
       <div role="tablist" aria-label="Ledger views" className="tab-list">
         {tabs.map((item, index) => (
@@ -202,7 +210,8 @@ function AccountsPanel({ currency }: { currency: string }) {
           return (
             <EmptyState title="No ledger accounts yet">
               Accounts appear when the first payment success is posted. Nothing
-              is shown rather than invented.
+              is shown rather than invented. Run the default demo to post your
+              first journal.
             </EmptyState>
           );
         }
@@ -325,7 +334,10 @@ function JournalPanel({
               }
             >
               Only posted journals are listed. A journal is posted when a
-              payment succeeds.
+              payment succeeds.{" "}
+              {filtered
+                ? ""
+                : "Run the default demo to post your first journal."}
             </EmptyState>
           );
         }

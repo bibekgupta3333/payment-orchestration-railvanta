@@ -2,6 +2,7 @@
 
 import { formatDurationMs } from "@/lib/format-duration";
 import Link from "next/link";
+import { DefaultDemo } from "@/components/demo/DefaultDemo";
 import { Card, EmptyState, Table } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
 import type { Provider } from "@/lib/api/routing-schemas";
@@ -49,6 +50,26 @@ function Capabilities({ provider }: { provider: Provider }) {
 export function ProvidersView() {
   const providers = useProviders();
   const health = useProviderHealth();
+  return (
+    <>
+      <DefaultDemo
+        id="providers"
+        scenario="success"
+        description="Provider health shows No observations until payments have run. This sends one simulated $100.00 payment to the Mock provider so its health card fills in. Stripe and Plaid are simulated profiles with no adapter in this build, so they stay Not configured."
+        producesLabel="provider health observations"
+      />
+      <ProviderCards providers={providers} health={health} />
+    </>
+  );
+}
+
+function ProviderCards({
+  providers,
+  health,
+}: {
+  providers: ReturnType<typeof useProviders>;
+  health: ReturnType<typeof useProviderHealth>;
+}) {
   return (
     <QueryState
       query={providers.query}
