@@ -270,9 +270,15 @@ d.close()`;
     }
     try {
       let body: Record<string, unknown> = { ok: true };
+      const url = new URL(request.url ?? "/", "http://control.invalid");
       if (request.url === "/restart" || request.url === "/kill") {
         await stop(api, request.url === "/kill");
         await startApi();
+      } else if (request.url === "/stop") {
+        await stop(api);
+      } else if (request.url === "/start") {
+        if (!api || api.exitCode !== null || api.signalCode !== null)
+          await startApi();
       } else if (request.url === "/durability-fixture") {
         await stop(api);
         try {

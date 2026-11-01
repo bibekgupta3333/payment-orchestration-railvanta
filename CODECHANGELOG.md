@@ -22,6 +22,22 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-10-31 — Merge the WBS 3.1 payment screens into the M2 backend
+
+**WBS:** 3.1, 2.2–2.4 · **PR/commit:** feat/m2-m4-payment-correctness
+
+**Changed**
+- Merged the 3.1 worktree branch (dashboard API, payment explorer/detail/create dialog, hooks, money helpers, UI E2E) into the branch holding the 2.1–2.4 backend. Conflicts in `CODECHANGELOG.md`, `docs/wbs.md`, `backend/api/openapi.yaml` and `frontend/lib/api/schema.d.ts` were resolved. OpenAPI was merged structurally (base/ours/theirs) so both the 3.1 history path and the 2.4 cancel and recovery paths are present; the type file was regenerated.
+- `backend/internal/transport/http/ledger.go` — 3.1 gave the cursor helpers a sort-direction argument. Ledger pages now pass `false`, because journals are always newest first.
+- `e2e/ui/payments.spec.ts`, `e2e/support/{state.ts,global-setup.ts}` — the unknown-payment test no longer forges an `unknown` row in a stopped database. It now creates a payment with the seeded outage method, which really stays unknown, and waits for that status. The `mark-unknown` harness hook is removed.
+
+**Verification**
+- `pnpm check` — pass (Vitest 58 passed, lint and build clean).
+- `go -C backend test -race ./...` — pass.
+- `pnpm test:e2e` — 49 passed, 0 failed. The first run after the merge failed 1 test, the forged-unknown fixture described above.
+
+**Notes:** the 3.1 gates for slow-API states, a terminal-state UI check against a live dispatcher, and CI remain open.
+
 ## 2026-10-31 — Add recovery lookup worker, startup scan, cancellation and late-outcome recording
 
 **WBS:** 2.4.1–2.4.10, 2.4 acceptance gate and E2E, 2.3 gates (invariant checker after every 2.2/2.4 scenario; canceled payments have no journal) · **PR/commit:** uncommitted
@@ -109,6 +125,35 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 **Verification**
 - Hook run by hand with only these files changed → allowed.
+## 2026-10-31 — Add payment-facing screens and dashboard read models
+
+**WBS:** 3.1.1–3.1.13, 3.1 acceptance gate (partial), 3.1 E2E · **PR/commit:** worktree branch `worktree-agent-a4654110c4e35ccbc` (based on `fa41bac`)
+
+**Changed**
+- `backend/internal/transport/http/dashboard.go` (new) — `GET /v1/dashboard/summary` and `GET /v1/dashboard/payment-volume` (`window=24h|7d|30d`): workspace-scoped, per-currency `big.Int` sums as decimal strings (may exceed int64, never cross-currency), status counts, success rate with integer arithmetic, nearest-rank p95 of acceptance-to-terminal time; both statistics are `null` without succeeded/failed observations; `data_source: observed`. `GET /v1/payments/{id}/history`: append-only transitions, outbox events and the idempotency key masked to `****` + last four.
+- `backend/internal/transport/http/handler.go` — one hook (`serveReadModels`) before payment routing.
+- `backend/internal/transport/http/payments.go`, `backend/internal/storage/payment_repository.go` — list filters `q` (exact ID or merchant reference), `currency`, `rail`, `provider_id`, `created_from`/`created_to`, `amount_min`/`amount_max`, and `sort=created_desc|created_asc`; cursors encode their direction and are rejected for another sort.
+- `backend/tests/dashboard_test.go` (new) — empty-window nulls, exact per-currency sums beyond int64, success rate/p95, workspace isolation, hourly buckets, masked history key, list filters and directional cursors.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (generated) — the new paths, list parameters and schemas (`MetricSummary`, `VolumePoint`, `CurrencyVolume`, `AggregateAmount`, `PaymentHistory`, `DataSource`, `MetricWindow`).
+- `frontend/lib/api/client.ts` — `apiRequestWithMeta` (request/correlation IDs, client-generated `X-Request-ID`, timeout, network failures as status-0 `ApiError`, contract-mismatch errors, CSRF header from the readable `railvanta_csrf` cookie); `shouldRetryRead` also skips 501. `frontend/lib/api/schemas.ts` (new) — Zod validators typed against the generated contract.
+- `frontend/lib/hooks/payments.ts` (new) — workspace+environment-scoped query keys; payments, payment, attempts, history, journal (501/404 → "not available"), methods, summary and volume reads; 3 s polling only while non-terminal.
+- `frontend/lib/hooks/useCreatePayment.ts` (new) — one Idempotency-Key per intent fingerprint, kept in `sessionStorage` while unconfirmed (survives reload), replaced when the intent changes, cleared only on an API-confirmed 202; synchronous double-submit lock; mutation `retry: false`; accepted/unconfirmed/rejected outcomes.
+- `frontend/lib/money/index.ts` — `formatAggregateMoney`, `parseMajorAmount`, `minorToMajorInput`, `compareMinor`, `shareOfPeak` (BigInt only).
+- `frontend/app/page.tsx` — landing page with architecture strip, available/planned capability cards, copyable API example and sandbox notice. `frontend/app/dashboard/page.tsx`, `payments/page.tsx`, `payments/[id]/page.tsx` — overview, explorer and detail.
+- `frontend/components/dashboard/Overview.tsx`, `charts/PaymentVolumeChart.tsx`, `payments/{PaymentExplorer,PaymentTable,CreatePaymentDialog,PaymentDetail}.tsx`, `ui/{query-state,tabs,copy-code}.tsx`, `ui/index.tsx`, `app/globals.css` — metric cards ("No observations"), needs-attention banner (links only), Recharts volume chart plotting a BigInt per-mille index per currency with text summary and exact data table, URL-driven filters/sort/cursor, labelled table scroll region, React Hook Form + Zod dialog (no card/bank fields), Summary/Attempts/Events/Journal tabs, state timeline, masked key, latest-read correlation ID, unknown-outcome notice without retry, loading/empty/filtered-empty/error (request ID + Retry)/stale states.
+- `frontend/package.json`, `pnpm-lock.yaml` — `react-hook-form`, `@hookform/resolvers`, `recharts`.
+- `frontend/tests/components/payments.test.tsx` (new), `money.test.ts` — unknown outcome (mocked API), journal unavailable, read error, key reuse/replacement, field errors, lost-response resend with the same key, exact table/chart values, retry policy; money parsing/formatting beyond 2^53.
+- `e2e/ui/payments.spec.ts` (new), `e2e/support/browser.ts` (new), `e2e/support/{global-setup,state}.ts` — demo-session cookies; harness `stop`/`start` and an offline `mark-unknown` fixture. `e2e/ui/shell.spec.ts` — overview/payments are no longer placeholders; landing assertion updated.
+- `README.md`, `docs/wbs.md` — CSRF cookie convention and new endpoints; verified 3.1 boxes ticked with open items noted.
+
+**Verification**
+- `go -C backend test ./tests/ ./internal/transport/...` — pass (4 new dashboard/list tests).
+- `pnpm lint:openapi` — valid (existing `no-server-example.com` warning); `pnpm generate:api` — regenerated.
+- `pnpm --filter @railvanta/frontend test` — 58 passed (4 files).
+- `pnpm check` — exit 0 (lint, generated contracts, typecheck, all Go packages, 58 Vitest tests, Next.js build).
+- `pnpm test:e2e` — 34 passed, 0 failed (8 new `ui/payments.spec.ts` tests plus all earlier api/ui specs).
+
+**Notes:** Without the 2.2 dispatcher every payment stays `created`, so the E2E verifies the pending state and that the detail page mirrors the API, not a reached terminal state. `unknown` is produced only by the offline E2E fixture and a mocked component test. The correlation ID shown is the latest read's `X-Correlation-ID`; payments do not persist one. The table's rail comes from the payment-method list; provider appears only on attempts. Amount filters take minor units. Slow-API states and CI are unverified.
 
 ## 2026-10-31 — Add idempotent payment acceptance and payment reads
 

@@ -206,6 +206,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
 		return
 	}
+	if h.serveReadModels(w, r, principal, id) {
+		return
+	}
 	if r.URL.Path == "/v1/payments" || strings.HasPrefix(r.URL.Path, "/v1/payments/") {
 		if h.servePayments(w, r, principal, id) {
 			return

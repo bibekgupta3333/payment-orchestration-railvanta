@@ -1,22 +1,11 @@
-import { FeaturePage } from "@/components/feature-page";
+import { Suspense } from "react";
+import { Overview } from "@/components/dashboard/Overview";
+import { Skeleton } from "@/components/ui";
 
 export default function OverviewPage() {
   return (
-    <FeaturePage
-      title="Overview"
-      description="An honest view of payment activity, provider performance, and operational attention."
-    >
-      <div className="metric-grid">
-        {["Volume by currency", "Success rate", "Payments", "Observed p95"].map(
-          (label) => (
-            <section className="metric-card" key={label}>
-              <h2>{label}</h2>
-              <p className="no-observations">No observations</p>
-              <span className="text-label">Payment execution pending</span>
-            </section>
-          ),
-        )}
-      </div>
-    </FeaturePage>
+    <Suspense fallback={<Skeleton label="Loading overview" lines={3} />}>
+      <Overview />
+    </Suspense>
   );
 }

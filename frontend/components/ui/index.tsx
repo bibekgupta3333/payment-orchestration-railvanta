@@ -24,24 +24,40 @@ export const paymentStatusLabels = {
   canceled: "Canceled",
   unknown: "Outcome unknown",
 } as const;
+export type PaymentStatusName = keyof typeof paymentStatusLabels;
 
-export function StatusPill({
-  status,
-}: {
-  status: keyof typeof paymentStatusLabels;
-}) {
+const statusIcons: Record<PaymentStatusName, string> = {
+  created: "○",
+  processing: "◔",
+  succeeded: "✓",
+  failed: "✕",
+  canceled: "⊘",
+  unknown: "!",
+};
+
+/** Status text is always paired with an icon; color is never the only cue. */
+export function StatusPill({ status }: { status: PaymentStatusName }) {
   return (
     <span className={`status-pill status-${status}`}>
-      <span aria-hidden="true">{status === "unknown" ? "!" : "•"}</span>{" "}
+      <span aria-hidden="true">{statusIcons[status]}</span>{" "}
       {paymentStatusLabels[status]}
     </span>
   );
 }
 
-export function Skeleton({ label = "Loading" }: { label?: string }) {
+export function Skeleton({
+  label = "Loading",
+  lines = 1,
+}: {
+  label?: string;
+  lines?: number;
+}) {
   return (
-    <div role="status" className="skeleton">
+    <div role="status" className="skeleton-group" aria-live="polite">
       <span className="sr-only">{label}</span>
+      {Array.from({ length: lines }, (_, index) => (
+        <div key={index} className="skeleton" aria-hidden="true" />
+      ))}
     </div>
   );
 }
@@ -49,33 +65,67 @@ export function Skeleton({ label = "Loading" }: { label?: string }) {
 export function EmptyState({
   title,
   children,
+  action,
 }: {
   title: string;
   children?: ReactNode;
+  action?: ReactNode;
 }) {
   return (
     <section className="state-panel">
       <h2>{title}</h2>
       {children && <p>{children}</p>}
+      {action}
     </section>
   );
 }
 
 export function ErrorState({
+  title = "Unable to load this view",
   message,
   requestId,
   retry,
 }: {
+  title?: string;
   message: string;
   requestId: string;
   retry?: () => void;
 }) {
   return (
-    <section role="alert" className="state-panel">
-      <h2>Unable to load this view</h2>
+    <section role="alert" className="state-panel error-panel">
+      <h2>{title}</h2>
       <p>{message}</p>
-      <p className="muted">Request ID: {requestId}</p>
-      {retry && <Button onClick={retry}>Retry read</Button>}
+      <p className="muted">
+        Request ID: <code className="mono">{requestId}</code>
+      </p>
+      {retry && <Button onClick={retry}>Retry</Button>}
+    </section>
+  );
+}
+
+/**
+ * Shown when cached data is still displayed but the latest refresh failed.
+ * The data is explicitly labelled as last-known, never as current.
+ */
+export function StaleNotice({
+  updatedAt,
+  requestId,
+  retry,
+}: {
+  updatedAt: number;
+  requestId: string;
+  retry: () => void;
+}) {
+  return (
+    <section role="alert" className="stale-notice">
+      <p>
+        <strong>Showing stale data.</strong> The latest refresh failed; values
+        below are from {new Date(updatedAt).toLocaleTimeString()} and may no
+        longer be current. Request ID: <code className="mono">{requestId}</code>
+      </p>
+      <Button className="button-quiet button-small" onClick={retry}>
+        Retry
+      </Button>
     </section>
   );
 }

@@ -26,8 +26,9 @@ test("public landing page renders through the browser harness", async ({
     page.getByRole("link", { name: /Explore the dashboard/ }),
   ).toBeVisible();
   await expect(
-    page.getByText("Payment execution is not available", { exact: false }),
+    page.getByText("Sandbox only / no real funds.", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("Planned").first()).toBeVisible();
 });
 
 for (const width of [375, 1440]) {
@@ -82,7 +83,16 @@ for (const width of [375, 1440]) {
           ["serious", "critical"].includes(violation.impact ?? ""),
         ),
       ).toEqual([]);
-      if (!["/dashboard/settings", "/docs"].includes(route)) {
+      // Overview and payments read the real API (WBS 3.1); other routes are
+      // still honest placeholders.
+      if (
+        ![
+          "/dashboard",
+          "/dashboard/payments",
+          "/dashboard/settings",
+          "/docs",
+        ].includes(route)
+      ) {
         await expect(
           page.getByText("Unavailable until backend exists", { exact: true }),
         ).toBeVisible();

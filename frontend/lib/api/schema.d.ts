@@ -98,7 +98,7 @@ export interface paths {
     };
     /**
      * List workspace payments
-     * @description Newest-first keyset pagination over the authenticated workspace's payments. Pass next_cursor back as cursor; it is opaque. Optional status filter.
+     * @description Keyset pagination over the authenticated workspace's payments, newest first by default. Pass next_cursor back as cursor; it is opaque and bound to the sort. Optional search and status, currency, rail, provider, date and amount filters.
      */
     get: operations["listPayments"];
     put?: never;
@@ -210,7 +210,7 @@ export interface paths {
     };
     /**
      * Read observed sandbox metrics
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Workspace-scoped metrics over payments created in the window. Volumes are grouped per currency as exact decimal strings (never summed across currencies). success_rate_percent and completion_latency_p95_ms are null when no succeeded or failed payment was observed.
      */
     get: operations["getDashboardSummary"];
     put?: never;
@@ -230,7 +230,7 @@ export interface paths {
     };
     /**
      * Read volume grouped by currency
-     * @description Contract for a later work package. The M1 server returns 501 not_implemented after authentication and any implemented validation.
+     * @description Accepted payment volume per time bucket and currency for the workspace. Only non-empty buckets are returned; amounts are exact decimal strings.
      */
     get: operations["getPaymentVolume"];
     put?: never;
@@ -443,6 +443,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/payments/{id}/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Read payment state history and durable events
+     * @description Append-only state transitions, outbox events for the payment and the masked idempotency key (at most the last four characters). Another workspace's payment ID returns 404.
+     */
+    get: operations["getPaymentHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -565,29 +587,39 @@ export interface components {
       }[];
     };
     MetricSummary: {
-      /** @enum {string} */
-      data_source: "observed" | "simulated" | "seeded";
+      data_source: components["schemas"]["DataSource"];
+      window: components["schemas"]["MetricWindow"];
+      /** Format: date-time */
+      window_start: string;
+      /** Format: date-time */
+      window_end: string;
+      /** Format: date-time */
+      generated_at: string;
       payment_count: number;
-      volumes: {
-        /** @enum {string} */
-        currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
-        /**
-         * @description Positive signed int64 minor units, encoded as a decimal string. Server additionally enforces the int64 maximum 9223372036854775807. Currency exponents govern display, not divisibility of minor units.
-         * @example 25000
-         */
-        amount_minor: string;
-      }[];
+      status_counts: {
+        [key: string]: number;
+      };
+      /** @description Accepted volume (all statuses) per currency. */
+      volumes: components["schemas"]["CurrencyVolume"][];
+      succeeded_volumes: components["schemas"]["CurrencyVolume"][];
+      /** @description Succeeded plus failed payments in the window. */
+      terminal_count: number;
+      /** @description Succeeded / (succeeded + failed) with one decimal; null without observations. */
+      success_rate_percent: string | null;
+      /** @description Nearest-rank p95 of acceptance-to-terminal time; null without observations. */
+      completion_latency_p95_ms: number | null;
+      completion_latency_samples: number;
     };
     VolumePoint: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Bucket start in Unix milliseconds (UTC).
+       */
       timestamp: number;
       /** @enum {string} */
       currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
-      /**
-       * @description Positive signed int64 minor units, encoded as a decimal string. Server additionally enforces the int64 maximum 9223372036854775807. Currency exponents govern display, not divisibility of minor units.
-       * @example 25000
-       */
-      amount_minor: string;
+      amount_minor: components["schemas"]["AggregateAmount"];
+      payment_count: number;
     };
     ProviderHealth: {
       /** Format: uuid */
@@ -708,6 +740,50 @@ export interface components {
       status: string;
       /** Format: uuid */
       payment_id: string;
+    };
+    /** @enum {string} */
+    DataSource: "observed" | "simulated" | "seeded";
+    /** @enum {string} */
+    MetricWindow: "24h" | "7d" | "30d";
+    /** @description Exact non-negative sum of minor units as a decimal string; may exceed int64. */
+    AggregateAmount: string;
+    CurrencyVolume: {
+      /** @enum {string} */
+      currency: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+      amount_minor: components["schemas"]["AggregateAmount"];
+      payment_count: number;
+    };
+    PaymentHistory: {
+      /** Format: uuid */
+      payment_id: string;
+      idempotency_key_masked: string | null;
+      transitions: {
+        /** @enum {string|null} */
+        from_status:
+          | "created"
+          | "processing"
+          | "succeeded"
+          | "failed"
+          | "canceled"
+          | "unknown"
+          | null;
+        to_status: components["schemas"]["PaymentStatus"];
+        reason: string;
+        actor_reference: string;
+        /** Format: date-time */
+        created_at: string;
+      }[];
+      events: {
+        /** Format: uuid */
+        id: string;
+        event_type: string;
+        status: string;
+        attempts: number;
+        /** Format: date-time */
+        created_at: string;
+        /** Format: date-time */
+        delivered_at: string | null;
+      }[];
     };
   };
   responses: {
@@ -895,6 +971,23 @@ export interface operations {
         cursor?: string;
         limit?: number;
         status?: components["schemas"]["PaymentStatus"];
+        /** @description Exact payment ID or exact merchant_reference. */
+        q?: string;
+        currency?: "USD" | "EUR" | "GBP" | "JPY" | "KWD";
+        /** @description Rail of the payment method. */
+        rail?: "card" | "ach" | "mock";
+        /** @description Payments with at least one attempt routed to this provider. */
+        provider_id?: string;
+        /** @description Inclusive lower bound; YYYY-MM-DD (UTC) or RFC 3339. */
+        created_from?: string;
+        /** @description Upper bound; a YYYY-MM-DD date includes that UTC day, an RFC 3339 timestamp is exclusive. */
+        created_to?: string;
+        /** @description Inclusive minimum in minor units. */
+        amount_min?: string;
+        /** @description Inclusive maximum in minor units. */
+        amount_max?: string;
+        /** @description Keyset order. A cursor is valid only for the sort that issued it. */
+        sort?: "created_desc" | "created_asc";
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1112,8 +1205,8 @@ export interface operations {
   getDashboardSummary: {
     parameters: {
       query?: {
-        cursor?: string;
-        limit?: number;
+        /** @description Observation window ending now; 24h uses hourly buckets, 7d and 30d daily buckets. */
+        window?: "24h" | "7d" | "30d";
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1134,20 +1227,19 @@ export interface operations {
           "application/json": components["schemas"]["MetricSummary"];
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
-      404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
   getPaymentVolume: {
     parameters: {
       query?: {
-        cursor?: string;
-        limit?: number;
+        /** @description Observation window ending now; 24h uses hourly buckets, 7d and 30d daily buckets. */
+        window?: "24h" | "7d" | "30d";
       };
       header?: {
         "X-Request-ID"?: string;
@@ -1166,17 +1258,26 @@ export interface operations {
         };
         content: {
           "application/json": {
+            data_source: components["schemas"]["DataSource"];
+            window: components["schemas"]["MetricWindow"];
+            /** @enum {string} */
+            bucket: "hour" | "day";
+            /** Format: date-time */
+            window_start: string;
+            /** Format: date-time */
+            window_end: string;
+            /** Format: date-time */
+            generated_at: string;
             items: components["schemas"]["VolumePoint"][];
             next_cursor: string | null;
           };
         };
       };
+      400: components["responses"]["Error"];
       401: components["responses"]["Error"];
       403: components["responses"]["Error"];
-      404: components["responses"]["Error"];
-      422: components["responses"]["Error"];
       429: components["responses"]["Error"];
-      501: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };
@@ -1530,6 +1631,38 @@ export interface operations {
         };
         content?: never;
       };
+      default: components["responses"]["Error"];
+    };
+  };
+  getPaymentHistory: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaymentHistory"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      404: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      503: components["responses"]["Error"];
       default: components["responses"]["Error"];
     };
   };

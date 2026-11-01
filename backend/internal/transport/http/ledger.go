@@ -47,7 +47,7 @@ func (h *handler) listLedgerTransactions(w http.ResponseWriter, r *http.Request,
 		filter.Limit = limit
 	}
 	if value := query.Get("cursor"); value != "" {
-		cursor, ok := decodeCursor(value)
+		cursor, ok := decodeCursor(value, false)
 		if !ok {
 			fields = append(fields, FieldError{Field: "cursor", Message: "Use next_cursor from a previous page"})
 		} else {
@@ -75,7 +75,7 @@ func (h *handler) listLedgerTransactions(w http.ResponseWriter, r *http.Request,
 	if len(journals) > pageSize {
 		journals = journals[:pageSize]
 		last := journals[len(journals)-1].Journal
-		cursor := encodeCursor(storage.PaymentCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		cursor := encodeCursor(storage.PaymentCursor{CreatedAt: last.CreatedAt, ID: last.ID}, false)
 		next = &cursor
 	}
 	items := make([]LedgerJournalView, 0, len(journals))
