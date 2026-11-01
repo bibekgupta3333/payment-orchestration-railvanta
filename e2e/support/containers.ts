@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -139,7 +139,7 @@ export function seedDemo(keys: {
     ]);
   } catch {
     throw new Error(
-      "seed-demo failed: container E2E needs a fresh sandbox volume (docker compose down -v, then compose up)",
+      "seed-demo failed: container E2E needs a fresh sandbox volume (docker compose down -v, then compose up) or reuse the cached credentials",
     );
   }
 }
@@ -170,6 +170,28 @@ export default async function containerGlobalSetup(): Promise<
   const origin = (process.env.E2E_BASE_URL as string).replace(/\/$/, "");
   const directory = mkdtempSync(join(tmpdir(), "railvanta-e2e-containers-"));
   const secret = () => randomBytes(32).toString("hex");
+  // seed-demo refuses different credentials in an existing database, so the
+  // generated credentials are cached (0600, outside the repo) per Compose project
+  // and reused on every run, including against a freshly created or restored volume.
+  const credentialFile = join(
+    tmpdir(),
+    `railvanta-e2e-credentials-${process.env.COMPOSE_PROJECT_NAME ?? "railvanta"}.json`,
+  );
+  const fresh = {
+    operatorKey: `operator.${secret()}`,
+    readerKey: `reader.${secret()}`,
+    otherKey: `other.${secret()}`,
+    sessionToken: secret(),
+    csrfToken: secret(),
+  };
+  let credentials = fresh;
+  try {
+    credentials = JSON.parse(
+      readFileSync(credentialFile, "utf8"),
+    ) as typeof fresh;
+  } catch {
+    writeFileSync(credentialFile, JSON.stringify(fresh), { mode: 0o600 });
+  }
   const current: HarnessState = {
     apiOrigin: origin,
     // API health is private to the container; the ops specs probe it with exec.
@@ -177,11 +199,7 @@ export default async function containerGlobalSetup(): Promise<
     webOrigin: origin,
     controlOrigin: "",
     controlToken: secret(),
-    operatorKey: `operator.${secret()}`,
-    readerKey: `reader.${secret()}`,
-    otherKey: `other.${secret()}`,
-    sessionToken: secret(),
-    csrfToken: secret(),
+    ...credentials,
   };
   await waitApiReady();
   await waitProxyReady(origin);

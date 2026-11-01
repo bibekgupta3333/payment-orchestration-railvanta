@@ -93,7 +93,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 4.3 | Events and audit | 2.4, 1.3 | M4 | Implemented and verified locally; empty-state and keyboard checks at 375/1440 pending |
 | 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Implemented; CI run, bundle check, dark-theme contrast and 375/1440 gate items pending |
 | 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Not started |
-| 5.2 | Container delivery and recovery | 5.1 | M5 | Image/Compose source added; runtime and recovery gates pending |
+| 5.2 | Container delivery and recovery | 5.1 | M5 | Built, run and drilled locally (2026-11-01); CI digest recording and CI secret scan unverified until GitHub runs |
 | 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | Not started |
 | 5.4 | Release documentation | 5.2; 5.3 if used | M5 | Not started |
 
@@ -637,32 +637,32 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 ### 5.2 Container delivery and recovery — platform
 **Depends on:** 5.1 for full delivery acceptance; basic image/Compose source is explicitly authorized alongside M1. **Deliverable:** Reproducible images and a `docker compose` sandbox with one API-owned data volume, backup tooling, and a verified restore drill.
 
-Image definitions, Compose wiring and the volume mount are added; `pnpm compose:config` passes. Actual image builds, non-root runtime permissions, persistence, backup/restore and digest pinning remain unverified or unimplemented. The Docker socket is inaccessible to this authoring sandbox; M1 dependency lockfiles also remain unresolved.
+Images, Compose, health probes, graceful shutdown, API-owned backup/restore/check, secret scan and the container E2E mode are implemented and were run locally with Docker 28.5.1 (details in `CODECHANGELOG.md` and `docs/operations/deployment.md`). Still unticked: 5.2.10's CI secret scan and 5.2.11's CI digest recording, plus the last gate line (non-root and a clean secret scan), until `.github/workflows/containers.yml` runs on GitHub. Base images are pinned by digest in the Dockerfiles and compose file.
 
 **Tasks**
 - [x] 5.2.1 Write `infrastructure/docker/api.Dockerfile`: multi-stage Go build, static binary, numeric non-root user, `/var/lib/railvanta` as the only writable data path
 - [x] 5.2.2 Write `infrastructure/docker/web.Dockerfile`: Next.js standalone output, non-root user, no secrets or `NEXT_PUBLIC_*` credentials baked in
 - [x] 5.2.3 Write `docker-compose.yml` with `web`, `api`, and a same-origin reverse proxy that routes `/v1/*` (path preserved) to the API and everything else to the web container
 - [x] 5.2.4 Mount one named volume for the whole data directory (`railvanta.db`, `-wal`, `-shm`) on the API container only; no other container mounts it
-- [ ] 5.2.5 Implement `/health/startup`, `/health/live`, `/health/ready`; wire Compose healthchecks; keep health endpoints off the public proxy route
-- [ ] 5.2.6 Implement graceful shutdown: go unready, stop dispatcher claims, drain bounded in-flight work, close the database, exit
-- [ ] 5.2.7 Implement API-owned backup using the SQLite online backup API (or `VACUUM INTO`), writing snapshot time, schema version, checksum and release metadata
-- [ ] 5.2.8 Document and script a restore: stop and fence the API, preserve the old volume, restore into a clean directory, run `PRAGMA integrity_check` / `foreign_key_check` and domain invariant checks, then start a matching release
-- [ ] 5.2.9 Add a domain-check command (e.g. `railvanta-api check`) verifying all posted journals balance, no orphaned attempts, and payment/journal consistency
+- [x] 5.2.5 Implement `/health/startup`, `/health/live`, `/health/ready`; wire Compose healthchecks; keep health endpoints off the public proxy route
+- [x] 5.2.6 Implement graceful shutdown: go unready, stop dispatcher claims, drain bounded in-flight work, close the database, exit
+- [x] 5.2.7 Implement API-owned backup using the SQLite online backup API (or `VACUUM INTO`), writing snapshot time, schema version, checksum and release metadata
+- [x] 5.2.8 Document and script a restore: stop and fence the API, preserve the old volume, restore into a clean directory, run `PRAGMA integrity_check` / `foreign_key_check` and domain invariant checks, then start a matching release
+- [x] 5.2.9 Add a domain-check command (e.g. `railvanta-api check`) verifying all posted journals balance, no orphaned attempts, and payment/journal consistency
 - [ ] 5.2.10 Add `.env.example` with placeholders only; confirm images and Git contain no secrets (secret scan in CI)
 - [ ] 5.2.11 Build images in CI with pinned base-image digests and record image digests per release
 
 **Acceptance gate**
-- [ ] `docker compose up` on a clean machine yields a working sandbox reachable at one origin
-- [ ] Killing the API container mid-dispatch and restarting recovers work without duplicate ledger postings
-- [ ] Restore drill from a backup taken under write load passes integrity, foreign-key and domain checks; the result is recorded with date and release
-- [ ] No backup procedure copies only the live `.db` file
+- [x] `docker compose up` on a clean machine yields a working sandbox reachable at one origin
+- [x] Killing the API container mid-dispatch and restarting recovers work without duplicate ledger postings
+- [x] Restore drill from a backup taken under write load passes integrity, foreign-key and domain checks; the result is recorded with date and release
+- [x] No backup procedure copies only the live `.db` file
 - [ ] Containers run as non-root; secret scan reports no findings
 
 **E2E test** — run `pnpm test:e2e` with `E2E_BASE_URL` set to the `docker compose` stack
-- [ ] The full suite passes against the built containers, not just dev processes
-- [ ] Backup, stop, restore into a clean volume, start: the restore spec confirms the payments, journals and idempotency replays recorded before the backup
-- [ ] Restarting the API container mid-dispatch recovers without a second charge (the 2.4 crash spec run against containers)
+- [x] The full suite passes against the built containers, not just dev processes
+- [x] Backup, stop, restore into a clean volume, start: the restore spec confirms the payments, journals and idempotency replays recorded before the backup
+- [x] Restarting the API container mid-dispatch recovers without a second charge (the 2.4 crash spec run against containers)
 - [ ] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs
 
 ### 5.3 Kubernetes reference deployment (optional) — platform

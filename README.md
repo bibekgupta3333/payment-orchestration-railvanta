@@ -45,7 +45,7 @@ Stopping the stack retains the `railvanta-data` volume. Only the API mounts it, 
 
 Both application images use multi-stage builds and non-root runtimes. The frontend copies standalone output and static/public assets. Its nonsecret `API_INTERNAL_ORIGIN=http://api:8080` rewrite destination is set during the image build; changing that destination requires rebuilding. Source credentials and local database files are excluded by `.dockerignore`.
 
-**Verification status:** `pnpm compose:config` passes. Actual builds/startup are unverified: the authoring sandbox cannot access the Docker daemon socket, the pnpm lockfile still needs updating, and `backend/go.sum` is missing. The API Dockerfile deliberately requires those real Go checksums, and the web Dockerfile requires the frozen lockfile. Backup/restore and production image digest pinning remain WBS 5.2 work. The current E2E harness still starts isolated native processes; running the suite against Compose is a separate pending WBS 5.2 gate.
+**Backup, restore and container E2E.** `scripts/backup-db.sh`, `scripts/restore-backup.sh`, `scripts/restore-drill.sh`, `railvanta-api backup|restore|check|seed-demo`, and the digest/secret-scan tooling are documented in [docs/operations/deployment.md](docs/operations/deployment.md). Run the suite against containers with `docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build --detach --wait` on a fresh volume, then `E2E_BASE_URL=http://localhost:3000 pnpm test:e2e` (see `e2e/README.md`). Base images are pinned by digest; the GitHub container workflow has not run yet.
 
 ## Native development alternative
 

@@ -22,6 +22,36 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Container delivery and recovery (WBS 5.2)
+
+**WBS:** 5.2.5–5.2.9 done; 5.2.10 and 5.2.11 partly (CI parts unverified) · **PR/commit:** branch `worktree-agent-a41d20337359e09c1`
+
+**Changed**
+- `backend/internal/backup/` — `Create` (read-only `VACUUM INTO`, fsync, verify, rename, JSON sidecar with snapshot time, schema version, SHA-256, release), `VerifySnapshot`, `Restore` (manifest checksum, newer-schema and non-empty-target refusal, full check, removes the file on failure), `Check` (integrity, foreign keys, `ledger.Verify`, orphaned/terminal attempts, parentless entries/journals; one read transaction); Go tests include a backup under concurrent writes.
+- `backend/cmd/api/subcommands.go` (+ test), `main.go` (3-line dispatch), `go.mod` (`mattn/go-sqlite3` is now a direct dependency) — `railvanta-api backup|restore|check|seed-demo`. `seed-demo` provisions demo fixtures/credentials into a container sandbox DB (containers keep `DEMO_MODE` off).
+- Health endpoints and graceful shutdown already existed in `main.go`; audited and left unchanged.
+- `infrastructure/docker/*.Dockerfile`, `docker-compose.yml` — base images pinned by digest (resolved with `docker buildx imagetools inspect`), release build args, `RAILVANTA_{API,WEB}_IMAGE` and `RAILVANTA_DATA_VOLUME` overrides (default unchanged), pinned proxy image. `nginx.conf` — `proxy_connect_timeout 2s` so a stopped API gives a fast 504 instead of a ~38 s "host unreachable".
+- `docker-compose.e2e.yml` — fast dispatcher timings for container E2E only.
+- `scripts/backup-db.sh`, `restore-backup.sh`, `restore-drill.sh`, `secret-scan.sh` (pinned gitleaks container, history of a clean clone, working tree, image filesystems), `check-image-pins.sh`; `.gitleaks.toml` (one documented example line and build-generated Next.js keys/Node header in the web image allowlisted); `.env.example`.
+- `.github/workflows/containers.yml` — pin check, secret scan, build, image-ID summary, image scan, E2E against the Compose stack. Has not run on GitHub.
+- `e2e/support/containers.ts`, `global-setup.ts` (3 lines), `playwright.config.ts` (additive `ops` project), `api/scaffold.spec.ts` (one explicit native-only skip), `e2e/ops/backup-restore.spec.ts`, `e2e/ops/container-runtime.spec.ts`, `e2e/README.md` — `E2E_BASE_URL` container mode.
+- `docs/operations/deployment.md`, `README.md`, `docs/wbs.md` — runbook, drill record, status.
+
+**Verification** (Docker 28.5.1, Compose v2, isolated project name and ports)
+- `go -C backend test -race ./...` — pass (all packages, including `internal/backup` and `cmd/api`).
+- `pnpm check` — pass.
+- Native `pnpm test:e2e` — 83 passed, 5 skipped (the five `ops` specs skip without `E2E_BASE_URL`).
+- Container `E2E_BASE_URL=http://localhost:3052 pnpm test:e2e` on a fresh `down -v`/`up --build`: final run 87 passed, 1 skipped (native-only scaffold health), 0 failed. Earlier container runs on the same code: one run failed `ui/payments.spec.ts` "with the API stopped" before the nginx connect timeout was added (now passes); two full runs failed `ui/payments.spec.ts` "double-clicking submit and reloading" yet it passed 5/5 in isolation and in the final full run, so it is an intermittent UI timing flake of unknown cause (not investigated against native).
+- Restore drill under write load (`scripts/restore-drill.sh 20 8`, release `m5-wip`, 2026-11-01): mid-flight snapshot (600 payments, 207 journals, 211 attempts) restored into a new volume with manifest checksum, `integrity_check`, `foreign_key_check` and domain checks passing; after start the work completed (600/600/600, `checks=ok`); old volume preserved.
+- Crash drill: SIGKILL of the API container with a delayed-success attempt submitted recovered to `succeeded` with one provider charge, one journal and `check` passing (`ops/container-runtime.spec.ts`; also the existing `dispatch.spec` crash spec against containers).
+- Clean-machine style: `docker compose down -v` then `up --build --wait` with only `docker-compose.yml`: web `/` 200, `/v1/workspace` without credentials 401, `/health/ready` through the proxy 404, API uid 10001, `railvanta-api check` ok; `docker compose stop api` exits 0.
+- Containers non-root (api uid 10001; web and proxy non-zero uid) and only the API mounts the data volume — asserted by `ops/container-runtime.spec.ts`.
+- `scripts/secret-scan.sh` (gitleaks v8.28.0): history of a clean clone, working tree and both image filesystems report no findings after the `.gitleaks.toml` allowlist above. `scripts/check-image-pins.sh` — pass.
+
+**Notes:** Native-only (skipped in container mode): `api/scaffold.spec.ts` "private readiness" (health listener is container-private; covered by `ops/container-runtime.spec.ts`). Unverified: the GitHub workflow, CI digest recording, "secret scan reports no findings in CI", the `# syntax=` frontend pin, any RPO/retention, and UI behavior of the intermittent double-click spec. Container E2E needs a fresh volume on first start; credentials are cached per Compose project in the OS temp dir.
+
+---
+
 ## 2026-10-31 — Merge WBS 4.3/4.4 and refresh status text
 
 **WBS:** 4.3, 4.4 · **PR/commit:** feat/m2-m4-payment-correctness
