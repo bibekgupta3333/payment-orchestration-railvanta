@@ -22,6 +22,25 @@ A record of every change to code, configuration or design docs, newest first. Ea
 
 ---
 
+## 2026-11-01 — Record measurements, limitations and case study (WBS 5.4.5–5.4.8)
+
+**WBS:** 5.4.5, 5.4.6, 5.4.7, 5.4.8 · **PR/commit:** worktree branch, not yet merged
+
+**Changed**
+- `scripts/measure-lib.mjs`, `measure-latency.mjs`, `measure-recovery.mjs`, `measure-central-demo.mjs` (new) — reproducible harness that builds the API, boots it on a temporary SQLite file in sandbox demo mode, and measures acceptance latency, time to terminal, same-key concurrency, per-scenario recovery outcomes, and a scripted, asserting central demo. The API's hardcoded limit of 600 requests per minute per address forced the harness to budget its own requests and to read payment status from the database instead of polling.
+- `docs/measurements.md` (new) — environment, caveats and all recorded numbers. `docs/known-limitations.md` (new). `docs/case-study.md` (new) — design choices, lessons and 11 demo scenarios mapped to specs and commands.
+- `docs/roadmap.md` — status text and a new "Recorded results" block; CI rows still "pending first run on this PR". `docs/operations/deployment.md` — one "Last successful drill" line. `docs/README.md` — one block of rows linking the three new docs. `docs/wbs.md` — 5.4.5–5.4.8 ticked.
+
+**Verification** (commit `5b33a29` plus these files, Apple M4 Pro, macOS 26.4, Go 1.26.2, Node v22.18.0, native)
+- `node scripts/measure-latency.mjs 200` — exit 0. Acceptance p50/p95/p99: 1.3/2.5/2.9 ms sequential, 3.9/10.5/13.5 ms at 8 clients, 11.7/30.7/38.1 ms at 32. Server-side time to succeeded on an idle API p50 1 ms, p99 3 ms; for a 200-payment burst at 32 clients p50 1148 ms, p99 2362 ms. Same key at 2, 8 and 32 concurrent requests: 1 payment, 1 charge and 1 journal every round (5 rounds each).
+- `node scripts/measure-recovery.mjs` — exit 0: success 2 ms, decline 2 ms (failed, no journal), delayed success 2003 ms, timeout after success 205 ms (unknown then succeeded by one lookup, 1 charge, 1 journal); timeout before execution and outage stayed `unknown` (0 charges, 0 journals) through 30 s and 15 s windows.
+- `node scripts/measure-central-demo.mjs` — PASS.
+- `go -C backend test -race -count=1 ./... -v` — exit 0, 12 packages ok, 260 PASS lines (134 top-level), 0 FAIL, 0 SKIP. `pnpm test:web` — 95 passed in 8 files. `CI=1 pnpm run test:e2e:ci` — 88 passed, 5 skipped (container-only `ops` specs), 0 failed.
+- Case-study spec files (recovery, dispatch, payment-acceptance, ledger-posting, events, ui ledger/reconciliation/simulator/payments/events) run together — 51 passed, 0 failed. The documented `--grep` commands for the central demo, kill, delayed-success, unknown/outage and double-click rows each ran and passed.
+- Not run: GitHub Actions; the case-study row 11 (`e2e/ops/backup-restore.spec.ts`) and a new drill (needs Docker Compose); measurements under Docker or Kubernetes or on another machine; the 100-repeat same-key gate (5 rounds per level here); `pnpm check` (no source other than new scripts and docs changed).
+
+**Notes:** `pnpm test:e2e -- <spec>` (with `--`) runs the whole suite in this pnpm version; use `pnpm test:e2e <spec> --grep "..."`. Time-to-terminal values use 1 ms audit timestamps (+/-1 ms). 5.4.7 was satisfied by the runbook already in `deployment.md` plus the drill line; no runbook text was rewritten. 5.4.1–5.4.4 and 5.4.9 belong to other work and are untouched.
+
 ## 2026-11-01 — Merge WBS 5.2 container delivery and 5.3 Kubernetes manifests
 
 **WBS:** 5.2, 5.3 · **PR/commit:** feat/m5-m6-verification-delivery

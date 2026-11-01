@@ -122,6 +122,8 @@ The Compose stack implements the procedure above with these pieces (all verified
 
 **Drill under write load.** `scripts/restore-drill.sh [seconds] [workers]` seeds credentials into a fresh sandbox stack, creates payments from parallel workers, takes a backup two seconds in, restores into a new volume, starts on it and re-runs the check after in-flight work settles.
 
+**Last successful drill: 2026-11-01** (release `m5-wip`, local Compose build; row below). It was run locally only; see [known limitations](../known-limitations.md).
+
 | Date (UTC) | Release | Result |
 | --- | --- | --- |
 | 2026-11-01 | `m5-wip` (local build, WBS 5.2 branch) | 8 workers, 20 s; backup at t+2 s caught 600 payments but only 207 journals and 211 attempts (a genuinely mid-flight snapshot). Live DB after load: 600/600/600, `checks=ok`. Restore: manifest checksum, `integrity_check`, `foreign_key_check` and domain checks passed (`checks=ok`); old volume preserved. After start the restored stack's recovery completed the in-flight work: 600 payments, 600 journals, 600 attempts, `checks=ok`. |
