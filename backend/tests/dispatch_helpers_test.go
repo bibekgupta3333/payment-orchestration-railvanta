@@ -50,6 +50,8 @@ type dispatchConfig struct {
 	drain  time.Duration
 	poll   time.Duration
 	nowFor func() time.Time
+	// resolveDelay postpones the first lookup after an ambiguous outcome.
+	resolveDelay time.Duration
 }
 
 func newDispatchEnv(t *testing.T, cfg dispatchConfig) *dispatchEnv {
@@ -72,7 +74,7 @@ func (d *dispatchEnv) build(cfg dispatchConfig) {
 	for code, p := range cfg.extra {
 		d.providers[code] = p
 	}
-	d.executor = payment.NewExecutor(db, payment.ExecutorOptions{Providers: d.providers, ProviderTimeout: 5 * time.Second, Hooks: cfg.hooks, Now: cfg.nowFor})
+	d.executor = payment.NewExecutor(db, payment.ExecutorOptions{Providers: d.providers, ProviderTimeout: 5 * time.Second, Hooks: cfg.hooks, Now: cfg.nowFor, ResolveDelay: cfg.resolveDelay})
 	d.dispatcher = event.NewDispatcher(db, event.Options{LeaseDuration: cfg.lease, DrainTimeout: cfg.drain, PollInterval: cfg.poll, Now: cfg.nowFor})
 	d.executor.Register(d.dispatcher)
 	d.handler = httpapi.NewHandler(d.store.DB, httpapi.Config{PublicOrigin: "http://localhost:3000", RequestsPerMinute: 100000, Payments: d.service, Router: d.executor.Router()})

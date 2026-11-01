@@ -29,6 +29,9 @@ type ProviderView struct {
 	Configured   bool                      `json:"configured"`
 	Capabilities *ProviderCapabilitiesView `json:"capabilities"`
 	RuleCount    int                       `json:"rule_count"`
+	// SimulatedLatencyMillis is the fixed simulated processing latency of a
+	// simulated profile; null for providers without one.
+	SimulatedLatencyMillis *int64 `json:"simulated_latency_ms"`
 }
 
 // ProviderWindowView is health inside one window.
@@ -56,7 +59,26 @@ type ProviderHealthView struct {
 	Windows          []ProviderWindowView `json:"windows"`
 }
 
-var providerNames = map[string]string{"mock": "Mock provider", "stripe": "Stripe", "plaid": "Plaid"}
+var providerNames = map[string]string{
+	"mock": "Mock provider", "stripe": "Stripe", "plaid": "Plaid",
+	"mock_fast": "Simulated Fast", "mock_economy": "Simulated Economy", "mock_ach": "Simulated ACH",
+}
+
+// simulatedProviderCodes are the clearly-labelled simulated demo profiles; they
+// are listed only when the workspace has a row and an adapter is configured.
+var simulatedProviderCodes = []string{"mock_fast", "mock_economy", "mock_ach"}
+
+func isSimulatedCode(code string) bool {
+	if code == "mock" {
+		return true
+	}
+	for _, c := range simulatedProviderCodes {
+		if c == code {
+			return true
+		}
+	}
+	return false
+}
 
 // knownProviderCodes lists every code the schema allows, in display order.
 var knownProviderCodes = []string{"mock", "stripe", "plaid"}
@@ -119,6 +141,12 @@ func (h *handler) providerViews(r *http.Request, workspaceID string) ([]Provider
 			views = append(views, h.describeProvider(code, code, false))
 		}
 	}
+	for _, code := range simulatedProviderCodes {
+		// Listed only when seeded AND an adapter executes for it in this build.
+		if view, ok := byCode[code]; ok && view.Configured {
+			views = append(views, view)
+		}
+	}
 	return views, nil
 }
 
@@ -127,8 +155,12 @@ func (h *handler) describeProvider(id, code string, enabled bool) ProviderView {
 	if adapter, ok := h.config.Router.Providers[code]; ok {
 		caps := adapter.Capabilities()
 		view.Configured = true
-		if code == "mock" {
+		if isSimulatedCode(code) {
 			view.Mode = "simulated"
+			if l, ok := adapter.(interface{ Latency() time.Duration }); ok && l.Latency() > 0 {
+				ms := l.Latency().Milliseconds()
+				view.SimulatedLatencyMillis = &ms
+			}
 		} else {
 			view.Mode = "configured"
 		}

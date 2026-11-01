@@ -4,3 +4,4 @@ coverage/
 next-env.d.ts
 lib/api/schema.d.ts
 tsconfig.tsbuildinfo
+public/openapi.json

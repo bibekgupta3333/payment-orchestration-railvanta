@@ -17,7 +17,10 @@ type Config struct {
 	SQLitePath   string
 	PublicOrigin string
 	DemoMode     bool
-	Dispatcher   Dispatcher
+	// PublicSandboxAccess (SANDBOX_PUBLIC_ACCESS, default false) lets anyone who
+	// reaches the API mint a throwaway operator session in the demo workspace.
+	PublicSandboxAccess bool
+	Dispatcher          Dispatcher
 }
 
 // Dispatcher holds outbox dispatcher and mock provider timing. Defaults suit
@@ -38,6 +41,9 @@ type Dispatcher struct {
 	// RecoveryLookupDelay postpones the first lookup of a stale attempt found
 	// at startup. RECOVERY_LOOKUP_DELAY (default 0)
 	RecoveryLookupDelay time.Duration
+	// RecoveryResolveDelay postpones the FIRST same-provider lookup after an
+	// ambiguous outcome so a demo can show the unknown state. RECOVERY_RESOLVE_DELAY (default 0)
+	RecoveryResolveDelay time.Duration
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -56,6 +62,12 @@ func Load(getenv func(string) string) (Config, error) {
 		c.DemoMode, err = strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, errors.New("DEMO_MODE must be true or false")
+		}
+	}
+	if raw := getenv("SANDBOX_PUBLIC_ACCESS"); raw != "" {
+		c.PublicSandboxAccess, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("SANDBOX_PUBLIC_ACCESS must be true or false")
 		}
 	}
 	if c.DemoMode && !Loopback(c.HTTPAddr) {
@@ -98,6 +110,7 @@ func loadDispatcher(getenv func(string) string) (Dispatcher, error) {
 		{"RECOVERY_BASE_BACKOFF", &d.RecoveryBaseBackoff, time.Second, 10 * time.Millisecond, time.Hour},
 		{"RECOVERY_MAX_BACKOFF", &d.RecoveryMaxBackoff, 5 * time.Minute, 10 * time.Millisecond, 24 * time.Hour},
 		{"RECOVERY_LOOKUP_DELAY", &d.RecoveryLookupDelay, 0, 0, time.Hour},
+		{"RECOVERY_RESOLVE_DELAY", &d.RecoveryResolveDelay, 0, 0, time.Minute},
 	}
 	for _, item := range durations {
 		*item.target = item.fallback

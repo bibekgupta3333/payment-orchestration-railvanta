@@ -62,6 +62,12 @@ export default function DocsPage() {
             are sandbox values: nothing moves real funds, and credentials in
             snippets are placeholders.
           </p>
+          <p>
+            <Link href="/dashboard/api-reference">
+              Open the interactive Swagger reference
+            </Link>{" "}
+            to browse every endpoint and try requests with a sandbox API key.
+          </p>
 
           <section id="getting-started" aria-labelledby="h-getting-started">
             <h2 id="h-getting-started">Getting started</h2>
@@ -97,8 +103,12 @@ export default function DocsPage() {
                 are never confirmed across workspaces.
               </li>
               <li>
-                API keys are provisioned out of band in this milestone. There
-                are no key or role management endpoints.
+                An operator can generate a sandbox key (Settings, or{" "}
+                <code>POST /v1/api-keys</code>), choose its role (read or
+                operator) and expiry (at most 30 days), and revoke it. The
+                secret is shown once and only its hash is stored; a workspace
+                can hold at most 20 active keys. There are no custom roles or
+                scopes.
               </li>
             </ul>
           </section>

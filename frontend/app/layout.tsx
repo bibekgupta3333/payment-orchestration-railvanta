@@ -3,6 +3,9 @@ import { Providers } from "@/components/providers";
 import "@fontsource-variable/inter";
 import "./globals.css";
 import "./events-docs.css";
+import "./dashboard-hub.css";
+import "./default-demo.css";
+import "./landing.css";
 
 export const metadata: Metadata = {
   title: {
@@ -10,7 +13,7 @@ export const metadata: Metadata = {
     template: "%s | Railvanta",
   },
   description:
-    "A sandbox for explainable payment routing, idempotency, and financial correctness. Foundation build; no real funds.",
+    "A sandbox for explainable payment routing, idempotency, and financial correctness. Sandbox only; no real funds.",
 };
 
 export default function RootLayout({

@@ -1,9 +1,16 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { DefaultDemo } from "@/components/demo/DefaultDemo";
 import { Button, Card, EmptyState, Table } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
-import type { RoutingDecision, RoutingRule } from "@/lib/api/routing-schemas";
+import type { ApiResult } from "@/lib/api/client";
+import type {
+  RoutingDecision,
+  RoutingRule,
+  Simulation,
+} from "@/lib/api/routing-schemas";
 import { usePaymentMethods } from "@/lib/hooks/payments";
 import {
   useEvaluateRouting,
@@ -160,40 +167,126 @@ function FailureView({ failure }: { failure: EvaluationFailure }) {
   );
 }
 
-function Evaluator() {
+/**
+ * The latest settled default-demo simulation started on this page. The shared
+ * DefaultDemo card owns its run; the start mutation seeds the query cache with
+ * the run, so this reads it from there. Runs that predate this mount (for
+ * example from the Playground) are ignored.
+ */
+function useSettledDemoRun(): Simulation | null {
+  const client = useQueryClient();
+  const [run, setRun] = useState<Simulation | null>(null);
+  useEffect(() => {
+    const cache = client.getQueryCache();
+    const mountedAt = Date.now();
+    const scan = () => {
+      let best: { run: Simulation; at: number } | null = null;
+      for (const query of cache.findAll({
+        predicate: (candidate) =>
+          candidate.queryKey[3] === "sandbox" &&
+          candidate.queryKey[4] === "simulation",
+      })) {
+        const data = (query.state.data as ApiResult<Simulation> | undefined)
+          ?.data;
+        if (
+          !data ||
+          data.status !== "completed" ||
+          !data.payment_id ||
+          query.state.dataUpdatedAt < mountedAt
+        )
+          continue;
+        if (!best || query.state.dataUpdatedAt > best.at)
+          best = { run: data, at: query.state.dataUpdatedAt };
+      }
+      if (best) {
+        const found = best.run;
+        setRun((previous) => (previous?.id === found.id ? previous : found));
+      }
+    };
+    scan();
+    return cache.subscribe(scan);
+  }, [client]);
+  return run;
+}
+
+function Evaluator({ demoRun }: { demoRun: Simulation | null }) {
   const id = useId();
   const methods = usePaymentMethods();
   const evaluate = useEvaluateRouting();
-  const [submitted, setSubmitted] = useState<{
-    method: string;
-    amount: string;
-    currency: string;
-  } | null>(null);
+  const [method, setMethod] = useState("");
+  const [amount, setAmount] = useState("10000");
+  const [currency, setCurrency] = useState("USD");
+  const [paymentId, setPaymentId] = useState("");
+  const [appliedRun, setAppliedRun] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const items = methods.query.data?.data.items ?? [];
+  // Preconfigured: the seeded Routing demo card, else the first method.
+  const preferred =
+    items.find((candidate) => candidate.id.endsWith("0131"))?.id ??
+    items[0]?.id ??
+    "";
+  const effectiveMethod = method || preferred;
+  const submitted = evaluate.variables
+    ? {
+        method: evaluate.variables.payment_method_id,
+        amount: evaluate.variables.amount_minor,
+        currency: evaluate.variables.currency,
+      }
+    : null;
+
+  // Once the default demo settles, show its inputs and evaluate against its
+  // payment so the unsafe-failover explanation appears.
+  if (demoRun && demoRun.id !== appliedRun) {
+    setAppliedRun(demoRun.id);
+    setMethod(demoRun.request.payment_method_id);
+    setAmount(demoRun.request.amount_minor);
+    setCurrency(demoRun.request.currency);
+    setPaymentId(demoRun.payment_id ?? "");
+    setLocalError(null);
+  }
+
+  // One automatic read-only evaluation on first load; manual afterwards.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || !effectiveMethod) return;
+    autoRan.current = true;
+    evaluate.mutate({
+      payment_method_id: effectiveMethod,
+      amount_minor: "10000",
+      currency: "USD",
+    });
+  }, [effectiveMethod, evaluate]);
+
+  const evaluatedRun = useRef<string | null>(null);
+  useEffect(() => {
+    if (!demoRun || evaluatedRun.current === demoRun.id) return;
+    evaluatedRun.current = demoRun.id;
+    evaluate.mutate({
+      payment_method_id: demoRun.request.payment_method_id,
+      amount_minor: demoRun.request.amount_minor,
+      currency: demoRun.request.currency,
+      ...(demoRun.payment_id ? { payment_id: demoRun.payment_id } : {}),
+    });
+  }, [demoRun, evaluate]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const amount = String(form.get("amount") ?? "").trim();
-    const method = String(form.get("method") ?? "");
-    const currency = String(form.get("currency") ?? "USD");
-    const paymentId = String(form.get("payment_id") ?? "").trim();
-    if (!/^[1-9][0-9]{0,18}$/.test(amount)) {
+    const trimmed = amount.trim();
+    const trimmedPayment = paymentId.trim();
+    if (!/^[1-9][0-9]{0,18}$/.test(trimmed)) {
       setLocalError("Enter a positive whole number of minor units.");
       return;
     }
-    if (!method) {
+    if (!effectiveMethod) {
       setLocalError("Choose a payment method.");
       return;
     }
     setLocalError(null);
-    setSubmitted({ method, amount, currency });
     evaluate.mutate({
-      payment_method_id: method,
-      amount_minor: amount,
+      payment_method_id: effectiveMethod,
+      amount_minor: trimmed,
       currency,
-      ...(paymentId ? { payment_id: paymentId } : {}),
+      ...(trimmedPayment ? { payment_id: trimmedPayment } : {}),
     });
   };
 
@@ -207,7 +300,12 @@ function Evaluator() {
       <form onSubmit={onSubmit} noValidate className="filter-bar">
         <div className="field">
           <label htmlFor={`${id}-method`}>Payment method</label>
-          <select id={`${id}-method`} name="method" defaultValue="">
+          <select
+            id={`${id}-method`}
+            name="method"
+            value={effectiveMethod}
+            onChange={(event) => setMethod(event.target.value)}
+          >
             <option value="" disabled>
               Select a method
             </option>
@@ -225,14 +323,20 @@ function Evaluator() {
             name="amount"
             inputMode="numeric"
             autoComplete="off"
-            defaultValue="2500"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
             aria-invalid={localError?.startsWith("Enter") ? true : undefined}
             aria-describedby={localError ? `${id}-error` : undefined}
           />
         </div>
         <div className="field">
           <label htmlFor={`${id}-currency`}>Currency</label>
-          <select id={`${id}-currency`} name="currency" defaultValue="USD">
+          <select
+            id={`${id}-currency`}
+            name="currency"
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value)}
+          >
             {currencies.map((currency) => (
               <option key={currency} value={currency}>
                 {currency}
@@ -247,6 +351,8 @@ function Evaluator() {
           <input
             id={`${id}-payment`}
             name="payment_id"
+            value={paymentId}
+            onChange={(event) => setPaymentId(event.target.value)}
             autoComplete="off"
             aria-describedby={`${id}-payment-hint`}
           />
@@ -276,8 +382,16 @@ function Evaluator() {
 
 export function RoutingView() {
   const { query, workspace } = useRoutingRules();
+  const demoRun = useSettledDemoRun();
   return (
     <>
+      <DefaultDemo
+        id="routing"
+        scenario="outage"
+        title="Default demo: unknown outcome, failover blocked"
+        description="Starts a simulated $100.00 USD payment whose provider outage leaves the outcome unknown. When it settles, the evaluator below is filled with that payment and re-run, so you can see why the router refuses to fail over to another provider."
+        producesLabel="a payment stuck at its preferred provider"
+      />
       <p className="sandbox-notice" role="note">
         Sandbox routing over the Mock provider only. Rules are read-only here.
       </p>
@@ -312,7 +426,7 @@ export function RoutingView() {
           }
         </QueryState>
       </section>
-      <Evaluator />
+      <Evaluator demoRun={demoRun} />
     </>
   );
 }

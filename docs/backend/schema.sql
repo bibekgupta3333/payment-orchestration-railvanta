@@ -17,7 +17,7 @@ CREATE TABLE workspaces (
 CREATE TABLE providers (
   id TEXT PRIMARY KEY NOT NULL,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id),
-  code TEXT NOT NULL CHECK (code IN ('mock', 'stripe', 'plaid')),
+  code TEXT NOT NULL CHECK (code IN ('mock', 'mock_fast', 'mock_economy', 'mock_ach', 'stripe', 'plaid')),
   enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
   created_at INTEGER NOT NULL,
   UNIQUE (workspace_id, code),

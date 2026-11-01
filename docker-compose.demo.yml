@@ -1,0 +1,23 @@
+# Demo override: sandbox-friendly timings so the Payment Failure & Recovery Playground is
+# watchable live. Use with `pnpm demo:up` (docker compose -f docker-compose.yml -f
+# docker-compose.demo.yml up). It publishes no extra ports: the proxy stays bound to
+# 127.0.0.1 and DEMO_MODE stays off; credentials come from `railvanta-api seed-demo`
+# (scripts/demo-up.sh). Never use this file outside a local demo.
+services:
+  api:
+    environment:
+      # Same loopback-only, sandbox-only opt-in as docker-compose.yml (kept explicit here).
+      SANDBOX_PUBLIC_ACCESS: "true"
+      # Fast dispatcher so a payment leaves "pending" within a blink.
+      DISPATCHER_POLL_INTERVAL: 50ms
+      DISPATCHER_LEASE: 2s
+      DISPATCHER_DRAIN_TIMEOUT: 1s
+      PROVIDER_TIMEOUT: 30s
+      # Modest dwell for the delayed-success scenario.
+      MOCK_DELAYED_SUCCESS_DELAY: 4s
+      MOCK_TIMEOUT_DELAY: 200ms
+      RECOVERY_BASE_BACKOFF: 100ms
+      RECOVERY_MAX_BACKOFF: 500ms
+      # Visible "unknown" dwell before the recovery worker resolves it. Builds that predate
+      # this knob ignore the variable (the unknown state is then short-lived).
+      RECOVERY_RESOLVE_DELAY: 6s

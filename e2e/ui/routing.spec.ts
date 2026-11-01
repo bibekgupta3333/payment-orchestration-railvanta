@@ -109,8 +109,12 @@ test("providers show Simulated and Not configured labels and health only with ev
 }) => {
   const api = new ApiClient(request);
   await page.goto(`${state().webOrigin}/dashboard/providers`);
-  const cards = page.locator("section.card");
-  await expect(cards).toHaveCount(3);
+  // The grid holds mock, Stripe, Plaid and the three simulated routing-demo
+  // providers; the default-demo card above it is not a provider card.
+  const cards = page.locator(".capability-grid section.card");
+  await expect(cards).toHaveCount(6);
+  for (const name of ["Simulated Fast", "Simulated Economy", "Simulated ACH"])
+    await expect(cards.filter({ hasText: name })).toContainText("Simulated");
   const mock = cards.filter({ hasText: "Mock provider" });
   await expect(mock).toContainText("Simulated");
   await expect(mock).toContainText("Idempotent replay");
@@ -174,6 +178,9 @@ test("rules, providers and evaluation responses satisfy the OpenAPI contract", a
     ["mock", "simulated"],
     ["stripe", "not_configured"],
     ["plaid", "not_configured"],
+    ["mock_fast", "simulated"],
+    ["mock_economy", "simulated"],
+    ["mock_ach", "simulated"],
   ]);
   for (const key of [providers.items[0].id, "stripe"]) {
     expect((await api.call("GET", `/v1/providers/${key}`)).status()).toBe(200);

@@ -1,0 +1,36 @@
+/* Swagger UI is designed for a light page, so it always renders on a light
+   surface card and stays readable in the dark theme. */
+.swagger-surface {
+  background: #ffffff;
+  color: #3b4151;
+  color-scheme: light;
+  border: 1px solid var(--line, #dce3ec);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem 1rem;
+  overflow-x: auto;
+  min-height: 8rem;
+}
+.swagger-surface .swagger-ui .wrapper {
+  padding: 0;
+  max-width: none;
+}
+.swagger-surface .swagger-ui .info {
+  margin: 1rem 0;
+}
+.swagger-surface .swagger-ui .opblock-tag {
+  font-size: 1.1rem;
+}
+.swagger-surface .swagger-ui .servers > label select {
+  max-width: 100%;
+}
+.swagger-status {
+  margin: 0 0 0.75rem;
+}
+.reference-help {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+.reference-help p {
+  margin: 0;
+}

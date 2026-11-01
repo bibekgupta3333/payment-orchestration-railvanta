@@ -2,13 +2,12 @@ openapi: 3.0.3
 info:
   title: Railvanta Sandbox API
   version: 0.1.0
-  description: Implements authentication, workspace and payment-method reads, idempotent payment acceptance
-    (WBS 2.1), workspace-scoped payment, attempt, history and list reads, observed dashboard metrics (WBS
-    3.1), read-only routing evaluation (WBS 2.2), posted ledger journals (WBS 2.3), and cancellation and
-    recovery reads (WBS 2.4). Accepted payments are executed asynchronously by the in-process outbox dispatcher
-    against the deterministic mock provider. Routing rules, provider capabilities and health, and a
-    backend-driven sandbox simulator are read or run through WBS 3.2. Other operational routes remain explicitly
-    unavailable (501) until later WBS packages. Decimal-string money preserves exact int64 minor units.
+  description: Sandbox API for the Railvanta payment orchestration demo. Create payments idempotently
+    with an Idempotency-Key; accepted payments are executed asynchronously against a deterministic mock provider,
+    with recorded routing decisions, a double-entry ledger, recovery of unknown outcomes through the original
+    provider, reconciliation, events and a failure simulator. Authenticate with a sandbox API key
+    (Authorization Bearer, generated in the dashboard Settings) or the dashboard session. Money is an integer
+    in minor units serialized as a decimal string. Sandbox only; no real funds move.
   license:
     name: Private project
 servers:
@@ -1907,6 +1906,237 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/api-keys:
+    post:
+      operationId: createAPIKey
+      summary: Generate a sandbox API key (operator)
+      description: Sandbox convenience for the demo. Mints a workspace-scoped key with the requested role
+        (read or operator) that always expires (default 24 hours, at most 720) and returns its secret exactly
+        once, in this response only. Only a SHA-256 hash is stored. A workspace may hold at most 20 active
+        keys (409 api_key_limit). The response is not cacheable. Requires the operator role; cookie sessions
+        also need the CSRF token.
+      tags:
+      - Sandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKeyRequest'
+      responses:
+        '201':
+          description: Key created. The secret is never shown again.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyCreated'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+    get:
+      operationId: listAPIKeys
+      summary: List API key metadata (operator)
+      description: Metadata only (name, public prefix, role, status, timestamps). Secrets and hashes are never
+        returned. Scoped to the caller's workspace.
+      tags:
+      - Sandbox
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyList'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/api-keys/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    delete:
+      operationId: revokeAPIKey
+      summary: Revoke an API key of this workspace (operator)
+      description: Idempotent. Answers 200 with the key's metadata and status revoked. A key of another
+        workspace or an unknown ID returns 404.
+      tags:
+      - Sandbox
+      responses:
+        '200':
+          description: Key revoked
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKey'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/sandbox/status:
+    get:
+      operationId: getSandboxStatus
+      summary: Whether public sandbox access is enabled (public)
+      description: Public, no credentials. Reports whether one-click visitor sessions are enabled
+        (SANDBOX_PUBLIC_ACCESS). Never returns secrets or identifiers. Not cacheable.
+      tags:
+      - Sandbox
+      security: []
+      responses:
+        '200':
+          description: Current public sandbox access status
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxStatus'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/sandbox/session:
+    post:
+      operationId: createSandboxSession
+      summary: Start a throwaway visitor session (public, opt-in)
+      description: When public sandbox access is enabled, creates a throwaway operator visitor in the shared
+        demo workspace and sets the HttpOnly __Host-railvanta_session cookie and the readable railvanta_csrf
+        cookie (echo it as X-CSRF-Token on writes). Needs no credentials but the Origin header must equal the
+        configured public origin (403 csrf_rejected). The request body is ignored. Disabled servers answer
+        403 sandbox_access_disabled. Limits are 30 new sessions per remote address per hour (429 with
+        Retry-After) and 500 live visitor sessions in total (503 sandbox_busy with Retry-After). Sessions
+        last 12 hours. Sandbox only; no real funds.
+      tags:
+      - Sandbox
+      security: []
+      responses:
+        '201':
+          description: Session created; cookies set. The response is not cacheable.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+            Set-Cookie:
+              description: __Host-railvanta_session (Secure, HttpOnly, SameSite=Strict) and railvanta_csrf
+                (Secure, SameSite=Strict, readable by script)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxSession'
+        '403':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteSandboxSession
+      summary: Sign out a visitor session
+      description: Deletes the caller's visitor session and clears both cookies. Needs the session cookie,
+        Origin and X-CSRF-Token. The seeded demo session and API-key callers are not visitor sessions and
+        answer 403 without effect.
+      tags:
+      - Sandbox
+      security:
+      - sessionCookie: []
+      responses:
+        '204':
+          description: Visitor session deleted and cookies cleared
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
   /v1/api-keys/current:
     delete:
       operationId: revokeCurrentAPIKey
@@ -2393,6 +2623,9 @@ components:
           type: string
           enum:
           - mock
+          - mock_fast
+          - mock_economy
+          - mock_ach
           - stripe
           - plaid
         configured:
@@ -2433,6 +2666,9 @@ components:
           type: string
           enum:
           - mock
+          - mock_fast
+          - mock_economy
+          - mock_ach
           - stripe
           - plaid
         display_name:
@@ -2467,6 +2703,11 @@ components:
         rule_count:
           type: integer
           minimum: 0
+        simulated_latency_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Fixed simulated processing latency of a simulated provider profile; null otherwise. Never measured.
       required:
       - id
       - code
@@ -2476,6 +2717,7 @@ components:
       - configured
       - capabilities
       - rule_count
+      - simulated_latency_ms
     ProviderDetail:
       type: object
       additionalProperties: false
@@ -2569,6 +2811,9 @@ components:
           type: string
           enum:
           - mock
+          - mock_fast
+          - mock_economy
+          - mock_ach
           - stripe
           - plaid
         rule_id:
@@ -2610,6 +2855,45 @@ components:
             - priority
         failover_blocked:
           type: boolean
+        alternatives:
+          type: array
+          description: Per-provider verdict for every provider in the workspace, including providers blocked from failover by an unresolved prior attempt.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              provider_id:
+                type: string
+              provider_code:
+                type: string
+              status:
+                type: string
+                enum:
+                - chosen
+                - pinned
+                - eligible_lower_priority
+                - ineligible
+                - blocked
+              eligible:
+                type: boolean
+              rule_id:
+                type: string
+                nullable: true
+              priority:
+                type: integer
+                nullable: true
+              reasons:
+                type: array
+                items:
+                  type: string
+            required:
+            - provider_id
+            - provider_code
+            - status
+            - eligible
+            - rule_id
+            - priority
+            - reasons
       required:
       - provider_id
       - provider_code
@@ -3419,6 +3703,137 @@ components:
       - outcome_reason
       - duplicate_count
       - signature_status
+    APIKey:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prefix:
+          type: string
+          description: Public identifier, the part of the key before the dot.
+        role:
+          type: string
+          enum:
+          - read
+          - operator
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+      required:
+      - id
+      - name
+      - prefix
+      - role
+      - created_at
+      - expires_at
+      - revoked_at
+      - status
+    APIKeyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$
+        role:
+          type: string
+          enum:
+          - read
+          - operator
+        expires_in_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          description: Defaults to 24.
+      required:
+      - name
+      - role
+    SandboxStatus:
+      type: object
+      additionalProperties: false
+      properties:
+        public_access:
+          type: boolean
+        workspace_name:
+          type: string
+          description: Present only when public_access is true
+        session_ttl_hours:
+          type: integer
+      required:
+      - public_access
+      - session_ttl_hours
+    SandboxSession:
+      type: object
+      additionalProperties: false
+      properties:
+        workspace:
+          type: object
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            environment:
+              type: string
+          required:
+          - id
+          - name
+          - environment
+        role:
+          type: string
+          enum:
+          - operator
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - workspace
+      - role
+      - expires_at
+    APIKeyCreated:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          $ref: '#/components/schemas/APIKey'
+        secret:
+          type: string
+          description: The full prefix.secret key. Returned only in this response.
+      required:
+      - key
+      - secret
+    APIKeyList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKey'
+        limit:
+          type: integer
+          description: Maximum number of active keys per workspace.
+      required:
+      - items
+      - limit
     Settings:
       type: object
       additionalProperties: false
@@ -3440,6 +3855,9 @@ components:
                 type: string
                 enum:
                 - mock
+                - mock_fast
+                - mock_economy
+                - mock_ach
                 - stripe
                 - plaid
               label:
@@ -3461,6 +3879,7 @@ components:
             api_key_management:
               type: string
               enum:
+              - available
               - unavailable
             role_management:
               type: string
@@ -3496,6 +3915,7 @@ components:
           - outage
           - unknown_recovery
           - duplicate_posting
+          - settlement_mismatch
         seed:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$

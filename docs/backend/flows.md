@@ -138,6 +138,8 @@ If the attempt was already resolved as `failed`, the worker asks once more only 
 
 **Startup scan** (`Recovery.RecoverStale`, run by `cmd/api` after migrations and seeding, before the dispatcher starts). A `submitted` attempt whose `payment.dispatch` command has no live lease (not `processing` with `lease_until` in the future) is treated as possibly executed: attempt and payment move to `unknown` (`error_code = stale_submitted`, actor `system:recovery`) and a lookup at the attempt's own provider is scheduled (`RECOVERY_LOOKUP_DELAY`, default 0). A command whose lease is still live is left alone; the dispatcher's reclaim path handles it when the lease expires. Nothing is resubmitted and no attempt is created by either path.
 
+**Demo knob: `RECOVERY_RESOLVE_DELAY`** (default `0`, max 1m). When set (for example `6s`), the FIRST `payment.lookup` scheduled after an ambiguous provider outcome (`ApplyUnknown` from the dispatch result) gets `available_at = now + delay`, so a response-lost payment (`timeout_after_success`) stays visibly `unknown` with its provider idempotency key and the charge already recorded at the mock, then resolves through the normal same-provider lookup to one charge and one balanced journal. Nothing sleeps inside a transaction and later backoff is unchanged.
+
 **Cancellation** (`POST /v1/payments/{id}/cancel`, operator role). `Service.Cancel` runs one transaction: `created -> canceled` as a compare-and-swap on `(status, version)`, the audit transition, and `event.SkipPending` which marks a still-pending `payment.dispatch` command delivered. The dispatcher's prepare step performs the same `(created, version)` compare-and-swap for `created -> processing`, so exactly one of them wins. If dispatch had already claimed the command, the dispatcher re-reads the payment after a stale-version loss and completes the command with no attempt when it finds `canceled`. Responses: `200` with the canceled payment (also when it already was canceled), `409 not_cancelable` for `processing`, `unknown`, `succeeded` or `failed`, `404` for another workspace's payment, `403` for a reader. Cancellation never contacts a provider and never posts a journal.
 
 **Terminal states never regress.** Three layers: `ValidateTransition` has no edge out of a terminal state; every update compares status and version; the `payments_terminal_status` trigger aborts a status change from `succeeded`, `failed` or `canceled`. `ApplySuccess`/`ApplyDecline`/`ApplyUnknown` return `ErrLateOutcome` for a result that conflicts with the recorded state.
@@ -238,13 +240,15 @@ The run never writes a payment, attempt, journal or charge and never calls a pro
 | `success`, `decline`, `timeout_before_execution`, `timeout_after_success`, `outage`, `unknown_recovery`, `duplicate_request`, `duplicate_posting` | Yes | `succeeded`, `failed`, `unknown`, `succeeded`, `unknown`, `succeeded`, `succeeded`, `succeeded` |
 | `duplicate_webhook`, `reordered_events` | **No.** Listed but disabled; a start request answers 422 `scenario_not_implemented`, and the stored dependency text still names WBS 4.3 although the webhook inbox now exists. Equivalent behavior is tested through the webhook endpoint directly | n/a |
 
+Demo scenarios added later: `duplicate_request` now sends 10 concurrent requests with one `Idempotency-Key` (1 first-accept, 9 replays) plus one request with a changed amount (409 `idempotency_conflict`), and records `payments=1 idempotency_records=1 provider_attempts=1 mock_charges=1 outbox_dispatch_rows=1`. `settlement_mismatch` (expected status `unknown`) writes a labelled SIMULATED succeeded charge to the mock provider's own table for an `outage` payment, holds that payment's lookup command for an hour, runs the reconciliation service over the payment's window, and moves the `unknown_outcome` discrepancy to `investigating` with a note. It reads journal, entry, transition and attempt counts before and after and reports `ledger rows changed: 0`; it never writes payment or journal rows. Steps added at finalize are persisted in `input_json` so the timeline shows them.
+
 ## Not implemented
 
 - Any provider other than the mock (Stripe, Plaid), real funds, capture, refunds and any HTTP path that reverses a journal.
 - Retry, resubmit or re-dispatch of a payment, and any operator override of `unknown`.
 - Routing-rule creation or editing (rules are read-only through `GET /v1/routing/rules`; `POST /v1/routing/evaluate` moves no money), and routing across more than one live provider.
 - Webhook signature verification, a public webhook receiver, and a metrics exporter.
-- API-key creation or rotation (only `DELETE /v1/api-keys/current` exists), member or role management.
+- API-key rotation, custom roles or scopes, member management (keys can be generated, listed and revoked; see "Implemented API key generator" below).
 - High availability: one API process, one SQLite writer.
 
 ## Failure recovery checklist
@@ -258,3 +262,23 @@ The run never writes a payment, attempt, journal or charge and never calls a pro
 | Before success transaction commits | Attempt plus provider reference/key | Confirm outcome and atomically post once |
 | Duplicate webhook/event | Unique inbox/event business key | Acknowledge or consume without another posting |
 | Database busy | Transaction rolled back or result unresolved | Bounded database retry; never blindly repeat provider call |
+
+### Implemented API key generator (sandbox)
+
+`POST /v1/api-keys` (operator) mints a workspace-scoped key with role `read` or `operator` and an expiry of 1 to 720 hours (default 24). The secret (`rvk_<8 hex>.<48 hex>`, from `crypto/rand`) is returned once with `Cache-Control: no-store`; only its SHA-256 hash is stored, as for seeded keys. A workspace holds at most 20 active keys (409 `api_key_limit`); invalid names, roles or expiries answer 422 and create nothing. `GET /v1/api-keys` (operator) returns metadata only (never the secret or hash); `DELETE /v1/api-keys/{id}` (operator) revokes idempotently, and another workspace's key answers 404. Revoked and expired keys are rejected by authentication. Writes keep the generic operator and CSRF rules. A log line records the key ID, prefix and role at creation and revocation, never the secret. See [ADR 0011](../decisions/0011-sandbox-api-key-generator.md); tests: `backend/tests/api_keys_test.go`, `frontend/tests/components/api-keys.test.tsx`, `e2e/ui/docs-settings.spec.ts`.
+
+### Implemented public sandbox access
+
+An explicit, opt-in mode that makes the sandbox usable without an operator-provisioned key. Flag: `SANDBOX_PUBLIC_ACCESS` (bool, default `false`; requires `APP_ENV=sandbox` like the rest of the binary). When it is false behaviour is unchanged and `POST /v1/sandbox/session` answers 403 `sandbox_access_disabled` and creates nothing. `docker-compose.yml` and `docker-compose.demo.yml` set it to `true` for local containers only; the Kubernetes manifests leave it off.
+
+| Endpoint | Auth | Behaviour |
+| --- | --- | --- |
+| `GET /v1/sandbox/status` | none | `{ "public_access": bool, "workspace_name": "Demo workspace", "session_ttl_hours": 12 }`; `workspace_name` only when enabled; `Cache-Control: no-store`; no secret or ID |
+| `POST /v1/sandbox/session` | none, but `Origin` must equal `PUBLIC_APP_ORIGIN` (403 `csrf_rejected`) | Creates a throwaway visitor in the shared demo workspace with role `operator` (a `users` row `visitor-<random>@sandbox.invalid`, a `workspace_members` row and a `sessions` row; only SHA-256 hashes of the 32-byte random session and CSRF tokens are stored). Responds 201 `{ "workspace": {id,name,environment}, "role": "operator", "expires_at": RFC 3339 }` with `Cache-Control: no-store`. The request body is ignored |
+| `DELETE /v1/sandbox/session` | session cookie + CSRF (normal path) | Deletes the caller's visitor session and user, clears both cookies, 204. The seeded demo session and API-key callers answer 403 `forbidden` and nothing changes |
+
+Cookies set on creation (same 12-hour expiry): `__Host-railvanta_session` (Secure, HttpOnly, SameSite=Strict, Path=/) and `railvanta_csrf` (Secure, **not** HttpOnly, SameSite=Strict, Path=/), which the frontend client reads and echoes as `X-CSRF-Token`. A visitor session is a normal session: every dashboard API works and writes (for example `POST /v1/api-keys`) need Origin plus CSRF; the 20-active-key cap still applies workspace-wide. All other routes still require credentials (an unauthenticated `GET /v1/payments` stays 401).
+
+Limits: at most 30 new sessions per remote address per hour (in-memory, fixed window, keyed by the TCP peer, which is the proxy behind the compose stack; 429 `rate_limited` with `Retry-After`), and at most 500 live visitor sessions (503 `sandbox_busy` with `Retry-After: 60`). Each creation first lazily deletes one bounded batch (100) of expired visitor sessions with their users and memberships, only for emails ending `@sandbox.invalid`; the seeded demo user and session are never touched. The visitor ID (never a token) is logged. Creation needs the seeded demo workspace to exist (`railvanta-api seed-demo` or `DEMO_MODE`); otherwise it answers 503 `unavailable`.
+
+Trust model: anyone who can reach the loopback proxy gets operator rights to the shared sandbox workspace and can see what other visitors created there. No real funds exist. Never enable it on a shared host or behind a public address. Safari does not accept `Secure` cookies on plain-http localhost; Chromium and Firefox do. Tests: `backend/tests/public_sandbox_test.go`.

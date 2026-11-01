@@ -1,12 +1,14 @@
 package simulation
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/railvanta/railvanta/backend/internal/ledger"
 	"github.com/railvanta/railvanta/backend/internal/payment"
+	"github.com/railvanta/railvanta/backend/internal/reconciliation"
 	"github.com/railvanta/railvanta/backend/internal/storage"
 	"gorm.io/gorm"
 )
@@ -55,6 +57,8 @@ type Snapshot struct {
 	JournalCount int
 	// Webhooks lists "type:deliveries:duplicate_count:outcome/reason" per planned event.
 	Webhooks []string
+	// Extra carries scenario-specific end state (duplicate burst, reconciliation).
+	Extra []string
 }
 
 func verdict(ok bool, evidence string, args ...any) (string, string) {
@@ -122,7 +126,7 @@ func CheckInvariants(db *gorm.DB, scenario Scenario, run storage.SimulationRun, 
 				title = t.Title
 			}
 		}
-		for _, t := range webhookTitles {
+		for _, t := range append(append([]Invariant{}, webhookTitles...), scenarioTitles...) {
 			if t.ID == id {
 				title = t.Title
 			}
@@ -217,6 +221,17 @@ func CheckInvariants(db *gorm.DB, scenario Scenario, run storage.SimulationRun, 
 	// Webhook scenarios: evidence from the inbox and the late-outcome events.
 	if len(input.Webhooks) > 0 {
 		if err := webhookInvariants(db, scenario, run, input, p, journals, transitions, add, &snapshot); err != nil {
+			return nil, Snapshot{}, err
+		}
+	}
+
+	switch scenario.ID {
+	case DuplicateRequest:
+		if err := duplicateInvariants(db, run, input, p, len(attempts), keys, paymentsForRef, recordsForKey, add, &snapshot); err != nil {
+			return nil, Snapshot{}, err
+		}
+	case SettlementMismatch:
+		if err := reconcileInvariants(db, run, input, p, len(journals), add, &snapshot); err != nil {
 			return nil, Snapshot{}, err
 		}
 	}
@@ -355,5 +370,105 @@ func webhookInvariants(db *gorm.DB, scenario Scenario, run storage.SimulationRun
 			"payment is %s with %d terminal transition(s) and %d journal(s) after the reordered events", p.Status, terminalTransitions, len(journals))
 		add(InvStateUnchangedByE, status, evidence)
 	}
+	return nil
+}
+
+// Scenario-specific invariant identifiers.
+const (
+	InvDuplicateBurst   = "duplicate_burst_answers"
+	InvDuplicateSingle  = "duplicate_single_effects"
+	InvDiscrepancy      = "discrepancy_recorded_with_evidence"
+	InvNoLedgerChange   = "reconciliation_changed_no_ledger_rows"
+	InvEvidenceOnlyStep = "resolution_is_evidence_only"
+)
+
+var scenarioTitles = []Invariant{
+	{ID: InvDuplicateBurst, Title: "One first-accept, the rest replays, and a changed amount is rejected with 409"},
+	{ID: InvDuplicateSingle, Title: "One payment, one idempotency record, one attempt, one charge and one dispatch command"},
+	{ID: InvDiscrepancy, Title: "Reconciliation recorded a discrepancy with simulated provider evidence"},
+	{ID: InvNoLedgerChange, Title: "The reconciliation run changed no journal, entry, payment transition or attempt"},
+	{ID: InvEvidenceOnlyStep, Title: "The investigation was recorded as evidence only, with no adjusting entry"},
+}
+
+func duplicateInvariants(db *gorm.DB, run storage.SimulationRun, input Input, p storage.Payment, attempts int, keys []string,
+	paymentsForRef, recordsForKey int64, add func(id, status, evidence string), snapshot *Snapshot) error {
+	d := input.Duplicate
+	if d == nil {
+		add(InvDuplicateBurst, InvariantFail, "no burst evidence was recorded")
+		add(InvDuplicateSingle, InvariantFail, "no burst evidence was recorded")
+		return nil
+	}
+	ws := run.WorkspaceID
+	status, evidence := verdict(d.Sent == DuplicateBurst && d.FirstAccept == 1 && d.Replays == DuplicateBurst-1 && d.Errors == 0 && d.ConflictStatus == 409 && d.ConflictCode == "idempotency_conflict",
+		"%d request(s) sent: %d first-accept (202), %d replay(s), %d error(s); changed-amount request answered HTTP %d %s",
+		d.Sent, d.FirstAccept, d.Replays, d.Errors, d.ConflictStatus, d.ConflictCode)
+	add(InvDuplicateBurst, status, evidence)
+	var charges, dispatches int64
+	if len(keys) > 0 {
+		if err := db.Table("mock_provider_charges").Where("workspace_id = ? AND provider_idempotency_key IN ?", ws, keys).Count(&charges).Error; err != nil {
+			return err
+		}
+	}
+	if err := db.Model(&storage.OutboxEvent{}).Where("workspace_id = ? AND payment_id = ? AND event_type = ?", ws, p.ID, payment.OutboxPaymentDispatch).Count(&dispatches).Error; err != nil {
+		return err
+	}
+	status, evidence = verdict(paymentsForRef == 1 && recordsForKey == 1 && attempts == 1 && charges == 1 && dispatches == 1,
+		"payments=%d idempotency_records=%d provider_attempts=%d mock_charges=%d outbox_dispatch_rows=%d",
+		paymentsForRef, recordsForKey, attempts, charges, dispatches)
+	add(InvDuplicateSingle, status, evidence)
+	snapshot.Extra = append(snapshot.Extra, fmt.Sprintf("burst:%d:%d:%d:%d:%d", d.Sent, d.FirstAccept, d.Replays, d.Errors, d.ConflictStatus),
+		fmt.Sprintf("rows:%d:%d:%d:%d:%d", paymentsForRef, recordsForKey, attempts, charges, dispatches))
+	return nil
+}
+
+func reconcileInvariants(db *gorm.DB, run storage.SimulationRun, input Input, p storage.Payment, journals int,
+	add func(id, status, evidence string), snapshot *Snapshot) error {
+	rc := input.Reconcile
+	if rc == nil || rc.DiscrepancyID == "" {
+		add(InvDiscrepancy, InvariantFail, "no discrepancy was recorded for the payment")
+		add(InvNoLedgerChange, InvariantFail, "no reconciliation evidence was recorded")
+		add(InvEvidenceOnlyStep, InvariantFail, "no resolution was recorded")
+		return nil
+	}
+	ws := run.WorkspaceID
+	view, err := reconciliation.GetDiscrepancy(db, ws, rc.DiscrepancyID)
+	if err != nil {
+		return err
+	}
+	var details reconciliation.Evidence
+	_ = json.Unmarshal([]byte(view.Details), &details)
+	chargeStatus := "none"
+	if details.ProviderCharge != nil {
+		chargeStatus = details.ProviderCharge.Status
+	}
+	kindOK := view.Kind == reconciliation.KindUnknownOutcome || view.Kind == reconciliation.KindStatusMismatch
+	status, evidence := verdict(kindOK && details.Simulated && chargeStatus == "succeeded" && details.Payment.Status == string(payment.StatusUnknown),
+		"discrepancy %s kind %s, status %s; provider charge %s (simulated=%t) while payment is %s; evidence: %s",
+		view.ID, view.Kind, view.Status, chargeStatus, details.Simulated, details.Payment.Status, details.Summary)
+	add(InvDiscrepancy, status, evidence)
+
+	now, err := ledgerCounts(db, ws, p.ID)
+	if err != nil {
+		return err
+	}
+	unchanged := rc.Before == rc.After && now.Journals == rc.Before.Journals && now.Entries == rc.Before.Entries && now.Transitions == rc.Before.Transitions
+	status, evidence = verdict(unchanged && p.Status == string(payment.StatusUnknown),
+		"ledger rows changed: 0 required; journals %d->%d, entries %d->%d, payment transitions %d->%d, attempts %d->%d (still %d journals, %d entries now); payment is %s",
+		rc.Before.Journals, rc.After.Journals, rc.Before.Entries, rc.After.Entries, rc.Before.Transitions, rc.After.Transitions,
+		rc.Before.Attempts, rc.After.Attempts, now.Journals, now.Entries, p.Status)
+	add(InvNoLedgerChange, status, evidence)
+
+	noteOK := false
+	note := ""
+	for _, h := range view.History {
+		if h.ToStatus == reconciliation.StatusInvestigating && strings.TrimSpace(h.Note) != "" {
+			noteOK, note = true, h.Note
+		}
+	}
+	status, evidence = verdict(noteOK && view.Status == reconciliation.StatusInvestigating && journals == 0 && now.Journals == 0,
+		"discrepancy status %s with %d history event(s); %d journal(s) exist for the payment, so no adjusting entry was posted; note: %q",
+		view.Status, len(view.History), journals, note)
+	add(InvEvidenceOnlyStep, status, evidence)
+	snapshot.Extra = append(snapshot.Extra, fmt.Sprintf("discrepancy:%s:%s:%s:%t", view.Kind, chargeStatus, view.Status, unchanged))
 	return nil
 }

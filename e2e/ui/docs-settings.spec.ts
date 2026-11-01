@@ -236,16 +236,22 @@ test.describe("settings", () => {
       "Not configured",
     );
     const unavailable = page.locator(".unavailable-row");
-    await expect(unavailable).toHaveCount(3);
-    for (const label of ["API keys", "Member roles", "Live activation"])
+    await expect(unavailable).toHaveCount(2);
+    for (const label of ["Member roles", "Live activation"])
       await expect(unavailable.filter({ hasText: label })).toContainText(
         "Unavailable",
       );
 
-    // The only control is the theme select; nothing manages keys, roles or live mode.
-    await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
-    await expect(page.getByRole("main").getByRole("textbox")).toHaveCount(0);
-    await expect(page.getByRole("main").getByRole("combobox")).toHaveCount(1);
+    // The API key generator is real; roles and live mode remain unavailable
+    // and have no controls anywhere on the page.
+    await expect(
+      page.getByRole("button", { name: "Generate API key" }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("button", { name: /role|member|live|activate/i }),
+    ).toHaveCount(0);
     const html = await page.content();
     for (const secret of [
       state().operatorKey,
@@ -257,6 +263,67 @@ test.describe("settings", () => {
       expect(html).not.toContain(secret);
     const results = await new AxeBuilder({ page }).analyze();
     expect(serious(results.violations)).toEqual([]);
+  });
+
+  test("generates a sandbox API key once, uses it against the API and revokes it", async ({
+    page,
+  }) => {
+    await page.goto(`${state().webOrigin}/dashboard/settings`);
+    await page.getByLabel("Key name").fill("E2E generated key");
+    await page.getByLabel("Role").selectOption("read");
+    await page.getByRole("button", { name: "Generate API key" }).click();
+
+    const panel = page.getByTestId("new-api-key");
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("only time the full key is shown");
+    const secret = (
+      await panel.locator("code, pre").first().innerText()
+    ).trim();
+    expect(secret).toMatch(/^rvk_[0-9a-f]{8}\.[0-9a-f]{48}$/);
+    const prefix = secret.split(".")[0];
+
+    // The generated key really authenticates, with the role it was given.
+    const origin = state().webOrigin;
+    const read = await page.request.get(`${origin}/v1/workspace`, {
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    expect(read.status()).toBe(200);
+    const denied = await page.request.post(`${origin}/v1/payments`, {
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Idempotency-Key": `e2e-${randomUUID()}`,
+      },
+      data: {},
+    });
+    expect(denied.status()).toBe(403);
+
+    // The list shows the prefix, never the secret.
+    const list = page.getByRole("region", { name: "API key list" });
+    await expect(list).toContainText(prefix);
+    await expect(list).not.toContainText(secret.split(".")[1]);
+
+    // Dismissing removes the secret from the page, and a reload cannot bring it back.
+    await page.getByRole("button", { name: /hide the key/i }).click();
+    await expect(panel).toHaveCount(0);
+    await page.reload();
+    expect(await page.content()).not.toContain(secret.split(".")[1]);
+
+    // Revoke through the UI with the explicit confirmation step.
+    await page
+      .getByRole("button", {
+        name: new RegExp(`Revoke key E2E generated key \\(${prefix}\\)`),
+      })
+      .click();
+    await page.getByRole("button", { name: "Confirm revoke" }).click();
+    await expect(
+      page
+        .getByRole("region", { name: "API key list" })
+        .locator("tr", { hasText: prefix }),
+    ).toContainText("Revoked");
+    const after = await page.request.get(`${origin}/v1/workspace`, {
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    expect(after.status()).toBe(401);
   });
 
   test("theme choice (System, Light, Dark) persists across reloads without removing the Sandbox label", async ({

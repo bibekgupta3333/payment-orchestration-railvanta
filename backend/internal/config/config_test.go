@@ -18,6 +18,8 @@ func TestLoad(t *testing.T) {
 		{"health hostname refused", map[string]string{"APP_ENV": "sandbox", "HEALTH_ADDR": "localhost:8081"}, true},
 		{"origin credentials refused", map[string]string{"APP_ENV": "sandbox", "PUBLIC_APP_ORIGIN": "https://secret@example.com"}, true},
 		{"origin path refused", map[string]string{"APP_ENV": "sandbox", "PUBLIC_APP_ORIGIN": "https://example.com/path"}, true},
+		{"public sandbox access on", map[string]string{"APP_ENV": "sandbox", "SANDBOX_PUBLIC_ACCESS": "true"}, false},
+		{"invalid public sandbox boolean", map[string]string{"APP_ENV": "sandbox", "SANDBOX_PUBLIC_ACCESS": "yes"}, true},
 		{"invalid demo boolean", map[string]string{"APP_ENV": "sandbox", "DEMO_MODE": "yes"}, true},
 		{"dispatcher overrides", map[string]string{"APP_ENV": "sandbox", "DISPATCHER_POLL_INTERVAL": "20ms", "DISPATCHER_LEASE": "2s", "PROVIDER_TIMEOUT": "15s", "MOCK_DELAYED_SUCCESS_DELAY": "8s", "MOCK_TIMEOUT_DELAY": "100ms", "DISPATCHER_MAX_IN_FLIGHT": "8"}, false},
 		{"poll interval too small", map[string]string{"APP_ENV": "sandbox", "DISPATCHER_POLL_INTERVAL": "1ms"}, true},

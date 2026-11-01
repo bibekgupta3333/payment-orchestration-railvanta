@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import openapiTS, { astToString } from "openapi-typescript";
 import prettier from "prettier";
+import { parse } from "yaml";
 
 const output = new URL("../frontend/lib/api/schema.d.ts", import.meta.url);
 const schema = new URL("../backend/api/openapi.yaml", import.meta.url);
@@ -10,14 +11,28 @@ const generated = await prettier.format(
   { parser: "typescript", tabWidth: 2, useTabs: false },
 );
 
+// Same-origin copy of the contract for the dashboard's Swagger UI. Servers are
+// replaced with "/" so "Try it out" calls the same-origin /v1 proxy.
+const specOutput = new URL("../frontend/public/openapi.json", import.meta.url);
+const document = parse(await readFile(schema, "utf8"), { maxAliasCount: -1 }) // trusted, repo-local file;
+document.servers = [{ url: "/", description: "This origin (same-origin /v1 proxy)" }];
+const specJson = JSON.stringify(document, null, 2) + "\n";
+
 if (process.argv.includes("--check")) {
   const saved = await readFile(output, "utf8").catch(() => "");
   if (saved !== generated) {
     throw new Error("API contracts are missing or stale. Run pnpm generate:api.");
   }
-  console.log("Generated API contracts match OpenAPI.");
+  const savedSpec = await readFile(specOutput, "utf8").catch(() => "");
+  if (savedSpec !== specJson) {
+    throw new Error("frontend/public/openapi.json is missing or stale. Run pnpm generate:api.");
+  }
+  console.log("Generated API contracts and frontend/public/openapi.json match OpenAPI.");
 } else {
   await mkdir(new URL("./", output), { recursive: true });
   await writeFile(output, generated);
+  await mkdir(new URL("./", specOutput), { recursive: true });
+  await writeFile(specOutput, specJson);
   console.log("Generated frontend/lib/api/schema.d.ts from backend/api/openapi.yaml.");
+  console.log("Generated frontend/public/openapi.json (servers: /).");
 }

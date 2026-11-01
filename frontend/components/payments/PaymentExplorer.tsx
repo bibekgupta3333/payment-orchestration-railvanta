@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
 import { Button, EmptyState } from "@/components/ui";
+import { DefaultDemo } from "@/components/demo/DefaultDemo";
 import { QueryState } from "@/components/ui/query-state";
 import { paymentStatusSchema } from "@/lib/api/schemas";
 import {
@@ -103,6 +104,13 @@ export function PaymentExplorer() {
           Create sandbox payment
         </Button>
       </div>
+
+      <DefaultDemo
+        id="payments"
+        scenario="success"
+        description="Starts a real simulated $100.00 USD payment through the sandbox Mock provider. When it settles, this list refreshes and shows the new payment with its status."
+        producesLabel="a succeeded $100 payment with a journal"
+      />
 
       {pending && !dialogOpen && (
         <section className="stale-notice" role="alert">
@@ -285,8 +293,9 @@ export function PaymentExplorer() {
               </EmptyState>
             ) : (
               <EmptyState title="No payments yet">
-                Create a sandbox payment to see it here. Amounts are simulated
-                and no real funds move.
+                Run the default demo above to create your first payment, or
+                create a sandbox payment yourself. Amounts are simulated and no
+                real funds move.
               </EmptyState>
             );
           }
