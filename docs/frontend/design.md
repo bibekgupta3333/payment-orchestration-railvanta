@@ -28,7 +28,8 @@ frontend/
     docs/page.tsx              # public developer documentation (examples in lib/docs/examples.json)
     dashboard/
       layout.tsx               # workspace shell
-      page.tsx                 # overview
+      page.tsx                 # dashboard hub (credentials, demo runs, metrics)
+      api-reference/page.tsx   # embedded Swagger UI
       payments/page.tsx, payments/[id]/page.tsx
       routing/page.tsx
       providers/page.tsx, providers/[id]/page.tsx
@@ -54,16 +55,19 @@ frontend/
 
 ## Rendering and API boundary
 
+The dashboard home is a hub treated like the main page: heading and quick actions, an "Integration credentials" card (base URL, bearer format, active-key count, curl with a `$KEY` placeholder, and a **Generate default demo key** button that mints only on click and shows the secret once from component state), a "Run a demo now" card (Lost response, Duplicate requests, Double-entry ledger as real $100 simulations with a compact invariant result and a link to the Playground), a capability strip and the live metrics. Read-only roles see an explanation instead of the generate button. `/dashboard/api-reference` embeds Swagger UI for the real OpenAPI document; the sidebar item is "API reference". Swagger UI internals are third-party markup and are outside the accessibility claims below.
+
 Render the public landing page and developer documentation on the server. Keep dashboard layouts server-rendered where practical; isolate query providers, filters, forms, dialogs, and charts in Client Components. The [`use client` boundary](https://nextjs.org/docs/app/api-reference/directives/use-client) belongs at interactive entry points, not every file.
 
 The browser calls a same-origin `/v1` reverse proxy routed to the Go API. Next.js owns presentation; Go owns authorization, payment transitions, routing decisions, validation, persistence, and provider credentials. Never open SQLite from Next.js. Configure the same `/v1` routing contract in local development and deployment. An ingress or server-side proxy forwards cookies and correlation identifiers but must not cache workspace responses publicly. In development `next.config.ts` rewrites `/v1/:path*` to `API_INTERNAL_ORIGIN`; the Compose Nginx proxy and the Kubernetes Ingress do the same routing in deployment, preserving the `/v1` prefix. The build uses `output: "standalone"`. Cookie-authenticated writes send `X-CSRF-Token` read from the `railvanta_csrf` cookie; the session cookie itself is not readable by script.
 
-`lib/api/client.ts` is the central typed client. `pnpm generate:api` produces `lib/api/schema.d.ts` from `backend/api/openapi.yaml` and `pnpm check:generated` fails on drift; Zod schemas in `lib/api/*-schemas.ts` validate response payloads at the boundary because TypeScript types alone cannot. The routes and endpoints below exist.
+`lib/api/client.ts` is the central typed client. `pnpm generate:api` produces `lib/api/schema.d.ts` from `backend/api/openapi.yaml` and `pnpm check:generated` fails on drift; Zod schemas in `lib/api/*-schemas.ts` validate response payloads at the boundary because TypeScript types alone cannot. The routes and endpoints below exist. The `/dashboard` hub and the Playground share the simulation endpoints with `/dashboard/simulator`.
 
 | Route | API dependencies | Scope |
 | --- | --- | --- |
 | `/` | None | Landing, architecture overview, sandbox entry |
-| `/dashboard` | `GET /v1/dashboard/summary`, `/v1/dashboard/payment-volume`, `/v1/payments` | Workspace metrics and recent activity |
+| `/dashboard` | `GET /v1/api-keys`, `POST /v1/api-keys`, `GET /v1/sandbox/scenarios`, `POST /v1/sandbox/simulations` (and `GET /v1/sandbox/simulations/{id}` to follow a run), `GET /v1/dashboard/summary`, `/v1/dashboard/payment-volume` | Hub: integration credentials with one-click default demo key, three one-click demo runs, capability strip, live sandbox metrics. Nothing is minted or run on load |
+| `/dashboard/api-reference` | None of its own; the embedded Swagger UI loads the OpenAPI document served from the same origin (`frontend/public/openapi.json`, generated from `backend/api/openapi.yaml` by `pnpm generate:api` with `servers` set to `/`; `pnpm check:generated` fails on drift. See ADR 0012) and sends "Try it out" calls to `/v1` with a bearer key | Interactive API reference with an Authorize button |
 | `/dashboard/payments` | `GET /v1/payments`, `/v1/payment-methods`, `POST /v1/payments` | Filtered list and sandbox creation |
 | `/dashboard/payments/[id]` | `GET /v1/payments/{id}`, `/attempts`, `/history`, `/v1/ledger/transactions` | Attempts, transitions and durable events, linked journal. Polls every 3 s until terminal |
 | `/dashboard/routing` | `GET /v1/routing/rules`, `POST /v1/routing/evaluate` | Inspect rules (read-only) and evaluate a decision |
@@ -72,7 +76,7 @@ The browser calls a same-origin `/v1` reverse proxy routed to the Go API. Next.j
 | `/dashboard/ledger`, `/dashboard/ledger/[id]` | `GET /v1/ledger/transactions`, `/v1/ledger/accounts`, `/v1/ledger/transactions/{id}` | Read-only journals, accounts and balances |
 | `/dashboard/reconciliation` | `GET /v1/reconciliation/runs`, `/discrepancies`; `POST` runs and `/resolve` | Runs, discrepancies, resolution history (operators can run and resolve) |
 | `/dashboard/events`, `/dashboard/events/[id]` | `GET /v1/events`, `/v1/events/{id}` | Correlated inbox and outbox events and processing results |
-| `/docs` | None at runtime (static page; examples are checked against the OpenAPI document by `pnpm check:docs`) | Supported API examples and retry semantics |
+| `/docs` | None at runtime (static page; examples are checked against the OpenAPI document by `pnpm check:docs`) | Supported API examples and retry semantics; links to the API reference |
 | `/dashboard/settings` | `GET /v1/settings`, local theme, `GET`/`POST /v1/api-keys`, `DELETE /v1/api-keys/{id}` | Workspace, role, provider status, the sandbox API key generator (operators) and unavailable capabilities |
 
 API endpoints **not used by the UI**: `POST /v1/payments/{id}/cancel`, `GET /v1/payments/{id}/recovery`, `POST /v1/sandbox/webhooks/mock`, `GET /v1/workspaces/{id}`, `GET /v1/payment-methods/{id}` and `DELETE /v1/api-keys/current`. The UI has no cancel control, no recovery panel and no webhook sender.

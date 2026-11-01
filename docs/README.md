@@ -47,6 +47,7 @@ Diagrams use Mermaid. Wireframes are plain text.
 | [0009](decisions/0009-unknown-outcomes-resolved-only-by-evidence.md) | Unknown outcomes resolve only on provider evidence, with unbounded lookup | Accepted |
 | [0010](decisions/0010-original-frontend-components.md) | Original Tailwind components, no icon library, read-only shell | Accepted |
 | [0011](decisions/0011-sandbox-api-key-generator.md) | Sandbox API key generator in Settings | Accepted |
+| [0012](decisions/0012-dashboard-hub-and-swagger-reference.md) | Dashboard hub and embedded Swagger API reference | Accepted |
 
 Each ADR has Context, Decision, Consequences and Status. ADR 0001 predates this template and adds an Alternatives section.
 

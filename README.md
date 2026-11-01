@@ -100,7 +100,7 @@ docker compose down -v # also delete the volume
 
 ## Demo
 
-Signed in as an operator, **Settings → API keys** generates a sandbox key (name, role, expiry), shows the secret once with a curl example, and can revoke it. For a live walkthrough of the Payment Failure & Recovery Playground: `pnpm demo:up` (start, seed throwaway credentials, print curl examples), `pnpm demo:open` (headed browser already signed in), `pnpm demo:down` (add `-v` to delete demo data). Script, Q&A, honest claims and fallbacks are in [docs/demo/README.md](docs/demo/README.md).
+The dashboard home (`/dashboard`) is a hub: **Generate default demo key** mints a sandbox key on click (never on page load) and shows the secret once with a ready curl, **Run a demo now** starts three real, simulated $100 runs, and **API reference** (`/dashboard/api-reference`) embeds Swagger UI over the real OpenAPI document with an Authorize button for a key ([ADR 0012](docs/decisions/0012-dashboard-hub-and-swagger-reference.md); the ADR 0011 key caveats still apply). Signed in as an operator, **Settings → API keys** generates a sandbox key (name, role, expiry), shows the secret once with a curl example, and can revoke it. For a live walkthrough of the Payment Failure & Recovery Playground: `pnpm demo:up` (start, seed throwaway credentials, print curl examples), `pnpm demo:open` (headed browser already signed in), `pnpm demo:down` (add `-v` to delete demo data). Script, Q&A, honest claims and fallbacks are in [docs/demo/README.md](docs/demo/README.md).
 
 ## Tests, lint and format
 
