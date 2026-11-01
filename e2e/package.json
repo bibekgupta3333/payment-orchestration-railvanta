@@ -6,7 +6,9 @@
     "test": "playwright test",
     "typecheck": "tsc --noEmit",
     "lint": "prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:ci": "playwright test --retries=0",
+    "test:central-demo-repeat": "playwright test api/recovery.spec.ts --grep \"central demo\" --repeat-each=20 --retries=0"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",

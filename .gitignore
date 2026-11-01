@@ -33,3 +33,4 @@ blob-report/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+junit-results/
