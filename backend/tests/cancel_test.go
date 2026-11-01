@@ -10,7 +10,6 @@ import (
 	"github.com/railvanta/railvanta/backend/internal/auth"
 	"github.com/railvanta/railvanta/backend/internal/event"
 	"github.com/railvanta/railvanta/backend/internal/payment"
-	"github.com/railvanta/railvanta/backend/internal/storage"
 )
 
 func (e *env) cancel(id, key string) (int, payment.PaymentView, string) {
@@ -92,10 +91,7 @@ func TestCancelRejectedOnceProcessingStartedAndOnBadRequests(t *testing.T) {
 // payment, attempt and audit history consistent with it.
 func TestCancelVersusDispatchRaces(t *testing.T) {
 	d := newDispatchEnv(t, dispatchConfig{})
-	canceler, err := storage.Open(context.Background(), d.path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	canceler := openTestStore(t, d.path)
 	t.Cleanup(func() { _ = canceler.Close() })
 	cancelService := payment.NewService(canceler.DB, payment.Options{})
 	const races = 100

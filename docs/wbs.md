@@ -92,7 +92,7 @@ These are the recorded implementation-session results, not fresh test runs for t
 | 4.2 | Reconciliation | 2.4, 4.1 | M4 | Implemented; keyboard-navigation and reconciliation empty/error-state gates unchecked (2026-10-31) |
 | 4.3 | Events and audit | 2.4, 1.3 | M4 | Implemented and verified locally; empty-state and keyboard checks at 375/1440 pending |
 | 4.4 | Docs and settings UI | 3.1, 1.3 | M4 | Implemented; CI run, bundle check, dark-theme contrast and 375/1440 gate items pending |
-| 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Not started |
+| 5.1 | End-to-end correctness | 3.2, 4.1–4.4 | M5 | Go and Vitest parts (5.1.1–5.1.7) done; Playwright and CI (5.1.8–5.1.11) pending |
 | 5.2 | Container delivery and recovery | 5.1 | M5 | Image/Compose source added; runtime and recovery gates pending |
 | 5.3 | Kubernetes reference deployment (optional) | 5.2 | M6 | Not started |
 | 5.4 | Release documentation | 5.2; 5.3 if used | M5 | Not started |
@@ -609,13 +609,13 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Depends on:** 3.2, 4.1–4.4 · **Deliverable:** Automated Go integration/failure suites, Vitest component tests and Playwright critical flows running in CI against the deterministic mock backend.
 
 **Tasks**
-- [ ] 5.1.1 Add a shared Go test helper in `backend/tests/` that creates a temporary file-backed SQLite database, applies all migrations, and applies the production connection PRAGMAs
-- [ ] 5.1.2 Write concurrency tests: N goroutines `POST /v1/payments` with the same `Idempotency-Key` → exactly one payment, one outbox row, identical replayed responses
-- [ ] 5.1.3 Write failure-injection tests for crash before submit, crash after provider acceptance, timeout after success, and stale lease recovery, using the mock adapter's durable state
-- [ ] 5.1.4 Write accounting tests: duplicate success result, rollback during posting, mixed-currency entries, int64 overflow, unbalanced journal, edits to posted rows
-- [ ] 5.1.5 Write workspace isolation tests: forged workspace IDs in body/path, cross-workspace foreign references, list/detail reads with another workspace's session
-- [ ] 5.1.6 Write webhook/event tests: duplicate delivery, reordered events, and payload-hash mismatch on a duplicate event ID; terminal states never regress
-- [ ] 5.1.7 Add Vitest + React Testing Library tests in `frontend/tests/components/` for money formatting (above `Number.MAX_SAFE_INTEGER`), unknown-outcome display, double-submit prevention, and loading/empty/error states
+- [x] 5.1.1 Add a shared Go test helper in `backend/tests/` that creates a temporary file-backed SQLite database, applies all migrations, and applies the production connection PRAGMAs
+- [x] 5.1.2 Write concurrency tests: N goroutines `POST /v1/payments` with the same `Idempotency-Key` → exactly one payment, one outbox row, identical replayed responses
+- [x] 5.1.3 Write failure-injection tests for crash before submit, crash after provider acceptance, timeout after success, and stale lease recovery, using the mock adapter's durable state
+- [x] 5.1.4 Write accounting tests: duplicate success result, rollback during posting, mixed-currency entries, int64 overflow, unbalanced journal, edits to posted rows
+- [x] 5.1.5 Write workspace isolation tests: forged workspace IDs in body/path, cross-workspace foreign references, list/detail reads with another workspace's session
+- [x] 5.1.6 Write webhook/event tests: duplicate delivery, reordered events, and payload-hash mismatch on a duplicate event ID; terminal states never regress
+- [x] 5.1.7 Add Vitest + React Testing Library tests in `frontend/tests/components/` for money formatting (above `Number.MAX_SAFE_INTEGER`), unknown-outcome display, double-submit prevention, and loading/empty/error states
 - [ ] 5.1.8 Add Playwright specs in `e2e/ui/` for create payment → detail, simulator "timeout after success" → resolved, ledger journal balance view, and API-offline error states
 - [ ] 5.1.9 Run Playwright at 375 px and 1440 px widths with keyboard-only navigation and an automated accessibility scan (e.g. axe) on every dashboard route
 - [ ] 5.1.10 Add a CI workflow (`.github/workflows/ci.yml`) that runs `gofmt` check, `go vet`, `go test ./...`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, Vitest and `pnpm test:e2e` against the Go API started with the mock provider
