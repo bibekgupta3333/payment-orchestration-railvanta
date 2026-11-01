@@ -27,6 +27,72 @@ type RoutingDecisionView struct {
 	Checks          []RoutingCheckView     `json:"checks"`
 	Candidates      []RoutingCandidateView `json:"candidates"`
 	FailoverBlocked bool                   `json:"failover_blocked"`
+	// Alternatives explains every provider in the workspace: why it was chosen,
+	// is eligible but lower priority, is ineligible, or is blocked from failover.
+	Alternatives []RoutingAlternativeView `json:"alternatives"`
+}
+
+// RoutingAlternativeView is one provider's routing verdict. Status is one of
+// chosen, pinned (unresolved prior attempt: lookup only), eligible_lower_priority,
+// ineligible or blocked (unsafe failover blocked: prior attempt unresolved).
+type RoutingAlternativeView struct {
+	ProviderID   string   `json:"provider_id"`
+	ProviderCode string   `json:"provider_code"`
+	Status       string   `json:"status"`
+	Eligible     bool     `json:"eligible"`
+	RuleID       *string  `json:"rule_id"`
+	Priority     *int64   `json:"priority"`
+	Reasons      []string `json:"reasons"`
+}
+
+// buildAlternatives explains each provider against the request without the
+// caller's exclusions, so a provider blocked only by the failover guard still
+// shows whether it would otherwise be eligible.
+func buildAlternatives(req routing.Request, snap routing.Snapshot, chosenID string, blocked bool, hasAdapter func(string) bool) []RoutingAlternativeView {
+	probe := req
+	probe.Excluded = map[string]string{}
+	for _, p := range snap.Providers {
+		if !hasAdapter(p.ID) {
+			probe.Excluded[p.ID] = "no adapter is configured for provider code " + p.Code
+		}
+	}
+	eligible := map[string]routing.Candidate{}
+	for _, c := range routing.Eligible(probe, snap) {
+		if _, seen := eligible[c.ProviderID]; !seen {
+			eligible[c.ProviderID] = c
+		}
+	}
+	out := []RoutingAlternativeView{}
+	for _, p := range snap.Providers {
+		view := RoutingAlternativeView{ProviderID: p.ID, ProviderCode: p.Code, Reasons: []string{}}
+		c, ok := eligible[p.ID]
+		view.Eligible = ok
+		if ok {
+			rule, prio := c.RuleID, c.Priority
+			view.RuleID, view.Priority = &rule, &prio
+		} else {
+			for _, why := range routing.Explain(probe, snap, p.ID) {
+				view.Reasons = append(view.Reasons, why.Message)
+			}
+		}
+		switch {
+		case p.ID == chosenID && blocked:
+			view.Status = "pinned"
+			view.Reasons = append(view.Reasons, "prior attempt is unresolved: only a lookup at this same provider with the stored key is allowed")
+		case blocked:
+			view.Status = "blocked"
+			view.Reasons = append(view.Reasons, "unsafe failover blocked: prior attempt unresolved")
+		case p.ID == chosenID:
+			view.Status = "chosen"
+		case ok:
+			view.Status = "eligible_lower_priority"
+			view.Reasons = append(view.Reasons, fmt.Sprintf("eligible via rule %s (priority %d) but lower priority than the chosen provider", c.RuleID, c.Priority))
+		default:
+			view.Status = "ineligible"
+		}
+		out = append(out, view)
+	}
+	return out
 }
 
 // evaluateRouting answers which provider a payment with this input would be
@@ -144,6 +210,7 @@ func (h *handler) evaluateRouting(w http.ResponseWriter, r *http.Request, princi
 				ProviderID: attempt.ProviderID, ProviderCode: codes[attempt.ProviderID], RuleID: ruleID, Priority: priority, Reason: reason,
 				Rule: ruleView, Checks: buildChecks(req, snapshot, attempt.ProviderID, rule, hasAdapter(attempt.ProviderID), reason),
 				Candidates: []RoutingCandidateView{}, FailoverBlocked: true,
+				Alternatives: buildAlternatives(req, snapshot, attempt.ProviderID, true, hasAdapter),
 			})
 			return
 		}
@@ -196,6 +263,7 @@ func (h *handler) evaluateRouting(w http.ResponseWriter, r *http.Request, princi
 	writeJSON(w, 200, RoutingDecisionView{
 		ProviderID: decision.ProviderID, ProviderCode: decision.ProviderCode, RuleID: &ruleID, Priority: &priority, Reason: decision.Reason,
 		Rule: ruleView, Checks: buildChecks(req, snapshot, decision.ProviderID, matched, hasAdapter(decision.ProviderID), ""), Candidates: candidates,
+		Alternatives: buildAlternatives(req, snapshot, decision.ProviderID, false, hasAdapter),
 	})
 }
 

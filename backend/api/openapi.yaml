@@ -2393,6 +2393,9 @@ components:
           type: string
           enum:
           - mock
+          - mock_fast
+          - mock_economy
+          - mock_ach
           - stripe
           - plaid
         configured:
@@ -2433,6 +2436,9 @@ components:
           type: string
           enum:
           - mock
+          - mock_fast
+          - mock_economy
+          - mock_ach
           - stripe
           - plaid
         display_name:
@@ -2467,6 +2473,11 @@ components:
         rule_count:
           type: integer
           minimum: 0
+        simulated_latency_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Fixed simulated processing latency of a simulated provider profile; null otherwise. Never measured.
       required:
       - id
       - code
@@ -2476,6 +2487,7 @@ components:
       - configured
       - capabilities
       - rule_count
+      - simulated_latency_ms
     ProviderDetail:
       type: object
       additionalProperties: false
@@ -2569,6 +2581,9 @@ components:
           type: string
           enum:
           - mock
+          - mock_fast
+          - mock_economy
+          - mock_ach
           - stripe
           - plaid
         rule_id:
@@ -2610,6 +2625,45 @@ components:
             - priority
         failover_blocked:
           type: boolean
+        alternatives:
+          type: array
+          description: Per-provider verdict for every provider in the workspace, including providers blocked from failover by an unresolved prior attempt.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              provider_id:
+                type: string
+              provider_code:
+                type: string
+              status:
+                type: string
+                enum:
+                - chosen
+                - pinned
+                - eligible_lower_priority
+                - ineligible
+                - blocked
+              eligible:
+                type: boolean
+              rule_id:
+                type: string
+                nullable: true
+              priority:
+                type: integer
+                nullable: true
+              reasons:
+                type: array
+                items:
+                  type: string
+            required:
+            - provider_id
+            - provider_code
+            - status
+            - eligible
+            - rule_id
+            - priority
+            - reasons
       required:
       - provider_id
       - provider_code
@@ -3440,6 +3494,9 @@ components:
                 type: string
                 enum:
                 - mock
+                - mock_fast
+                - mock_economy
+                - mock_ach
                 - stripe
                 - plaid
               label:
@@ -3496,6 +3553,7 @@ components:
           - outage
           - unknown_recovery
           - duplicate_posting
+          - settlement_mismatch
         seed:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$

@@ -57,7 +57,12 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	// The dispatcher starts only after migrations (storage.Open) and seeding.
 	providers := payment.ProviderSet{"mock": mock.New(store.DB, mock.Options{DelayedSuccessDelay: cfg.Dispatcher.MockDelayedSuccessDelay, TimeoutDelay: cfg.Dispatcher.MockTimeoutDelay})}
-	executor := payment.NewExecutor(store.DB, payment.ExecutorOptions{Providers: providers, ProviderTimeout: cfg.Dispatcher.ProviderTimeout, Logger: logger})
+	// Simulated demo providers (Demo 4): same deterministic mock adapter, distinct
+	// code, rails and fixed latency. Rows are seeded only in the demo workspace.
+	for _, profile := range mock.Profiles {
+		providers[profile.Code] = mock.NewProfile(store.DB, profile, mock.Options{DelayedSuccessDelay: cfg.Dispatcher.MockDelayedSuccessDelay, TimeoutDelay: cfg.Dispatcher.MockTimeoutDelay})
+	}
+	executor := payment.NewExecutor(store.DB, payment.ExecutorOptions{Providers: providers, ProviderTimeout: cfg.Dispatcher.ProviderTimeout, ResolveDelay: cfg.Dispatcher.RecoveryResolveDelay, Logger: logger})
 	recovery := payment.NewRecovery(store.DB, payment.RecoveryOptions{
 		Providers: providers, LookupTimeout: cfg.Dispatcher.ProviderTimeout, BaseBackoff: cfg.Dispatcher.RecoveryBaseBackoff,
 		MaxBackoff: cfg.Dispatcher.RecoveryMaxBackoff, LookupDelay: cfg.Dispatcher.RecoveryLookupDelay, Logger: logger,

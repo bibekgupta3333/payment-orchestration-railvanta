@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/railvanta/railvanta/backend/internal/provider/mock"
 	"gorm.io/gorm"
 )
 
@@ -33,6 +34,59 @@ var ScenarioMethods = []ScenarioMethod{
 	{"00000000-0000-7000-8000-000000000124", "00000000-0000-7000-8000-000000000324", "timeout_before_execution", "0004"},
 	{"00000000-0000-7000-8000-000000000125", "00000000-0000-7000-8000-000000000325", "timeout_after_success", "0005"},
 	{"00000000-0000-7000-8000-000000000126", "00000000-0000-7000-8000-000000000326", "outage", "0006"},
+}
+
+// Demo routing story (Demo 4). All three providers are SIMULATED mock profiles
+// seeded in the demo workspace only (see provider/mock profiles). Methods hold a
+// token at each listed provider; the token reference selects the mock scenario.
+const (
+	// RoutingCardMethodID: card; tokens at mock_fast and mock_economy (both
+	// success). Routes to mock_fast (priority 0); mock_economy is eligible but
+	// lower priority (priority 1).
+	RoutingCardMethodID = "00000000-0000-7000-8000-000000000131"
+	// RoutingACHMethodID: ach; tokens at mock_ach and mock_fast. USD amounts up
+	// to 100000 minor units match both (mock_ach priority 0 wins); larger amounts
+	// only match mock_ach because the mock_fast ach rule is bounded.
+	RoutingACHMethodID = "00000000-0000-7000-8000-000000000132"
+	// RoutingOutageMethodID: card; the token at mock_fast selects the outage
+	// scenario (payment ends unknown) while mock_economy also holds a success
+	// token. The unknown payment is never retried at mock_economy.
+	RoutingOutageMethodID = "00000000-0000-7000-8000-000000000133"
+	// RoutingEconomyOnlyMethodID: card; token only at mock_economy, so the router
+	// reports mock_fast as ineligible (no token) and picks mock_economy.
+	RoutingEconomyOnlyMethodID = "00000000-0000-7000-8000-000000000134"
+
+	RoutingCardRuleFast    = "00000000-0000-7000-8000-000000000731"
+	RoutingCardRuleEconomy = "00000000-0000-7000-8000-000000000732"
+	RoutingACHRuleACH      = "00000000-0000-7000-8000-000000000733"
+	RoutingACHRuleFast     = "00000000-0000-7000-8000-000000000734"
+	RoutingACHFastMaxMinor = 100000
+	routingDemoCurrency    = "USD"
+)
+
+type routingDemoMethod struct {
+	ID, Rail, Brand, LastFour string
+	Tokens                    []routingDemoToken
+}
+
+type routingDemoToken struct {
+	ID       string
+	Profile  mock.Profile
+	Scenario string
+}
+
+var routingDemoMethods = []routingDemoMethod{
+	{RoutingCardMethodID, "card", "Routing demo card", "4131", []routingDemoToken{
+		{"00000000-0000-7000-8000-000000000331", mock.ProfileFast, "success"},
+		{"00000000-0000-7000-8000-000000000332", mock.ProfileEconomy, "success"}}},
+	{RoutingACHMethodID, "ach", "Routing demo ACH", "4132", []routingDemoToken{
+		{"00000000-0000-7000-8000-000000000333", mock.ProfileACH, "success"},
+		{"00000000-0000-7000-8000-000000000334", mock.ProfileFast, "success"}}},
+	{RoutingOutageMethodID, "card", "Routing demo outage at preferred", "4133", []routingDemoToken{
+		{"00000000-0000-7000-8000-000000000335", mock.ProfileFast, "outage"},
+		{"00000000-0000-7000-8000-000000000336", mock.ProfileEconomy, "success"}}},
+	{RoutingEconomyOnlyMethodID, "card", "Routing demo economy only", "4134", []routingDemoToken{
+		{"00000000-0000-7000-8000-000000000337", mock.ProfileEconomy, "success"}}},
 }
 
 // SeedCurrencies receive one priority-0 mock-rail routing rule per workspace.
@@ -102,6 +156,9 @@ func SeedDemo(ctx context.Context, db *gorm.DB, credentials DemoCredentials) err
 					)
 				}
 			}
+			if i == 0 {
+				statements = append(statements, routingDemoStatements(workspace, now)...)
+			}
 			for _, statement := range statements {
 				if err := tx.Exec(statement.SQL, statement.Args...).Error; err != nil {
 					return err
@@ -151,4 +208,36 @@ func SeedDemo(ctx context.Context, db *gorm.DB, credentials DemoCredentials) err
 		}
 		return nil
 	})
+}
+
+type seedStatement = struct {
+	SQL  string
+	Args []any
+}
+
+// routingDemoStatements seeds the simulated providers, their card/ach rules,
+// and the demo methods. Everything is additive (ON CONFLICT DO NOTHING).
+func routingDemoStatements(workspace string, now int64) []seedStatement {
+	var out []seedStatement
+	for _, p := range mock.Profiles {
+		out = append(out, seedStatement{"INSERT INTO providers(id,workspace_id,code,enabled,created_at) VALUES(?,?,?,1,?) ON CONFLICT(id) DO NOTHING", []any{p.ID, workspace, p.Code, now}})
+	}
+	rule := func(id string, p mock.Profile, rail string, priority int64, max any) seedStatement {
+		return seedStatement{"INSERT INTO routing_rules(id,workspace_id,provider_id,rail,currency,priority,min_amount_minor,max_amount_minor,enabled,version,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,1,1,?,?) ON CONFLICT DO NOTHING",
+			[]any{id, workspace, p.ID, rail, routingDemoCurrency, priority, max, now, now}}
+	}
+	out = append(out,
+		rule(RoutingCardRuleFast, mock.ProfileFast, "card", 0, nil),
+		rule(RoutingCardRuleEconomy, mock.ProfileEconomy, "card", 1, nil),
+		rule(RoutingACHRuleACH, mock.ProfileACH, "ach", 0, nil),
+		rule(RoutingACHRuleFast, mock.ProfileFast, "ach", 1, RoutingACHFastMaxMinor),
+	)
+	for _, m := range routingDemoMethods {
+		out = append(out, seedStatement{"INSERT INTO payment_methods(id,workspace_id,rail,brand,last_four,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING", []any{m.ID, workspace, m.Rail, m.Brand, m.LastFour, now}})
+		for _, t := range m.Tokens {
+			out = append(out, seedStatement{"INSERT INTO payment_method_tokens(id,workspace_id,method_id,provider_id,token_reference,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
+				[]any{t.ID, workspace, m.ID, t.Profile.ID, "mock_" + t.Scenario + "_" + m.ID + "_" + t.Profile.Code, now}})
+		}
+	}
+	return out
 }

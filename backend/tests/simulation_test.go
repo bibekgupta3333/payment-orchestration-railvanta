@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,12 @@ import (
 // simulation exercises the same pipeline as production.
 func newSimEnv(t *testing.T) *dispatchEnv {
 	t.Helper()
-	d := newDispatchEnv(t, dispatchConfig{poll: 5 * time.Millisecond})
+	return newSimEnvWith(t, dispatchConfig{poll: 5 * time.Millisecond})
+}
+
+func newSimEnvWith(t *testing.T, cfg dispatchConfig) *dispatchEnv {
+	t.Helper()
+	d := newDispatchEnv(t, cfg)
 	d.addRecovery(payment.RecoveryHooks{}, nil)
 	d.dispatcher.Start()
 	t.Cleanup(func() {
@@ -98,6 +104,7 @@ func TestSimulationScenariosEndWithPassingInvariants(t *testing.T) {
 		{simulation.Outage, "unknown", 0, 1},
 		{simulation.UnknownRecovery, "succeeded", 1, 1},
 		{simulation.DuplicatePosting, "succeeded", 1, 1},
+		{simulation.SettlementMismatch, "unknown", 0, 1},
 		{simulation.DuplicateWebhook, "succeeded", 1, 1},
 		{simulation.ReorderedEvents, "succeeded", 1, 1},
 	}
@@ -492,4 +499,140 @@ func TestSimulationReorderedEventsScenario(t *testing.T) {
 	}
 	d.invariant(view, simulation.InvLateEventIgnored)
 	d.requireLedger()
+}
+
+// P0-a: with a resolve delay the response-lost payment visibly sits in unknown
+// (charge already recorded, key kept) and then resolves by lookup.
+func TestSimulationResolveDelayKeepsPaymentUnknownThenResolves(t *testing.T) {
+	d := newSimEnvWith(t, dispatchConfig{poll: 5 * time.Millisecond, resolveDelay: time.Second})
+	started := time.Now()
+	_, run := d.simulate(simulation.TimeoutAfterSuccess, "watchable")
+	deadline := time.Now().Add(15 * time.Second)
+	var unknownSince time.Time
+	for {
+		response := d.do("GET", "/v1/sandbox/simulations/"+run.ID, credentials.OperatorKey, "", "")
+		var view httpapi.SimulationView
+		if err := json.Unmarshal(response.Body.Bytes(), &view); err != nil {
+			t.Fatal(err)
+		}
+		if view.Payment != nil && view.Payment.Status == "unknown" {
+			if unknownSince.IsZero() {
+				unknownSince = time.Now()
+				id := view.Payment.ID
+				if got := d.count("mock_provider_charges", "provider_idempotency_key = ?", payment.ProviderIdempotencyKey(id, 1)); got != 1 {
+					t.Fatalf("%d charges recorded while unknown", got)
+				}
+				if got := len(d.journals(id)); got != 0 {
+					t.Fatalf("%d journals while unknown", got)
+				}
+				attempts := d.attempts(id)
+				if len(attempts) != 1 || attempts[0].Status != payment.AttemptUnknown || attempts[0].ProviderIdempotencyKey == "" {
+					t.Fatalf("attempts while unknown %+v", attempts)
+				}
+			}
+		}
+		if view.Status != storage.SimulationRunning {
+			if view.Payment.Status != "succeeded" {
+				t.Fatalf("final %s %v", view.Payment.Status, view.FailureReason)
+			}
+			requireAllPass(t, view)
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("run still going")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if unknownSince.IsZero() {
+		t.Fatal("never observed the unknown state")
+	}
+	if elapsed := time.Since(started); elapsed < 900*time.Millisecond {
+		t.Fatalf("resolved after %s, before the 1s delay", elapsed)
+	}
+	id := d.paymentIDOfRun(run.ID)
+	if got := d.count("mock_provider_charges", "1 = 1"); got != 1 {
+		t.Fatalf("%d charges", got)
+	}
+	if got := len(d.journals(id)); got != 1 {
+		t.Fatalf("%d journals", got)
+	}
+}
+
+func (d *dispatchEnv) paymentIDOfRun(runID string) string {
+	d.t.Helper()
+	var stored storage.SimulationRun
+	if err := d.store.DB.Where("id = ?", runID).Take(&stored).Error; err != nil || stored.PaymentID == nil {
+		d.t.Fatalf("run %s: %v", runID, err)
+	}
+	return *stored.PaymentID
+}
+
+// P0-b: ten concurrent requests with one key and one changed-amount request.
+func TestSimulationDuplicateRequestTenWayBurst(t *testing.T) {
+	d := newSimEnv(t)
+	_, started := d.simulate(simulation.DuplicateRequest, "burst")
+	view := d.awaitSimulation(started.ID)
+	requireAllPass(t, view)
+	burst := d.invariant(view, simulation.InvDuplicateBurst)
+	if want := "10 request(s) sent: 1 first-accept (202), 9 replay(s), 0 error(s); changed-amount request answered HTTP 409 idempotency_conflict"; burst.Evidence != want {
+		t.Fatalf("burst evidence %q", burst.Evidence)
+	}
+	single := d.invariant(view, simulation.InvDuplicateSingle)
+	if want := "payments=1 idempotency_records=1 provider_attempts=1 mock_charges=1 outbox_dispatch_rows=1"; single.Evidence != want {
+		t.Fatalf("single-effect evidence %q", single.Evidence)
+	}
+	id := view.Payment.ID
+	if d.count("payments", "merchant_reference = ?", view.Request.MerchantReference) != 1 ||
+		d.count("idempotency_records", "key = ?", view.Request.IdempotencyKey) != 1 ||
+		d.count("payment_attempts", "payment_id = ?", id) != 1 ||
+		d.count("mock_provider_charges", "1 = 1") != 1 ||
+		d.count("outbox_events", "payment_id = ? AND event_type = ?", id, payment.OutboxPaymentDispatch) != 1 {
+		t.Fatal("duplicate burst left more than one effect row")
+	}
+	found := map[string]string{}
+	for _, row := range view.Timeline {
+		found[row.Title] = row.Detail
+	}
+	if found["duplicate_burst"] == "" || found["changed_amount_request"] == "" {
+		t.Fatalf("timeline lacks burst steps: %v", found)
+	}
+}
+
+// P0-c: settlement mismatch is investigated by a reconciliation run that
+// changes no ledger row and is resolved with evidence only.
+func TestSimulationSettlementMismatchIsEvidenceOnly(t *testing.T) {
+	d := newSimEnv(t)
+	_, started := d.simulate(simulation.SettlementMismatch, "recon")
+	view := d.awaitSimulation(started.ID)
+	if view.Status != storage.SimulationCompleted || view.Payment == nil || view.Payment.Status != "unknown" {
+		t.Fatalf("run %s payment %+v failure %v", view.Status, view.Payment, view.FailureReason)
+	}
+	requireAllPass(t, view)
+	id := view.Payment.ID
+	var rows []storage.ReconciliationDiscrepancy
+	if err := d.store.DB.Where("payment_id = ?", id).Find(&rows).Error; err != nil || len(rows) != 1 {
+		t.Fatalf("%d discrepancies %v", len(rows), err)
+	}
+	if rows[0].Kind != "unknown_outcome" || rows[0].Status != "investigating" || !strings.Contains(rows[0].Details, `"simulated":true`) || !strings.Contains(rows[0].Details, `"status":"succeeded"`) {
+		t.Fatalf("discrepancy %+v", rows[0])
+	}
+	if d.count("reconciliation_resolution_events", "discrepancy_id = ?", rows[0].ID) != 1 {
+		t.Fatal("expected one resolution event")
+	}
+	if got := len(d.journals(id)); got != 0 || d.count("ledger_journals", "payment_id = ?", id) != 0 {
+		t.Fatalf("%d journals for an unknown payment", got)
+	}
+	if got := d.statuses(id); len(got) != 3 || got[2] != "unknown" {
+		t.Fatalf("transitions %v", got)
+	}
+	var changed string
+	for _, row := range view.Timeline {
+		if row.Title == "ledger_rows_changed" {
+			changed = row.Detail
+		}
+	}
+	if !strings.HasPrefix(changed, "ledger rows changed: 0 ") {
+		t.Fatalf("ledger step %q", changed)
+	}
+	d.requireNoOtherProvider(id)
 }
