@@ -1,0 +1,14 @@
+/* The shared "Default demo" card shown at the top of dashboard pages. */
+.default-demo {
+  border-left: 4px solid var(--accent, #0f766e);
+}
+.default-demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+.default-demo-result {
+  margin-top: 0.5rem;
+}

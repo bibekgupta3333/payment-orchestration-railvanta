@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // ErrNoEligibleProvider is returned when no candidate passes every check.
@@ -112,6 +113,11 @@ func Decide(req Request, snap Snapshot) (Decision, error) {
 		best.RuleID, best.Priority, req.Rail, req.Currency, req.AmountMinor, bounds(rule), providerLabel(best.ProviderCode, best.ProviderID))
 	if others := len(candidates) - 1; others > 0 {
 		reason += fmt.Sprintf("; %d lower-priority candidate(s) remain", others)
+		var names []string
+		for _, c := range candidates[1:] {
+			names = append(names, fmt.Sprintf("%s (rule %s, priority %d)", providerLabel(c.ProviderCode, c.ProviderID), c.RuleID, c.Priority))
+		}
+		reason += ": " + strings.Join(names, ", ") + " eligible but lower priority"
 	}
 	return Decision{
 		ProviderID: best.ProviderID, ProviderCode: best.ProviderCode, RuleID: best.RuleID,

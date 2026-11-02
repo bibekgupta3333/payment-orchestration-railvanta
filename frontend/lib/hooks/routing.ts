@@ -150,6 +150,9 @@ export function useEvaluateRouting() {
 export interface StartSimulationInput {
   scenario: string;
   seed: string;
+  /** Overrides the seed-derived amount, in minor units (decimal string). */
+  amount_minor?: string;
+  currency?: string;
 }
 
 export function useStartSimulation() {

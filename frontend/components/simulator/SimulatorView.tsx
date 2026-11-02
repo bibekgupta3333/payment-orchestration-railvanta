@@ -13,9 +13,13 @@ import {
   useSimulation,
   useStartSimulation,
 } from "@/lib/hooks/routing";
+import { freshSeed } from "@/lib/hooks/dashboard-demo";
 import { formatMoney } from "@/lib/money";
 
 export const simulatedLabel = "SIMULATED / SANDBOX ONLY";
+
+/** The headline default: a provider timeout after the charge succeeded. */
+export const defaultScenario = "timeout_after_success";
 
 const invariantLabels = { pending: "Pending", pass: "Pass", fail: "Fail" };
 const invariantIcons = { pending: "○", pass: "✓", fail: "✕" };
@@ -445,7 +449,14 @@ export function SimulatorView() {
   const [seed, setSeed] = useState("demo");
   const [announced, setAnnounced] = useState(false);
   const items = scenarios.query.data?.data.items ?? [];
-  const chosen = scenario || items.find((item) => item.implemented)?.id || "";
+  const defaultItem = items.find(
+    (item) => item.id === defaultScenario && item.implemented,
+  );
+  const chosen =
+    scenario ||
+    defaultItem?.id ||
+    items.find((item) => item.implemented)?.id ||
+    "";
   const chosenItem = items.find((item) => item.id === chosen);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -454,6 +465,25 @@ export function SimulatorView() {
     setAnnounced(false);
     start.mutate(
       { scenario: chosen, seed: seed.trim() || "default" },
+      {
+        onSuccess: (run) => {
+          setAnnounced(true);
+          router.push(`${pathname}?run=${encodeURIComponent(run.id)}`);
+        },
+      },
+    );
+  };
+
+  const runDefaultDemo = () => {
+    if (!defaultItem) return;
+    setAnnounced(false);
+    start.mutate(
+      {
+        scenario: defaultItem.id,
+        seed: freshSeed(),
+        amount_minor: "10000",
+        currency: "USD",
+      },
       {
         onSuccess: (run) => {
           setAnnounced(true);
@@ -488,6 +518,21 @@ export function SimulatorView() {
         >
           {() => (
             <>
+              <div className="default-demo-actions">
+                <Button
+                  type="button"
+                  onClick={runDefaultDemo}
+                  disabled={start.isPending || !defaultItem}
+                  data-testid="run-default-demo"
+                >
+                  {start.isPending ? "Starting…" : "Run default demo"}
+                </Button>
+                <span className="muted small">
+                  {defaultItem
+                    ? "Runs the timeout-after-success scenario (the provider charges, then the response is lost) for a simulated $100.00 USD payment and opens its timeline."
+                    : "The default scenario is not available from the backend."}
+                </span>
+              </div>
               <form onSubmit={onSubmit} className="filter-bar">
                 <div className="field field-wide">
                   <label htmlFor={`${id}-scenario`}>Scenario</label>

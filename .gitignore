@@ -34,3 +34,6 @@ blob-report/
 # Claude Code agent worktrees
 .claude/worktrees/
 junit-results/
+
+# Throwaway demo credentials and recordings (scripts/demo-up.sh)
+.demo/

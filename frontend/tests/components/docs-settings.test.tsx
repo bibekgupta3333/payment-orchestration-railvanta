@@ -76,7 +76,7 @@ const settings: Settings = {
     { code: "plaid", label: "Plaid", status: "not_configured" },
   ],
   capabilities: {
-    api_key_management: "unavailable",
+    api_key_management: "available",
     role_management: "unavailable",
     live_activation: "unavailable",
   },
@@ -94,11 +94,15 @@ describe("settings", () => {
     expect(within(table).getAllByText("Not configured")).toHaveLength(2);
   });
 
-  it("shows key, role and live-activation as unavailable with no controls", () => {
+  it("shows role and live-activation as unavailable with no controls", () => {
     render(<SettingsDetails settings={settings} />);
+    expect(unavailableCapabilities.map((item) => item.label)).toEqual([
+      "Member roles",
+      "Live activation",
+    ]);
     for (const item of unavailableCapabilities)
       expect(screen.getByText(item.label)).toBeVisible();
-    expect(screen.getAllByText("Unavailable")).toHaveLength(3);
+    expect(screen.getAllByText("Unavailable")).toHaveLength(2);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();

@@ -6,6 +6,7 @@ packages:
   - packages/* # shared TS packages, e.g. a client generated from OpenAPI (WBS 1.3)
 
 allowBuilds:
+  '@scarf/scarf': false # swagger-ui-dist analytics postinstall; not needed
   unrs-resolver: false # prebuilt native binary ships via optional deps; skip its postinstall
 
 # Keep running a Go script independent of JS dependency installation. CI and

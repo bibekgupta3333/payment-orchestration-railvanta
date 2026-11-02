@@ -6,7 +6,7 @@ Railvanta demonstrates payment routing, durable execution, a double-entry ledger
 
 **Status: implemented (M1–M6), verified locally.** Results and their limits are in the [code changelog](../CODECHANGELOG.md) and the [verification matrix](verification-matrix.md). The system runs against one deterministic mock provider with sandbox payments only.
 
-**Not implemented:** Stripe and Plaid adapters, real fund movement, capture and refunds, routing-rule mutation, API-key or member management in the UI, webhook signature verification (mock events are unsigned), a metrics exporter, Kafka, Redis, Temporal, additional backend services, and high availability. Dashboard controls for these are absent or shown as unavailable. Decisions that diverged from the original design are recorded as ADRs; see the [ADR index](README.md#architecture-decisions).
+**Not implemented:** Stripe and Plaid adapters, real fund movement, capture and refunds, routing-rule mutation, member or role management and API-key rotation (sandbox key generation, listing and revocation exist in Settings, ADR 0011), webhook signature verification (mock events are unsigned), a metrics exporter, Kafka, Redis, Temporal, additional backend services, and high availability. Dashboard controls for these are absent or shown as unavailable. Decisions that diverged from the original design are recorded as ADRs; see the [ADR index](README.md#architecture-decisions).
 
 | Concern | Implemented choice | Reason / boundary |
 | --- | --- | --- |
@@ -133,7 +133,7 @@ The [data model](backend/data-model.md) distinguishes SQL-enforced constraints f
 
 ## Trust, observability, and limits
 
-**Authentication.** API keys (`Authorization: Bearer prefix.secret`, stored as SHA-256 hashes) and expiring sessions (`__Host-railvanta_session` cookie with a hashed CSRF token and an `X-CSRF-Token` header for writes). Roles are `operator` and `reader`; writes need `operator`. A request limiter allows 600 requests per minute per remote host. `DEMO_MODE` seeds fixed fixtures only when the API binds to literal loopback; containers keep it off and use `railvanta-api seed-demo`.
+**Authentication.** API keys (`Authorization: Bearer prefix.secret`, stored as SHA-256 hashes) and expiring sessions (`__Host-railvanta_session` cookie with a hashed CSRF token and an `X-CSRF-Token` header for writes). With the opt-in `SANDBOX_PUBLIC_ACCESS` flag, `POST /v1/sandbox/session` issues such a session to an unauthenticated same-origin visitor as an operator of the demo workspace ([ADR 0013](decisions/0013-public-sandbox-access-and-default-demos.md)). Roles are `operator` and `reader`; writes need `operator`. A request limiter allows 600 requests per minute per remote host. `DEMO_MODE` seeds fixed fixtures only when the API binds to literal loopback; containers keep it off and use `railvanta-api seed-demo`.
 
 **Webhooks.** `POST /v1/sandbox/webhooks/mock` is an operator-authenticated sandbox endpoint, not a public provider webhook ([ADR 0005](decisions/0005-sandbox-only-mock-webhook.md)). `webhook_inbox.signature_status` has a `verified` value, but nothing writes it: raw-body signature verification belongs to a future real adapter.
 

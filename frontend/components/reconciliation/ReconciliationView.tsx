@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useId, useRef, useState, type FormEvent } from "react";
+import { DefaultDemo } from "@/components/demo/DefaultDemo";
 import { Badge, Button, Card, EmptyState, Table } from "@/components/ui";
 import { Dialog } from "@/components/ui/dialog";
 import { QueryState } from "@/components/ui/query-state";
@@ -116,6 +117,13 @@ export function ReconciliationView() {
         <RunControl role={role} sessionPending={session.query.isPending} />
       </div>
 
+      <DefaultDemo
+        id="reconciliation"
+        scenario="settlement_mismatch"
+        description="Starts a real $100.00 USD sandbox payment whose provider-side record disagrees with ours, then reconciles it. The provider evidence is simulated, and nothing here adjusts the ledger."
+        producesLabel="a discrepancy with simulated provider evidence (takes about 6 seconds)"
+      />
+
       <QueryState
         query={runs.query}
         workspace={runs.workspace}
@@ -125,7 +133,8 @@ export function ReconciliationView() {
           runList.length === 0 ? (
             <EmptyState title="No reconciliation runs yet">
               Run a sandbox reconciliation to compare provider evidence with
-              payment and ledger records.
+              payment and ledger records, or run the default demo above to
+              create a discrepancy.
             </EmptyState>
           ) : (
             <>

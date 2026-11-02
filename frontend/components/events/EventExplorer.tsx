@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useId, type FormEvent } from "react";
 import { formatTimestamp, shortId } from "@/components/payments/PaymentTable";
+import { DefaultDemo } from "@/components/demo/DefaultDemo";
 import { Badge, Button, EmptyState, Table } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
 import { signatureLabels, type EventItem } from "@/lib/api/event-schemas";
@@ -117,6 +118,13 @@ export function EventExplorer() {
         </Button>
       </div>
 
+      <DefaultDemo
+        id="events"
+        scenario="duplicate_webhook"
+        description="Starts a real $100.00 USD sandbox payment and delivers its provider webhook twice. The inbox records the duplicate and never applies it again."
+        producesLabel="webhook inbox events with a duplicate count"
+      />
+
       <form
         className="filter-bar"
         aria-label="Event filters"
@@ -215,7 +223,7 @@ export function EventExplorer() {
                 <EmptyState title="No events match">
                   {hasFilters
                     ? "No inbox or outbox events match these filters."
-                    : "Create a sandbox payment to see its events."}
+                    : "Run the default demo above, or create a sandbox payment, to see its events."}
                 </EmptyState>
               ) : (
                 <>

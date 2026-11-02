@@ -591,14 +591,14 @@ M2 is the first correctness milestone: a payment survives response loss and proc
 **Acceptance gate**
 - [ ] Every code example on `/docs` passes validation against the current OpenAPI document in CI.
 - [ ] No secrets or real credentials appear in the docs, the settings page or the frontend bundle (CI checks the bundle).
-- [x] The settings page has no fake key generation, membership management or live-activation buttons.
+- [x] The settings page has no fake key generation, membership management or live-activation buttons. (Superseded 2026-11-01: key generation is now real, not fake, ADR 0011; membership management and live activation remain absent.)
 - [ ] Requests for another workspace's settings are rejected.
 - [ ] The theme choice persists locally and both themes meet contrast requirements.
 - [ ] Docs and settings work at 375px and 1440px, are keyboard-navigable, and axe reports no serious or critical violations.
 
 **E2E test** — `e2e/ui/docs-settings.spec.ts`
 - [x] Every example on `/docs` runs against the live sandbox API and returns the documented response
-- [x] The settings page offers only supported actions (theme); live activation and key generation are absent or shown as unavailable
+- [x] The settings page offers only supported actions (theme); live activation and key generation are absent or shown as unavailable (Updated 2026-11-01: the sandbox API key generator is now a supported action, ADR 0011; live activation and role management remain unavailable. Covered by `e2e/ui/docs-settings.spec.ts`.)
 - [x] The theme choice persists across reload, and the Sandbox badge stays visible in both themes
 - [x] Secret values never appear in page HTML or network responses
 - [x] `pnpm test:e2e` passes in full: this spec plus every earlier package's specs

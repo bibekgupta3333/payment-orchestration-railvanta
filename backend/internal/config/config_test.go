@@ -18,6 +18,13 @@ func TestLoad(t *testing.T) {
 		{"health hostname refused", map[string]string{"APP_ENV": "sandbox", "HEALTH_ADDR": "localhost:8081"}, true},
 		{"origin credentials refused", map[string]string{"APP_ENV": "sandbox", "PUBLIC_APP_ORIGIN": "https://secret@example.com"}, true},
 		{"origin path refused", map[string]string{"APP_ENV": "sandbox", "PUBLIC_APP_ORIGIN": "https://example.com/path"}, true},
+		{"public sandbox access on", map[string]string{"APP_ENV": "sandbox", "SANDBOX_PUBLIC_ACCESS": "true"}, false},
+		{"invalid public sandbox boolean", map[string]string{"APP_ENV": "sandbox", "SANDBOX_PUBLIC_ACCESS": "yes"}, true},
+		{"sample data without a demo workspace refused", map[string]string{"APP_ENV": "sandbox", "SANDBOX_SAMPLE_DATA": "true"}, true},
+		{"sample data with demo mode", map[string]string{"APP_ENV": "sandbox", "SANDBOX_SAMPLE_DATA": "true", "DEMO_MODE": "true", "HTTP_ADDR": "127.0.0.1:8080"}, false},
+		{"sample data with public sandbox access", map[string]string{"APP_ENV": "sandbox", "SANDBOX_SAMPLE_DATA": "true", "SANDBOX_PUBLIC_ACCESS": "true"}, false},
+		{"sample data off without demo", map[string]string{"APP_ENV": "sandbox", "SANDBOX_SAMPLE_DATA": "false"}, false},
+		{"invalid sample data boolean", map[string]string{"APP_ENV": "sandbox", "SANDBOX_SAMPLE_DATA": "yes"}, true},
 		{"invalid demo boolean", map[string]string{"APP_ENV": "sandbox", "DEMO_MODE": "yes"}, true},
 		{"dispatcher overrides", map[string]string{"APP_ENV": "sandbox", "DISPATCHER_POLL_INTERVAL": "20ms", "DISPATCHER_LEASE": "2s", "PROVIDER_TIMEOUT": "15s", "MOCK_DELAYED_SUCCESS_DELAY": "8s", "MOCK_TIMEOUT_DELAY": "100ms", "DISPATCHER_MAX_IN_FLIGHT": "8"}, false},
 		{"poll interval too small", map[string]string{"APP_ENV": "sandbox", "DISPATCHER_POLL_INTERVAL": "1ms"}, true},
@@ -43,6 +50,9 @@ func TestDispatcherDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := got.Dispatcher
+	if got.SandboxSampleData || got.PublicSandboxAccess {
+		t.Fatal("sandbox opt-ins must default to false")
+	}
 	if d.PollInterval <= 0 || d.LeaseDuration <= d.ProviderTimeout || d.MaxInFlight != 4 || d.MockDelayedSuccessDelay <= 0 || d.MockTimeoutDelay <= 0 {
 		t.Fatalf("unexpected defaults %+v", d)
 	}

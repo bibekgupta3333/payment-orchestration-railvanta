@@ -27,6 +27,7 @@ const (
 	Outage                 = "outage"
 	UnknownRecovery        = "unknown_recovery"
 	DuplicatePosting       = "duplicate_posting"
+	SettlementMismatch     = "settlement_mismatch"
 )
 
 // Scenario describes one catalog entry.
@@ -56,8 +57,8 @@ var Catalog = []Scenario{
 		Implemented: true, InjectedFault: "provider times out before executing the charge", MockScenario: "timeout_before_execution", ExpectedStatus: payment.StatusUnknown},
 	{ID: TimeoutAfterSuccess, Label: "Timeout after success", Description: "The provider executes the charge but the response is lost. The payment becomes unknown and a lookup at the same provider resolves it to succeeded.",
 		Implemented: true, InjectedFault: "response lost after the provider executed the charge", MockScenario: "timeout_after_success", ExpectedStatus: payment.StatusSucceeded},
-	{ID: DuplicateRequest, Label: "Duplicate request", Description: "The same Idempotency-Key is submitted concurrently. One payment results and every replay returns it.",
-		Implemented: true, InjectedFault: "the create request is sent three times with one Idempotency-Key", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
+	{ID: DuplicateRequest, Label: "Duplicate request", Description: "Ten concurrent requests share one Idempotency-Key. Exactly one is accepted and nine replay the stored response. An eleventh request with the same key and a changed amount is rejected with 409 idempotency_conflict. One payment, one provider attempt and one charge result.",
+		Implemented: true, InjectedFault: "the create request is sent ten times concurrently with one Idempotency-Key, then once more with a changed amount", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
 	{ID: DuplicateWebhook, Label: "Duplicate webhook", Description: "After the payment succeeds, the same provider event is delivered several times (3 to 5, from the seed) through the real webhook inbox. One inbox row counts the repeats and no second financial effect occurs.",
 		Implemented: true, InjectedFault: "the same provider webhook event is delivered repeatedly", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
 	{ID: ReorderedEvents, Label: "Reordered events", Description: "After the payment succeeds, a stale processing event and a contradicting late failure arrive through the real webhook inbox. The terminal state holds and the late failure is kept for reconciliation.",
@@ -68,6 +69,8 @@ var Catalog = []Scenario{
 		Implemented: true, InjectedFault: "response lost after the provider executed the charge; recovery must resolve it", MockScenario: "timeout_after_success", ExpectedStatus: payment.StatusSucceeded},
 	{ID: DuplicatePosting, Label: "Duplicate ledger post", Description: "After success, the success journal is posted twice more with the same posting key. Exactly one balanced journal must exist.",
 		Implemented: true, InjectedFault: "the ledger success posting is replayed twice", MockScenario: "success", ExpectedStatus: payment.StatusSucceeded},
+	{ID: SettlementMismatch, Label: "Settlement mismatch investigation", Description: "The provider-side charge SUCCEEDED (a labelled simulated provider record) while the internal payment is still unknown. A reconciliation run records an unknown_outcome discrepancy with provider evidence, changes no payment or ledger row, and the discrepancy is moved to investigating with an evidence-only note.",
+		Implemented: true, InjectedFault: "simulated provider-side settlement recorded while the internal payment stays unknown; recovery lookups held for the investigation", MockScenario: "outage", ExpectedStatus: payment.StatusUnknown},
 }
 
 // ErrUnknownScenario means the identifier is not in the catalog.

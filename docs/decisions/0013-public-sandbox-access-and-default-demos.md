@@ -1,0 +1,25 @@
+# ADR 0013: Public sandbox access and default demos
+
+Status: accepted (implemented in `backend/` sandbox session handlers, `frontend/components/demo/DefaultDemo.tsx`, the landing page and the dashboard pages; details in [wireframes](../frontend/wireframes.md) and [frontend design](../frontend/design.md)).
+
+## Context
+
+- The API could not be called without operator-provisioned credentials (`railvanta-api seed-demo`, `pnpm demo:up` or an operator session to mint a key in Settings, ADR 0011). Even the curl on the landing page answered `401`, and a first-time visitor had no way to obtain a key from the page that advertised the API.
+- Every dashboard page opened empty until someone found the Playground or the hub and ran a simulation, so a reviewer saw "No payments yet" on Payments, Routing, Ledger, Reconciliation and Events.
+
+## Decision
+
+1. **Public sandbox access (opt-in).** A new flag `SANDBOX_PUBLIC_ACCESS` (default `false`) enables two public endpoints. `GET /v1/sandbox/status` reports whether public access is on. `POST /v1/sandbox/session` is same-origin only (the `Origin` header must equal the configured public origin) and creates a throwaway visitor with the **operator** role in the shared demo workspace. It sets the HttpOnly session cookie and the readable CSRF cookie, and the session lives 12 hours. `DELETE /v1/sandbox/session` signs out. Limits: 30 sessions per client address per hour and a global cap of 500 live visitor sessions (expired ones are cleaned up). `docker-compose.yml` and `docker-compose.demo.yml` (loopback-only) set the flag to `true`; the Kubernetes manifests and `docker-compose.e2e.yml` leave it off.
+2. **Landing page.** The landing page leads with a three.js payment-lifecycle visual (Client, API, Outbox, Dispatcher and Router, Provider, Ledger, Reconciliation, with a travelling token and a Happy path, Lost response or Duplicate request selector; it has an accessible text list and reduced-motion and no-WebGL fallbacks) and a "Call the API in one step" panel: **Start sandbox** creates a session, mints a one-time key, and shows a curl that already contains the real key and a real payment-method id, with **Run it** and a replay.
+3. **Default demos on every dashboard page.** A shared `DefaultDemo` card runs one real $100.00 sandbox simulation on click and refreshes the page's data when the run settles: Payments (success), Routing (a preselected routing-demo method; the one automatic read-only evaluation on first load; the default demo is the outage, which prefills the payment id so "failover blocked" appears), Providers (success), Simulator (preselected scenario plus **Run default demo**), Ledger (`duplicate_posting`), Reconciliation (`settlement_mismatch`), Events (`duplicate_webhook`) and Settings (**Generate default demo key**). The hub's **Load sample data** card runs the eight headline scenarios sequentially (about 20 seconds).
+4. **Nothing runs or mints on page load**, except the Routing page's single read-only evaluation (`POST /v1/routing/evaluate` creates nothing).
+
+## Consequences
+
+- This is an explicit, opt-in, loopback-only relaxation of the trust model. Whoever can reach the loopback proxy becomes an operator of the shared sandbox workspace. There are no real funds and no real credentials, but visitors share data and can see and revoke one another's keys. Do not enable the flag on a network-exposed deployment.
+- Abuse is bounded, not prevented: the per-address and global session caps, the `Origin` check, the 12-hour expiry, and the existing 20-active-key cap and 600-requests-per-minute limiter. The per-address count rests on the remote address, which is the proxy's address behind a shared proxy.
+- Secrets are still shown once and stored hashed. The ADR 0011 caveats (an operator key can mint more keys until revoked or expired, no rotation, no scopes beyond read/operator) and the ADR 0012 Swagger caveats still apply.
+- Browsers: the session cookie is `Secure` and `__Host-` prefixed. Chromium and Firefox store it on plain-http `localhost`; **Safari does not**, so Start sandbox appears to work but the dashboard stays unauthenticated there. Use Chromium or Firefox, or serve over HTTPS.
+- `three` is a new pinned client dependency, loaded only by the landing page.
+- The DefaultDemo buttons run real simulations, so every click adds sandbox payments, journals and events. Two scenarios intentionally wait about 6 seconds (the unknown-outcome window of `RECOVERY_RESOLVE_DELAY`), so those buttons show "Running…" for that long. The result line comes from the backend's own invariant checks, and all cards are labelled Simulated.
+- The Kubernetes manifests keep the flag off. The E2E setups run with it on (the native harness sets it; the container override inherits it from `docker-compose.yml`) so the landing page flow is tested; every other route still requires credentials, which the black-box specs keep asserting. `pnpm demo:up` stays useful for seeding the demo workspace and for the demo timing overrides; `pnpm demo:open` becomes optional.

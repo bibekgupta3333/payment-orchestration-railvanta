@@ -116,6 +116,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     SQLITE_PATH: database,
     PUBLIC_APP_ORIGIN: current.webOrigin,
     DEMO_MODE: "true",
+    // Opt-in public sandbox access (visitor sessions) so the landing page flow is testable.
+    SANDBOX_PUBLIC_ACCESS: "true",
     DEMO_OPERATOR_KEY: current.operatorKey,
     DEMO_READER_KEY: current.readerKey,
     DEMO_OTHER_WORKSPACE_KEY: current.otherKey,

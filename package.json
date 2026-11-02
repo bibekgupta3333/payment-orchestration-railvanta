@@ -39,12 +39,16 @@
     "compose:build": "docker compose build",
     "compose:up": "docker compose up --build --detach --wait",
     "compose:down": "docker compose down",
-    "compose:logs": "docker compose logs --follow"
+    "compose:logs": "docker compose logs --follow",
+    "demo:up": "bash scripts/demo-up.sh",
+    "demo:open": "node scripts/demo-open.mjs",
+    "demo:down": "bash scripts/demo-down.sh"
   },
   "devDependencies": {
     "@redocly/cli": "^2.0.0",
     "openapi-typescript": "^7.10.0",
     "prettier": "^3.6.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "yaml": "2.9.1"
   }
 }

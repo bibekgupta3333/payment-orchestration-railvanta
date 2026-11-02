@@ -30,6 +30,8 @@ func (h *handler) serveRoutingAndSimulation(w http.ResponseWriter, r *http.Reque
 		return h.serveProviders(w, r, principal, id)
 	case r.Method == http.MethodGet && path == "/v1/sandbox/scenarios":
 		h.listScenarios(w, id)
+	case r.Method == http.MethodGet && path == "/v1/sandbox/samples":
+		h.listSamples(w, r, principal, id)
 	case r.Method == http.MethodPost && path == "/v1/sandbox/simulations":
 		h.createSimulation(w, r, principal, id)
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/sandbox/simulations/"):
@@ -289,7 +291,7 @@ func (h *handler) simulationView(r *http.Request, run storage.SimulationRun) (Si
 		Routing:     SimulationRoutingView{Decisions: []SimulationRouting{}},
 		Attempts:    []payment.AttemptView{},
 		Transitions: []SimulationTransition{}, Events: []SimulationEvent{}, Webhooks: []SimulationWebhook{}, Journals: []LedgerJournalView{},
-		Invariants: simulation.PendingInvariants(),
+		Invariants: runInvariants(run),
 	}
 	if run.InjectedFault != nil {
 		view.InjectedFault = *run.InjectedFault
@@ -297,13 +299,6 @@ func (h *handler) simulationView(r *http.Request, run storage.SimulationRun) (Si
 	if run.CompletedAt != nil {
 		value := payment.FormatTimestamp(*run.CompletedAt)
 		view.CompletedAt = &value
-	}
-	// Invariants stay pending until the backend stored evidence for them.
-	if run.InvariantsJSON != nil {
-		var stored []simulation.Invariant
-		if err := json.Unmarshal([]byte(*run.InvariantsJSON), &stored); err == nil && len(stored) > 0 {
-			view.Invariants = stored
-		}
 	}
 	var timeline []timelineEntry
 	add := func(at int64, source, title, detail string) {
@@ -418,6 +413,60 @@ func (h *handler) simulationView(r *http.Request, run storage.SimulationRun) (Si
 		view.Timeline[i] = e.row
 	}
 	return view, nil
+}
+
+// runInvariants is the run's stored invariant evidence; invariants stay pending
+// until the backend stored evidence for them.
+func runInvariants(run storage.SimulationRun) []simulation.Invariant {
+	if run.InvariantsJSON != nil {
+		var stored []simulation.Invariant
+		if err := json.Unmarshal([]byte(*run.InvariantsJSON), &stored); err == nil && len(stored) > 0 {
+			return stored
+		}
+	}
+	return simulation.PendingInvariants()
+}
+
+// SampleRunView is the state of one startup sample scenario (SANDBOX_SAMPLE_DATA).
+type SampleRunView struct {
+	Scenario         string  `json:"scenario"`
+	RunID            *string `json:"run_id"`
+	Status           string  `json:"status"`
+	PaymentID        *string `json:"payment_id"`
+	InvariantsPassed int     `json:"invariants_passed"`
+	InvariantsTotal  int     `json:"invariants_total"`
+}
+
+// SampleStatusMissing marks a sample scenario with no run in the workspace.
+const SampleStatusMissing = "missing"
+
+// listSamples answers GET /v1/sandbox/samples: one item per sample scenario,
+// in order, from the latest run carrying its sample seed in the caller's workspace.
+func (h *handler) listSamples(w http.ResponseWriter, r *http.Request, principal auth.Principal, id string) {
+	db := h.db.WithContext(r.Context())
+	items := make([]SampleRunView, 0, len(simulation.SampleScenarios))
+	for _, scenario := range simulation.SampleScenarios {
+		item := SampleRunView{Scenario: scenario, Status: SampleStatusMissing}
+		run, err := simulation.LatestSampleRun(db, principal.WorkspaceID, scenario)
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+		case err != nil:
+			fail(w, 503, "unavailable", "Sample data unavailable", id)
+			return
+		default:
+			runID := run.ID
+			item.RunID, item.Status, item.PaymentID = &runID, run.Status, run.PaymentID
+			invariants := runInvariants(run)
+			item.InvariantsTotal = len(invariants)
+			for _, inv := range invariants {
+				if inv.Status == simulation.InvariantPass {
+					item.InvariantsPassed++
+				}
+			}
+		}
+		items = append(items, item)
+	}
+	writeJSON(w, 200, map[string]any{"items": items})
 }
 
 func journalView(view ledger.JournalView) LedgerJournalView {

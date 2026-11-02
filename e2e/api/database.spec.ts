@@ -33,6 +33,38 @@ test("startup migrates a fresh file and graceful restart preserves seeded rows",
       brand: `Mock ${scenario}`,
       last_four: lastFour,
     })),
+    // The routing demo methods seeded for the simulated multi-provider story.
+    ...[
+      [
+        "00000000-0000-7000-8000-000000000131",
+        "card",
+        "Routing demo card",
+        "4131",
+      ],
+      [
+        "00000000-0000-7000-8000-000000000132",
+        "ach",
+        "Routing demo ACH",
+        "4132",
+      ],
+      [
+        "00000000-0000-7000-8000-000000000133",
+        "card",
+        "Routing demo outage at preferred",
+        "4133",
+      ],
+      [
+        "00000000-0000-7000-8000-000000000134",
+        "card",
+        "Routing demo economy only",
+        "4134",
+      ],
+    ].map(([id, rail, brand, lastFour]) => ({
+      id,
+      rail,
+      brand,
+      last_four: lastFour,
+    })),
   ]);
   await restartApi();
   expect(await api.workspace()).toEqual(before);

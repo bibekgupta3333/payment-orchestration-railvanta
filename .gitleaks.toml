@@ -9,6 +9,11 @@ description = "Idempotency-Key value in the public API usage example"
 regexTarget = "line"
 regexes = ['''Idempotency-Key: order-1042-attempt''']
 
+[[allowlists]]
+description = "Fixed fake sandbox API key used as a fixture in frontend component tests"
+regexTarget = "line"
+regexes = ['''"rvk_1a2b3c4d\.0123456789abcdef0123456789abcdef0123456789abcdef"''']
+
 # Image scans only: Next.js generates random preview-mode and server-action
 # keys at build time (not credentials), the public API example is compiled into
 # page.js, and v8-internal.h is a Node header.

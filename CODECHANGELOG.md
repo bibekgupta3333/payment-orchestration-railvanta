@@ -2,6 +2,440 @@
 
 A record of every change to code, configuration or design docs, newest first. Each entry says what changed, which [WBS](docs/wbs.md) item it serves, and what was actually run to verify it. Only record results you observed. If a check was skipped or failed, say so.
 
+## 2026-11-01 — Add recorded portfolio demo video
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `docs/demo/video/railvanta-demo.mp4` (new, about 40 MB), `railvanta-demo.srt`, `railvanta-demo-poster.jpg` — a 145 s 1080p screen recording of the running sandbox stack with synthetic voice-over and burned-in captions. Produced outside this repo; no code here was changed to make it.
+- `README.md` (Demo section) and `docs/demo/README.md` — link to the video.
+
+**Verification**
+- Frames were reviewed for API keys and tokens; none seen. Narration claims were checked against the live UI while recording. Not run: any test; the voice-over has not been listened to by a person.
+- Known mismatch: README and `docs/demo/story.md` say "eight sample runs", but the hub showed six failure rows when recorded; the video says six.
+
+## 2026-11-02 — Fix the failing CI secret scan (fake fixture key)
+
+**WBS:** 5.2.10 secret scanning · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `.gitleaks.toml` — PR #5's `containers` job failed at `scripts/secret-scan.sh`: gitleaks `generic-api-key` flagged 4 lines in committed history (`frontend/tests/components/{api-keys,dashboard-hub,landing,default-demos-b}.test.tsx`). All four are the same fixed fake fixture `rvk_1a2b3c4d.0123456789abcdef…` (never a minted key). Allowlisted that exact quoted string (line regex), not the files, following the existing placeholder rule. History is not rewritten.
+
+**Verification**
+- Pinned gitleaks over a clean clone of `feat/demo-playground` with the new config: 80 commits scanned, no leaks found (before: leaks found: 4, the same as CI run 41330186439).
+- `pnpm check`: exit 0 (152 Vitest tests, Go tests, contracts in sync, build).
+- CI not re-run yet at the time of writing.
+
+## 2026-11-01 — Redesign the landing page wireframe (design only)
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `docs/frontend/wireframes.md` — section 1 rewritten and the separate 1a addendum folded in: design brief (audiences, page job, one-sentence message, primary action, success signal, constraints), an audit of the current page (inaccurate "every rail" headline, four competing CTAs, the lifecycle and architecture strip duplicating the same seven steps, Planned-badge capabilities, mechanism before evidence), principles, the new information architecture (hero with problem headline and lifecycle beside it → scope strip → "The gaps" failure/guarantee/evidence table → Try it in one step → Engineering decisions with ADR links → closing CTA), desktop and mobile ASCII wireframes, behaviour and states, visual system, a removals table and acceptance criteria including test impact. The implementation status note marks it as not implemented.
+
+**Verification**
+- Docs only; nothing run. The wireframe's claims about behaviour were checked against the current components (SandboxStart, Lifecycle, why-story.ts, SandboxSessionGuard).
+
+## 2026-11-01 — Dashboard starts a sandbox session instead of showing a 401
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `frontend/components/layout/SandboxSessionGuard.tsx` (new), `frontend/app/dashboard/layout.tsx` — opening any dashboard page without a valid session (never started, or invalid after the demo stack was rebuilt) showed "Unable to load this view … A valid sandbox session or API key is required". The guard probes `GET /v1/workspace`; on 401 it reads `GET /v1/sandbox/status` and, only when public sandbox access is on (ADR 0013), calls `POST /v1/sandbox/session`, refreshes `["railvanta"]` queries and renders the page. With public access off, or on any other error (API down), the page renders as before with its own error state.
+- `frontend/tests/components/sandbox-session-guard.test.tsx` (new) — signed in (no session created), 401 with public access on (session created), 401 with it off (none created).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend test`: 18 files, 152 tests passed; `pnpm typecheck`: clean.
+- Web container rebuilt; a brand-new headless Chromium opening `/dashboard/payments` directly showed 20 payment rows and no error panel (the only console error is the guard's expected 401 probe).
+- `playwright test ui/payments.spec.ts ui/shell.spec.ts ui/why-story.spec.ts`: 17 passed (including the spec that stops the API and expects the error panel).
+- Not run: the whole E2E suite again, `pnpm check` after this change.
+
+## 2026-11-01 — Integrate prepopulated sandbox samples and the "why" story; verification
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed (integration of the three entries below)**
+- `docs/decisions/0014-prepopulated-sandbox-samples.md` — added the rule the backend actually enforces: the flag needs `DEMO_MODE` or `SANDBOX_PUBLIC_ACCESS`, and the seeder waits for the demo workspace created by `seed-demo`.
+- `docs/demo/story.md` — removed the *(unverified)* marks for the landing section, the hub panel and its link labels (checked on the stack); corrected "all eight on the hub" to the six failure rows, with `success`/`decline` found on Payments. The outage Routing-tab notice is still marked unverified.
+
+**Verification**
+- `DEMO_BUILD=1 pnpm demo:up` on the existing volume: with no request made, `GET /v1/sandbox/samples` reported all eight samples `completed` with every invariant passing (6/6, 6/6, 8/8, 6/6, 6/6, 6/6, 10/10, 9/9).
+- Headless Chromium on the stack: the landing "Why Railvanta exists" section (six cards) and, after Start sandbox, the hub story panel (six rows, Completed, Inspect run / Payment links) screenshotted; no console errors.
+- `pnpm test:e2e` (the spec filter did not apply, so the whole native suite ran once): 115 passed, 5 skipped, 0 failed, including `why-story.spec.ts` 2/2.
+- `pnpm check`: exit 0 (149 Vitest tests, Go tests, generated contracts in sync, build).
+- Not run: container-mode E2E, CI, Safari, mobile-width screenshot of the new sections (the frontend spec checks no horizontal overflow at 375px).
+
+## 2026-11-01 — "Why Railvanta exists" on the landing page and the hub story panel
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `frontend/lib/why-story.ts` (new) — six problems (double charge on retry, lost response, provider outage, duplicate webhook, ledger double posting, settlement mismatch) with scenario, plain-words failure, guarantee (catalog wording, sandbox mock provider only) and proof page; plus the success/decline baseline.
+- `frontend/components/landing/WhyRailvanta.tsx` (new), `frontend/app/page.tsx`, `frontend/app/landing.css` — section "Why Railvanta exists" between the hero and the lifecycle: h2, framing paragraph, card grid (3/2/1 columns) with problem → guarantee → "See it in the sandbox".
+- `frontend/lib/api/sample-schemas.ts`, `frontend/lib/hooks/sandbox-samples.ts` (new) — hand-written Zod schema and `useSandboxSamples` for `GET /v1/sandbox/samples`, key `["railvanta", ws, env, "sandbox", "samples"]`, 3 s refetch only while a row is running.
+- `frontend/components/dashboard/Hub.tsx`, `Overview.tsx`, `frontend/app/dashboard-hub.css` — `StoryPanel` "The story: what this sandbox proves" right after the hub heading: per problem the title, guarantee, status pill (Completed/Failed + "n/m invariants pass", Running, Not loaded) and Inspect run / Payment links; all-missing hint linking to the Load sample data card (`#hub-sample-data`).
+- `frontend/lib/hooks/sample-data.ts` — the client loader now uses seeds `sample-<scenario>` (was `freshSeed()`), so a manual load shows up in the story panel; each run still has its own Idempotency-Key.
+- `frontend/tests/components/why-story.test.tsx`, `e2e/ui/why-story.spec.ts` (new); `docs/frontend/wireframes.md` sections 1a and 2a.
+
+**Verification**
+- `pnpm --filter @railvanta/frontend test` — 17 files, 149 tests passed (includes 6 new).
+- `pnpm typecheck` — frontend and e2e clean. `pnpm lint` — passed (Go 0 issues, eslint + prettier clean, OpenAPI valid with 1 pre-existing warning).
+- `pnpm --filter @railvanta/frontend build` — succeeded.
+- Not run: `e2e/ui/why-story.spec.ts` or any Playwright suite, `pnpm check`.
+
+## 2026-11-01 — Prepopulate the demo sandbox with sample runs at startup (`SANDBOX_SAMPLE_DATA`)
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `backend/internal/config/config.go`, `config_test.go` — new `SANDBOX_SAMPLE_DATA` bool (default `false`, `SandboxSampleData`). Refused unless `DEMO_MODE` **or** `SANDBOX_PUBLIC_ACCESS` is on (the container demo keeps `DEMO_MODE` off and seeds the demo workspace with `seed-demo`, so requiring `DEMO_MODE` alone would stop `pnpm demo:up`). Tests for on/off/invalid/refused and the default.
+- `backend/internal/simulation/samples.go` (new) — `SampleScenarios` (same order as `frontend/lib/hooks/sample-data.ts`), `SampleSeed`, `LatestSampleRun`, and `Runner.SeedSamples`: waits for the demo workspace's seeded methods, skips scenarios that already have a `sample-<scenario>` run, otherwise starts a real $100.00 USD simulation (actor `sample-data`) and polls it every 250 ms (90 s cap, ctx-aware); per-scenario errors are logged and skipped.
+- `backend/cmd/api/main.go` — when the flag is on, a background goroutine after `dispatcher.Start()` seeds the demo workspace; it never blocks readiness and is cancelled and awaited (bounded by the shutdown timeout) before the store closes.
+- `backend/internal/transport/http/simulations.go` — `GET /v1/sandbox/samples` (any role, `no-store`): one `SampleRunView` per scenario in order, `missing` with null ids when none. `runInvariants` is now shared with the simulation view.
+- `backend/api/openapi.yaml` — path `listSampleRuns`, schemas `SampleRunList`/`SampleRun`; regenerated `frontend/lib/api/schema.d.ts` and `frontend/public/openapi.json`.
+- `backend/tests/sample_data_test.go` (new) — seeds once per scenario, second seed adds none, endpoint order/ids/invariants, `missing` before seeding and for the other workspace, 401 unauthenticated, cancelled ctx stops.
+- `backend/.env.example`, `docker-compose.demo.yml` (`SANDBOX_SAMPLE_DATA: "true"`; not `docker-compose.yml` or the E2E harness), `docs/backend/flows.md`, `docs/operations/deployment.md`.
+
+**Verification**
+- `go -C backend test ./tests -run TestSampleData -v` — 3 passed (seed test 2.06 s). `go -C backend test ./internal/config/` — ok.
+- `go -C backend test ./...` — all packages ok (`backend/tests` 26.8 s). `go -C backend vet ./...` — clean. `gofmt -l backend` — no files.
+- `pnpm generate:api`, then `pnpm check:generated` — match. `pnpm lint:openapi` — valid, 1 pre-existing warning (`no-server-example.com` on the localhost server).
+- Not run: the demo Compose stack, E2E, `pnpm check`.
+
+## 2026-11-01 — Presenter script and ADR for the prepopulated sandbox samples
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed (docs only)**
+- `docs/demo/story.md` (new) — a 10-minute spoken script: the problem (the gap between "sent the charge" and "know what happened"), what Railvanta is, then one Say/Show/Takeaway block per startup sample (success, decline, duplicate_request, timeout_after_success, outage, duplicate_posting, duplicate_webhook, settlement_mismatch), closing scope and Q&A. Setup box: `pnpm demo:up`, Chromium/Firefox not Safari, samples seed within about a minute, **Load sample data** as fallback.
+- `docs/decisions/0014-prepopulated-sandbox-samples.md` (new) — ADR for `SANDBOX_SAMPLE_DATA` startup seeding (demo compose only, demo workspace, idempotent by `sample-<scenario>` seed, real simulation runner), alternatives (SQL fixtures rejected; client button kept as fallback) and consequences.
+- `docs/README.md` — Demo rows (runbook, presenter script) and the ADR 0014 row. `docs/demo/README.md` — link to the script at the top. `README.md` — a short "Why this project exists" paragraph near the top.
+
+**Verification**
+- Click paths and evidence strings checked by reading `frontend/components/simulator/SimulatorView.tsx` (run page tabs), `frontend/components/payments/PaymentDetail.tsx`, `frontend/components/playground/RunResult.tsx`, `frontend/app/page.tsx`, `frontend/components/landing/*` and `backend/internal/simulation/{catalog,invariants,runner}.go`. Not verified (being built in parallel, absent from the tree when written): the landing "Why Railvanta exists" section, the hub story panel and its link labels, the `SANDBOX_SAMPLE_DATA` flag and `GET /v1/sandbox/samples`; the "Unsafe failover blocked" notice for the startup outage sample. No tests, builds or live-stack checks were run.
+
+## 2026-11-01 — Tighten the landing page's top spacing
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `frontend/app/globals.css` — the header and hero left about 185px of empty space above the "Sandbox infrastructure" badge. Header min-height 100px → 76px (mobile 85px → 68px); hero padding 85px/70px → 32px/56px (mobile 45px/40px → 20px/36px).
+
+**Verification**
+- Rebuilt the web container on the Docker demo stack and took a 1440×900 screenshot: the badge now starts at 108px instead of 185px, and the lifecycle card is visible in the first viewport. No tests run (CSS only); mobile width not screenshotted.
+
+## 2026-11-01 — Integrate public sandbox access, landing lifecycle and default demos; verification and fixes
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed (integration of five parallel changes recorded below)**
+- `e2e/support/global-setup.ts` — the native harness now starts the API with `SANDBOX_PUBLIC_ACCESS=true`, so the landing page's Start sandbox flow is actually exercised instead of skipped.
+- `e2e/ui/routing.spec.ts`, `e2e/api/database.spec.ts` — these older specs still expected the provider and payment-method lists from before the simulated routing providers (`mock_fast`, `mock_economy`, `mock_ach`) and the four routing-demo methods, and the providers page counted every card on the page (it now also holds a default-demo card). Updated to the real lists and scoped to the provider grid. These regressions came from the earlier routing-demo change, whose agent ran only targeted tests; CI would have failed on them.
+- `e2e/ui/default-demos-{a,b}.spec.ts` — the agents' unrun selectors were wrong (the list shows `USD 100.00`, not `$100.00`; journals are on the Journal tab; "Invariant results" is a region; the reconciliation filter has an "Unknown outcome" option that matched first; "Mock provider" matched two cards). Fixed against page snapshots taken at failure; the product behaved correctly.
+- `frontend/components/landing/LifecycleScene.tsx` — after the polish round the larger Provider and Ledger plates overlapped (footprint 1.12 at a 1-unit spacing); footprints now stay below the spacing.
+- `docs/operations/deployment.md`, `docs/decisions/0013-...md` — corrected: the E2E setups run with the flag on (the native harness sets it; `docker-compose.e2e.yml` inherits it from `docker-compose.yml`); only Kubernetes leaves it off.
+
+**Verification**
+- `pnpm check` — pass on the final tree (Go tests, 143 Vitest tests, build with three.js, generated contracts and `openapi.json` in sync, docs examples, bundle secret check).
+- Native E2E: the whole `e2e/ui` directory once (67 passed, 7 failed for the reasons above), then the fixed specs (14 of 14) and `e2e/api` (38 passed, 1 failed, then 3 of 3 for the fixed database spec); after the last scene change, `landing` and `shell` specs 10 of 10.
+- Docker stack rebuilt (`DEMO_BUILD=1 pnpm demo:up`, later the web container): `GET /v1/sandbox/status` reports public access on; a brand-new headless browser with no cookies went landing → Start sandbox → one-time key → Run it (HTTP 202 with a payment id) → `/dashboard` signed in (`/v1/workspace` 200), with no console errors (the one empty `alert` element is Next.js's route announcer). Lifecycle screenshots reviewed before and after the overlap fix.
+- Not run: the full E2E suite in one pass, container-mode E2E, CI; the lifecycle only on headless SwiftShader WebGL, not a real GPU; Safari (Secure cookies on plain-http localhost are not stored there).
+
+## 2026-11-01 — Landing page: wireframe, three.js lifecycle visual and one-click sandbox API
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `docs/frontend/wireframes.md` — landing section replaced first (desktop 1440, mobile 375, loading/disabled/error states): hero with Start sandbox, lifecycle section, "Call the API in one step", capabilities, footer.
+- `frontend/components/landing/lifecycle-path.ts` — pure model: 7 nodes and steps, three use-case token paths, `frameAt`/`staticFrame`.
+- `frontend/components/landing/LifecycleScene.tsx` — three.js scene (plates, track, glowing token). `three` is imported dynamically after mount; loop pauses when off-screen, in a hidden tab, or paused; reduced motion renders one static frame; DPR capped at 2; geometries, materials and renderer disposed; theme colors read from CSS variables.
+- `frontend/components/landing/Lifecycle.tsx` — use-case selector, captions, Play/Pause, ordered step list with `aria-current`, one polite live region (3 s cadence), CSS fallback when WebGL is unavailable. Labels are HTML overlays.
+- `frontend/components/landing/SandboxStart.tsx`, `StartSandboxButton.tsx` — reads `GET /v1/sandbox/status`; Start sandbox does `POST /v1/sandbox/session`, `POST /v1/api-keys` (Landing demo key, operator, 24 h), `GET /v1/payment-methods` (picks `...0121`); one-time key, curl with the real key, Run it (bearer, no cookie) and Run it again (same Idempotency-Key). Key kept in component state only. Calls use the shared `apiRequest` client directly rather than `useCreateApiKey`, which would fire a `/v1/workspace` read on a signed-out page.
+- `frontend/app/page.tsx`, `frontend/app/landing.css`, `frontend/app/layout.tsx` (one import) — new hero actions and sections; Planned badge, heading, Explore the dashboard link and sandbox notice kept.
+- `frontend/package.json`, `pnpm-lock.yaml` — `three` 0.186.1 and `@types/three` 0.186.0, exact pins (published 2026-09-24 and 2026-09-11).
+- `frontend/tests/components/landing.test.tsx`, `e2e/ui/landing.spec.ts` (written, not run).
+
+**Polish round (lifecycle visual)**
+- `LifecycleScene.tsx` rewritten: perspective camera tilted vertically only (x fixed, so the HTML labels stay linearly aligned via `screenPercent`/`VIEW_HALF` in `lifecycle-path.ts`), lit rounded-box plates (`RoundedBoxGeometry`, Provider and Ledger larger), a base, a faint grid floor and a track; emissive token with halo and a fading trail sampled from the pure `frameAt`; a curved lookup arrow (Bezier tube plus cone) from the Unknown marker back onto the same Provider; red pulse when the response is lost, green once recovered; the duplicate token is amber and bounces back at the API.
+- `lifecycle-path.ts`: new `ok` tone and per-waypoint `tone`; lost path now arcs out (x 4.6) and lands on the provider (x 4, y 0) before the ledger; duplicate token is amber. `landing.css`: visual is 1:1 on desktop (4:3 mobile), top-aligned. Test updated for the new lost-path contract and extra three mocks.
+- Verified: `vitest run tests/components/landing.test.tsx` 13 passed; typecheck, eslint, prettier clean. Dev server on port 3100 (stopped afterwards, no leftover process) with headless Chromium (SwiftShader WebGL); reviewed screenshots: desktop light lost-response at unknown and lookup, desktop dark lost (red), desktop light duplicate, mobile dark lost, plus a first pass at 375px. Before: flat grey squares, tiny token, big empty area. After: depth, lit plates, visible token, arrow and markers.
+- Not right or unverified: dark happy-path and mobile-light screenshots were taken but not all reviewed; the empty band above the nodes inside the canvas remains (filled with the grid); a real GPU was not used.
+
+**Verified**
+- `pnpm --filter @railvanta/frontend typecheck`: passed.
+- eslint and prettier on the landing files: clean.
+- `vitest run tests/components/landing.test.tsx tests/components/shell.test.tsx`: 18 passed.
+- Not run: `e2e/ui/landing.spec.ts`, real browser/WebGL rendering, the backend sandbox endpoints (assumed from the agreed contract).
+
+## 2026-11-01 — Default demos on Payments, Routing, Providers and Simulator
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/components/payments/PaymentExplorer.tsx` — `DefaultDemo id="payments"` (scenario `success`) under the heading; the unfiltered empty state now says to run the default demo above. `CreatePaymentDialog.tsx` — a new payment defaults to the seeded Mock success method (`...0121`) when present, and the amount field shows a `100.00` placeholder (the amount stays empty so existing typing tests and flows are unchanged).
+- `frontend/components/routing/RoutingView.tsx` — `DefaultDemo id="routing"` (scenario `outage`); the evaluator is now controlled and preconfigured (Routing demo card `...0131`, else first method; 10000 minor units; USD) and runs the read-only evaluation exactly once on first load (ref-guarded). When the outage demo completes, its run is read from the query cache (only runs started after mount), the form is filled with that run's method, amount and payment ID, and the evaluation re-runs so the unsafe-failover explanation shows. Manual Evaluate is unchanged.
+- `frontend/components/provider-views/ProvidersView.tsx` — `DefaultDemo id="providers"` (scenario `success`); existing Simulated / Not configured labels untouched.
+- `frontend/components/simulator/SimulatorView.tsx` — the form opens on `timeout_after_success` when implemented (else the first implemented scenario) and a "Run default demo" button starts it with amount_minor 10000, USD and a fresh seed, then opens the run timeline. Existing test ids and the Run scenario flow are unchanged.
+- `frontend/tests/components/default-demos-a.test.tsx` (new, 5 tests), `e2e/ui/default-demos-a.spec.ts` (new, written only).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` — pass. `eslint` on the five components and the new test, `prettier --check` on all changed files — clean.
+- `vitest run` `default-demos-a.test.tsx` 5/5, `payments.test.tsx` 9/9, `routing-simulator.test.tsx` 10/10 — pass.
+- Not run: `e2e/ui/default-demos-a.spec.ts` and the existing payments/routing/simulator e2e specs (orchestrator runs them), eslint on the e2e spec (not resolvable from the repo root), a real browser, axe, 375px layout.
+
+## 2026-11-01 — Public sandbox access: one-click visitor sessions
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `backend/internal/transport/http/sandbox_session.go` (new), `handler.go` — opt-in `GET /v1/sandbox/status`, `POST /v1/sandbox/session` (public, before authentication) and `DELETE /v1/sandbox/session` (normal cookie + CSRF path). Visitors are `@sandbox.invalid` users with an operator membership and a 12-hour session in the demo workspace; only token hashes are stored. Origin must equal `PUBLIC_APP_ORIGIN`; 30 sessions per IP per hour (429 + Retry-After); 500 live visitor sessions (503 `sandbox_busy`); lazy bounded cleanup of expired visitors only; the seeded session cannot be signed out (403).
+- `backend/internal/auth/visitor.go` (new) — token, `railvanta_csrf` cookie and cleared-cookie helpers.
+- `backend/internal/config/config.go`, `config_test.go`, `backend/cmd/api/main.go` — `SANDBOX_PUBLIC_ACCESS` (default false).
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts`, `frontend/public/openapi.json` — three operations and two schemas (`pnpm generate:api`).
+- `docker-compose.yml`, `docker-compose.demo.yml` — flag set to `true` (loopback-only sandbox); `backend/.env.example`, `docs/backend/flows.md` — documented. `docker-compose.e2e.yml` is unchanged, so container E2E (base + e2e files) inherits `true`.
+- `backend/tests/public_sandbox_test.go` (new) — 8 tests.
+
+**Verification**
+- `go -C backend test ./tests -run 'PublicSandbox|APIKey|MintedAPIKey' -count=1` — ok; `go test ./internal/auth ./internal/config -count=1` — ok.
+- `gofmt -l` clean; `go -C backend vet ./internal/transport/http/ ./internal/auth/ ./internal/config/ ./tests` — ok.
+- `pnpm generate:api`, `pnpm lint:openapi` (valid, 1 pre-existing localhost-server warning), `pnpm check:docs` (12 examples, 16 supported) — pass.
+- Not run: full Go suite, E2E, container stack, a real browser sign-in (Secure cookies on http://localhost untested by eye).
+
+## 2026-11-01 — Default demos on Ledger, Reconciliation, Events and Settings, and sample data on the hub
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/components/ledger/LedgerExplorer.tsx`, `frontend/components/reconciliation/ReconciliationView.tsx`, `frontend/components/events/EventExplorer.tsx` — a `DefaultDemo` card under each heading (`duplicate_posting`, `settlement_mismatch`, `duplicate_webhook`); the empty states now point to the demo. Reconciliation states that provider evidence is simulated and nothing adjusts the ledger.
+- `frontend/components/settings/ApiKeys.tsx` — a "Generate default demo key" button above the form (same create-key hook and shared `GeneratedKey` panel, POSTs `{name:'Default demo key', role:'operator', expires_in_hours:24}`); the form's default name changed from "Demo key" to "Default demo key". Nothing is minted on load.
+- `frontend/lib/hooks/sample-data.ts` (new) — `useSampleData`: runs success, decline, duplicate_request, timeout_after_success, outage, duplicate_posting, duplicate_webhook, settlement_mismatch strictly one at a time (start, poll until not running, record invariant summary, next); skips scenarios missing from the catalog; continues after a failed invariant; stops on a network error; invalidates `["railvanta"]` queries at the end.
+- `frontend/components/dashboard/Hub.tsx` (`SampleDataCard`), `frontend/components/dashboard/Overview.tsx` (one render line + import) — the "Load sample data" card with progress list, polite live region, skipped note and a link to Payments.
+- `frontend/tests/components/default-demos-b.test.tsx` (new, 9 tests), `frontend/tests/components/api-keys.test.tsx` (default name expectation), `e2e/ui/default-demos-b.spec.ts` (new, written only).
+
+**Verification**
+- `vitest run tests/components/default-demos-b.test.tsx` — 9 passed.
+- `vitest run` ledger, docs-settings, api-keys, dashboard-hub tests — 34 passed.
+- `pnpm typecheck` — pass; eslint on touched dirs and files — clean; prettier clean on my files.
+- `e2e/ui/default-demos-b.spec.ts` was NOT run (left to the orchestrator).
+
+## 2026-11-01 — Docs: public sandbox access, landing wireframe notes, default demo panels and ADR 0013
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed (docs only)**
+- `docs/decisions/0013-public-sandbox-access-and-default-demos.md` (new, accepted), `docs/README.md` — ADR index row.
+- `docs/frontend/wireframes.md` — "Default demo panel (shared card)" section with the per-page placement table and an Implementation status bullet (the Landing section is owned by another entry and was not touched).
+- `docs/frontend/design.md` — the shared `DefaultDemo` component, `/v1/sandbox/status` and `/v1/sandbox/session`, the per-page default demo table, the landing route row, `components/demo/`.
+- `docs/demo/README.md` — zero-friction entry, a one-step API call script, pre-demo "Load sample data" step, honest claims, Q&A and troubleshooting.
+- `README.md` (Demo section, Docker Compose credentials paragraph), `docs/operations/deployment.md` (public sandbox access paragraph), `docs/known-limitations.md` (auth bullet), `docs/architecture.md` (authentication paragraph).
+- Written against the feature brief while the code was still landing; wording not yet reconciled with the final code is noted in the hand-off.
+
+**Verification**
+- Relative-link check over the touched Markdown files (result in the hand-off). No code, tests or builds were run.
+
+## 2026-11-01 — Shared "Default demo" card for dashboard pages
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/components/demo/DefaultDemo.tsx` (new) — a reusable card for the top of a dashboard page. One click starts a real $100.00 USD sandbox simulation for a backend scenario (via the existing `useStartSimulation` / `useSimulation` hooks), shows the live state and the backend's invariant summary, links to the Playground, and invalidates every workspace query when the run settles so the page's own lists fill in. Nothing runs on page load; it is disabled with a stated reason when the scenario is missing from `GET /v1/sandbox/scenarios`; everything is labelled Simulated / sandbox.
+- `frontend/app/default-demo.css` (new), `frontend/app/layout.tsx` (one import line) — its styles.
+- Written first by me so the agents adding default demos to the dashboard pages share one component instead of each building their own.
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` — pass; eslint and prettier on the new files — clean.
+- No unit or browser test covers this component on its own yet; the agents' page tests and specs exercise it, and I will record those results when they land.
+
+## 2026-11-01 — Integrate the dashboard hub, Swagger reference and docs; verification and fixes
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed (integration of three parallel changes recorded above)**
+- Browser specs written by the agents but never run were run and two were wrong, not the product: `e2e/ui/api-reference.spec.ts` opened the page with a relative URL and matched "Settings" against two links (fixed to use the harness origin and the help link's href).
+- `frontend/components/api-reference/SwaggerReference.tsx`, `swagger-ui-dist.d.ts` — axe found two `<main>` landmarks (the app shell's and Swagger UI's own nested `<main id="operations">`); the wrapper now gives Swagger's one a labelled `region` role in `onComplete`.
+- `backend/api/openapi.yaml`, `frontend/public/openapi.json` — the spec description, now visible on the Swagger page, still mentioned WBS packages and routes "unavailable (501) until later WBS packages"; rewritten as accurate user-facing text.
+- `frontend/components/layout/app-shell.tsx` — footer said "Railvanta · Foundation M1"; now "Railvanta · Sandbox".
+- `frontend/lib/format-duration.ts` (new), `Overview.tsx`, `ProvidersView.tsx` — the p95 card showed raw `4465210 ms` (a simulated payment whose held recovery lookup resolved after an hour); durations of a second or more now show as seconds, minutes or hours, sub-second values are unchanged.
+
+**Verification**
+- `pnpm check` — pass on the final tree (lint, OpenAPI lint, generated contracts and `openapi.json` in sync, docs examples 12/16, typecheck, Go tests, 116 Vitest tests, build, bundle secret check).
+- Native browser specs, one run: `a11y-routes` (5), `payments` (8), `shell` (7), `dashboard-hub` (4) passed; `api-reference` failed first for the two test bugs above, then for the duplicate `main` landmark, and passes after the fixes. After the last small fixes, `dashboard-hub`, `api-reference` and the payments overview test were re-run: 6 passed.
+- Docker web container rebuilt; `/dashboard`, `/dashboard/api-reference` and `/openapi.json` (179 KB, servers `/`) answer 200. Screenshots of the hub (1440px) and the Swagger page were reviewed.
+- Not run: the full E2E suite, container-mode E2E, CI, the hub at 375px by eye (its horizontal-scroll test passed), dark theme by eye.
+
+**Notes:** a `settlement_mismatch` payment's held recovery lookup fires after an hour and resolves that payment; that is real behaviour of the recovery worker and can skew the p95 card, which is why the card is labelled as observed sandbox data.
+
+## 2026-11-01 — Dashboard home as a hub: credentials, demo runs and quick actions
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/components/dashboard/Hub.tsx` (new), `Overview.tsx`, `frontend/app/dashboard-hub.css` (new, imported in `app/layout.tsx`) — `/dashboard` now opens with the heading "Railvanta sandbox", four quick actions (Run a demo, Create a $100 payment via the existing dialog prefilled like Playground demo 1, API reference link, Generate API key anchor), an "Integration credentials" card (base URL, auth format, active-key count from `GET /v1/api-keys`, placeholder `$KEY` curl, one-click "Generate default demo key": operator, 24 hours, nothing minted on load), a "Run a demo now" card (Lost response, Duplicate requests, Double-entry ledger: real simulations of $100.00 USD, polled, with invariant counts and a Playground link; disabled with a reason when the scenario is missing) and the flow strip. All previous content (Needs attention, metric cards, chart, recent payments, loading/empty/error/stale states) is unchanged under "Live sandbox metrics".
+- `frontend/components/settings/GeneratedKey.tsx` (new), `ApiKeys.tsx` — the one-time key panel is extracted and shared; Settings markup, test ids and texts are unchanged.
+- `frontend/lib/hooks/dashboard-demo.ts` (new) — constants and pure helpers.
+- Tests: `frontend/tests/components/dashboard-hub.test.tsx` (6 tests), `e2e/ui/dashboard-hub.spec.ts` (4 tests, written, not run).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` clean; eslint and prettier clean on the changed frontend files; `tsc --noEmit` in `e2e/` clean.
+- Vitest `dashboard-hub.test.tsx`, `api-keys.test.tsx`, `docs-settings.test.tsx` — 23 passed.
+- Not run: `e2e/ui/dashboard-hub.spec.ts`, the `payments.spec.ts` overview test, a real browser, rendering at 375px, axe.
+
+## 2026-11-01 — Docs: dashboard hub wireframes, design, runbook and ADR 0012
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `docs/frontend/wireframes.md` — section 2 rewritten as the dashboard hub (desktop and mobile wireframes, quick actions, credentials card, demo-run card, capability strip, metrics, loading/error/read-only states); new section 10a for `/dashboard/api-reference`; "API reference" and Playground added to the shell nav; Implementation status updated.
+- `docs/frontend/design.md` — directory tree, `/dashboard` and `/dashboard/api-reference` route rows, hub paragraph, `/docs` row.
+- `docs/decisions/0012-dashboard-hub-and-swagger-reference.md` (new) and its index row in `docs/README.md`.
+- `docs/demo/README.md` — hub and Swagger in the intro, a "Hub and API" step, the key generator section, honest claims; `README.md` Demo section.
+- Reconciled with `frontend/components/dashboard/Hub.tsx`, `Overview.tsx`, `app/dashboard/api-reference/page.tsx`, `SwaggerReference.tsx` and `scripts/generate-api.mjs` as they stood when written.
+
+**Verification**
+- Relative-link check over the touched Markdown files (script run, result in the hand-off). No code, tests or builds were run; docs only.
+
+---
+
+## 2026-11-01 — Swagger UI API reference in the dashboard
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/app/dashboard/api-reference/page.tsx`, `frontend/components/api-reference/{SwaggerReference.tsx,swagger-theme.css,swagger-ui-dist.d.ts}` (new) — `/dashboard/api-reference` embeds Swagger UI (`swagger-ui-dist` 5.33.2, pinned, loaded by dynamic import in a client effect, never server-rendered) on a light surface card so it stays readable in the dark theme. Help text: generate a key in Settings, Authorize, paste, Try it out; sandbox only; bearer keys are the supported way to write (cookie writes need CSRF). No credential is embedded and `persistAuthorization` is off.
+- `scripts/generate-api.mjs` — also writes `frontend/public/openapi.json` from `backend/api/openapi.yaml` (`yaml` 2.9.1, root dev dependency) with `servers` set to `/` so Try it out hits the same-origin `/v1` proxy; `--check` (so `pnpm check:generated`) fails when it is stale. The file is committed, so the web image needs no change (its build also runs `generate:api`).
+- `frontend/components/layout/app-shell.tsx` (nav item "API reference" after "API docs"), `frontend/app/docs/page.tsx` (link "Open the interactive Swagger reference"), `frontend/.prettierignore`, `frontend/package.json`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (`@scarf/scarf` build script disallowed: swagger-ui-dist analytics postinstall).
+- Tests: `frontend/tests/components/api-reference.test.tsx` (swagger module mocked; also runs the generate `--check`), `e2e/ui/api-reference.spec.ts` (written, NOT run; axe excludes `.swagger-ui` third-party markup).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` clean; eslint on the touched files clean; prettier applied.
+- Vitest `api-reference.test.tsx` 2 passed; `shell.test.tsx` 5 passed.
+- `pnpm check:docs` — 12 examples, 16 endpoints valid; `pnpm check:generated` and `pnpm check:tracked` pass.
+- Not verified: real browser rendering, `next build` with the Swagger bundle, the Playwright spec.
+
+## 2026-11-01 — Sandbox API key generator in Settings
+
+**WBS:** demo preparation (supersedes the 4.4 "no key generation" gate wording) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `backend/internal/transport/http/apikeys.go` (new), `handler.go`, `settings.go` — `POST /v1/api-keys` (operator) mints a `rvk_<8 hex>.<48 hex>` key from `crypto/rand`, stores only its SHA-256 hash and returns the secret once (`Cache-Control: no-store`); `GET /v1/api-keys` (operator) lists metadata only; `DELETE /v1/api-keys/{id}` revokes idempotently within the workspace. Keys have role read or operator, always expire (default 24 h, max 720 h), names use a safe character set, and a workspace may hold at most 20 active keys. The cap check and insert run in one transaction (my first version checked then inserted separately, which concurrent requests could have exceeded; the new concurrency test covers it). Settings now reports `api_key_management: available`.
+- `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` — new paths and schemas; `frontend/lib/docs/examples.json`, `frontend/app/docs/page.tsx` — the docs no longer list key management as planned; roles and scopes stay planned.
+- `frontend/components/settings/{ApiKeys,SettingsView}.tsx`, `frontend/lib/hooks/apikeys.ts`, `frontend/lib/api/{apikey-schemas,event-schemas}.ts` — Settings gets a generator form, a one-time copy panel with a curl example, a key table with a two-step revoke, and a read-only note for non-operators. The secret lives only in component state. The Playground links to it.
+- `docs/decisions/0011-sandbox-api-key-generator.md` (new) and updates to `docs/{architecture,known-limitations,README}.md`, `docs/backend/flows.md`, `docs/frontend/{design,wireframes}.md`, `docs/demo/README.md`, `README.md`, `docs/wbs.md` (two Settings gates annotated as superseded).
+- Tests: `backend/tests/api_keys_test.go` (9 tests), `frontend/tests/components/api-keys.test.tsx` (5), updated `docs-settings.test.tsx` and `e2e/ui/docs-settings.spec.ts` (new generate/use/revoke test).
+
+**Verification**
+- `go -C backend test -race ./tests -run <the 9 key tests>` — all 9 pass, including 40 concurrent mints ending at exactly 20 active keys.
+- Vitest `api-keys.test.tsx`, `docs-settings.test.tsx`, `playground.test.tsx` — pass; frontend typecheck and eslint clean.
+- `pnpm check:docs` — 12 examples, 16 supported endpoints; `pnpm lint:openapi` valid.
+- `pnpm test:e2e e2e/ui/docs-settings.spec.ts` (native, once) — 8 passed, including generating a key in the browser, calling the API with it (200 for GET, 403 for a write with a read key), the secret gone after hiding and reloading, revoking, and then 401. `e2e/ui/a11y-routes.spec.ts` "every route fits" at 375px and 1440px — 2 passed with the new Settings form.
+- Full `pnpm check` — pass (lint, typecheck, Go tests, 105 Vitest tests, build, docs examples, bundle secret check), run before the final UI polish (copy button now says "Copy key" for the secret, shorter role labels, an "immediate and cannot be undone" revoke warning, the role-permission hint). After the polish: 17 Vitest tests in the two settings files pass, typecheck is clean and `e2e/ui/docs-settings.spec.ts` passes 8 of 8 again.
+- Docker stack rebuilt with `DEMO_BUILD=1 pnpm demo:up` (then the web container once more after the polish). Against it through the proxy with the seeded operator key: mint 201 with `Cache-Control: no-store` and a well-formed key; the minted read key gets 200 on `GET /v1/workspace` and 403 on a write; the list shows the key and no secret or hash field; revoke 200, and the key then answers 401. A headless browser signed in with the launcher's cookies generated a key on the Settings page and showed the one-time panel and the key table (screenshot reviewed).
+- Not run: the full E2E suite, container-mode E2E, CI.
+
+**Notes:** an operator key can mint further keys until it expires or is revoked; there is no rotation, scoping beyond read/operator, or per-key audit beyond a log line with the key ID and prefix. The public landing page cannot mint keys (a visitor needs an operator session first).
+
+## 2026-11-01 — Update stale "Planned" labels on the landing page and sidebar
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/app/page.tsx` — the architecture strip (Route, Mock provider, Journal) and the capability cards (Explainable routing, Ledger journals, Reconciliation) still said "Planned" from the first milestone although all of it is built and verified. They now read Available; added cards for recovery of unknown outcomes and the failure playground; added a "Stripe and Plaid adapters" card that stays Planned because no real provider exists. Reconciliation's description now says what it does (evidence-only comparison) instead of repeating the recovery text.
+- `frontend/components/layout/app-shell.tsx`, `frontend/app/layout.tsx`, `docs/frontend/wireframes.md` — "Foundation build" is now "Sandbox build" / "Sandbox only".
+
+**Verification**
+- `pnpm --filter @railvanta/frontend typecheck` — pass; eslint and prettier on the three files — clean.
+- Vitest `shell.test.tsx` and `playground.test.tsx` — 10 tests passed.
+- `e2e/ui/shell.spec.ts` still expects a visible "Planned" badge on the landing page; the Stripe and Plaid card keeps it true. That spec was not re-run.
+
+## 2026-11-01 — Integrate the demo playground and verify it on the Docker stack
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed (integration of the four demo changes above)**
+- `scripts/demo-up.sh` — the credentials file was sourced but never exported, so `docker compose exec -e NAME` passed empty values and the seeder rejected them; the script then wrongly blamed an already-seeded volume and deleted the file. It now exports the variables and the failure message points at the real error.
+- `backend/internal/simulation/runner.go` — the `settlement_mismatch` hold only touched pending lookup commands, so a lookup the dispatcher had already claimed rescheduled itself and resolved the payment once the provider-side charge existed (it failed in a full `backend/tests` run, not in the agent's targeted run). The runner now holds, waits until no lookup is in flight, then writes the charge.
+- `frontend/lib/api/routing-schemas.ts` — the provider code enum and `simulated_latency_ms` were missing (typecheck error, and routing decisions for `mock_fast` would have failed to parse in the browser); added optional `alternatives`.
+- `frontend/components/playground/RoutingDemo.tsx` — shows the per-provider verdicts (chosen, eligible lower priority, pinned, blocked) and takes an optional payment ID so the failover guard is visible.
+- `frontend/components/playground/DemoCard.tsx`, `frontend/lib/hooks/routing.ts` — Playground runs now send a $100.00 USD amount (the simulation API's `amount_minor`).
+- `e2e/ui/playground.spec.ts` — demo 3 asserted a test id that exists only in the ledger panel; it now reads the card's Journals value.
+- `docs/demo/README.md` — rewritten with the real button names and verified timings; removed a wrong `pending` state and an outdated CI statement; added the routing, duplicate-burst and settlement demos.
+
+**Verification**
+- `pnpm check` — pass on the final tree after all edits (lint, typecheck, Go tests, 100 Vitest tests, build, docs examples, bundle secret check). An earlier run before the routing-panel and $100 changes had 99 tests; the extra test covers the routing panel's per-provider verdicts and payment ID.
+- `go -C backend test ./tests ./internal/simulation/...` — pass after the runner fix. An earlier full run had failed `TestSimulationSettlementMismatchIsEvidenceOnly`.
+- `pnpm test:e2e e2e/ui/playground.spec.ts` (native, once): 4 passed, 1 failed on the demo 3 assertion above; after the fix, demo 3 alone passed. The whole file was not re-run together afterwards.
+- Docker stack (`DEMO_BUILD=1 pnpm demo:up`, built images, seeded `seeded=ok`; `RECOVERY_RESOLVE_DELAY=6s` confirmed inside the container). Against it, via the API with the seeded operator key: `success`, `duplicate_request` (10 requests: 1 first-accept, 9 replays, a 409; payments=1, attempts=1, charges=1), `timeout_after_success` (payment `unknown` from about 0.5 s to about 6.7 s, then `succeeded`; 1 charge, 1 journal; all invariants pass), `duplicate_posting` and `settlement_mismatch` (discrepancy `unknown_outcome`, status `investigating`, ledger rows changed 0) all completed with every invariant passing. Routing: the card method chose `mock_fast`, the ACH method `mock_ach`, and a payment on the outage method ended `unknown` with exactly one attempt and the evaluator reporting failover blocked.
+- A headless Chromium with the launcher's cookie recipe loaded `/dashboard/playground` signed in (`/v1/workspace` 200) and ran demo 3 to "6 of 6 invariants passed". It did not literally see the `unknown` badge on screen (the script matched description text); that window was verified through the API.
+- Not run: `pnpm demo:open` itself (headed browser), `scripts/demo-record.mjs`, the full E2E suite, container-mode E2E, CI.
+
+**Notes:** three simulated providers (`mock_fast`, `mock_economy`, `mock_ach`) are profiles of the same mock and are labelled Simulated; migration `0006` rebuilds the `providers` table to allow their codes and uses `PRAGMA defer_foreign_keys`, an exception to the migrations README that is documented there. The `settlement_mismatch` payment stays `unknown` with its recovery lookup held for an hour by design.
+
+## 2026-11-01 — Demo backend: simulated multi-provider routing story
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `backend/migrations/0006_simulated_providers.sql` (new) rebuilds `providers` so `code` also allows `mock_fast`, `mock_economy`, `mock_ach` (SQLite cannot relax a CHECK in place; `PRAGMA defer_foreign_keys` is transaction-scoped). `docs/backend/schema.sql` and `backend/migrations/README.md` updated.
+- `backend/internal/provider/mock/{mock.go,profiles.go}`: adapter `Options.Code/Rails/Latency`, `Latency()`; profiles `mock_fast` (card+ach, 50ms), `mock_economy` (card, 400ms), `mock_ach` (ach, 250ms), all deterministic, latency via the injectable `Sleep` hook (`ScenarioLatency`), never applied to outage. Default mock unchanged.
+- `backend/internal/auth/seed.go`: additive demo-workspace providers 0211-0213, rules 0731-0734, methods 0131-0134, tokens 0331-0337 (existing IDs untouched).
+- `backend/cmd/api/main.go`: registers one adapter per profile (executor/recovery look adapters up by provider code, so dispatch routes to the chosen adapter).
+- `backend/internal/routing/routing.go`: Decide reason names lower-priority eligible candidates.
+- `backend/internal/transport/http/{providers,routing}.go`, `backend/api/openapi.yaml`, `frontend/lib/api/schema.d.ts` (regenerated): provider `simulated_latency_ms`, mode `simulated`, display names "Simulated Fast/Economy/ACH" (listed only when seeded and an adapter is configured); evaluate returns `alternatives[]` (chosen, pinned, eligible_lower_priority, ineligible, blocked with "unsafe failover blocked: prior attempt unresolved"). Provider code enums extended.
+- `backend/tests/routing_demo_test.go` (new).
+
+**Verification**
+- `gofmt -l .` clean; `go vet` clean for routing, provider, transport, tests.
+- `go test ./tests -run 'TestRoutingDemo|TestSimulatedProviders'` ok; `go test ./tests -run 'Dispatch|Route|Routing|Provider|Seed|Migrat|Recover|Simulat|Webhook'` ok (17.9s); `go test ./internal/routing/... ./internal/provider/... ./internal/storage/... ./internal/auth/...` ok.
+- `pnpm generate:api`, `pnpm check:docs`, `pnpm lint:openapi` ok (1 pre-existing warning).
+- NOT run: full suites, E2E, real container with the 0006 migration, frontend typecheck (new required `simulated_latency_ms` on Provider may affect frontend fixtures).
+
+## 2026-11-01 — Demo backend: visible recovery, 10-way duplicate demo and settlement mismatch scenario
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `RECOVERY_RESOLVE_DELAY` (default `0`, max 1m; `backend/internal/config/config.go`, `backend/cmd/api/main.go`, `backend/internal/payment/dispatch.go` `ExecutorOptions.ResolveDelay`): postpones the FIRST same-provider lookup after an ambiguous outcome through the outbox command's `available_at`; nothing sleeps. Default behaviour unchanged. Documented in `backend/.env.example` and `docs/backend/flows.md`.
+- `duplicate_request` (`backend/internal/simulation/{runner,invariants,catalog}.go`): 10 concurrent requests with one key, then one with a changed amount (409 `idempotency_conflict`); new invariants `duplicate_burst_answers` and `duplicate_single_effects` carry the real counts.
+- New scenario `settlement_mismatch` (catalog, runner, invariants `discrepancy_recorded_with_evidence`, `reconciliation_changed_no_ledger_rows`, `resolution_is_evidence_only`, OpenAPI enum, `frontend/lib/api/schema.d.ts` regenerated): simulated succeeded mock charge for an unknown (`outage`) payment, reconciliation run, evidence-only `investigating` resolution, before/after row counts.
+- Steps added at finalize are now persisted in `input_json` so the timeline shows them. Fingerprint includes scenario-specific `extra` evidence.
+- `backend/tests/simulation_test.go`, `backend/tests/dispatch_helpers_test.go` (`resolveDelay` config): tests for the delay (1s), the 10-way burst and the settlement mismatch; the scenario table gained `settlement_mismatch`.
+
+**Verification**
+- `gofmt -l` clean; `go vet ./tests ./internal/simulation/... ./internal/payment/...` clean.
+- `go test ./tests -run 'Simulation|Scenario'` ok (5.2s); `go test ./internal/simulation/... ./internal/config/...` ok; `go test ./tests -run 'Recovery|Dispatch'` ok.
+- `pnpm generate:api` ran (the schema diff also contains other agents' provider/routing enum changes).
+- NOT run: full suites, E2E, a real 6s delay against the running stack.
+
+## 2026-11-01 — Demo ops: one-command launcher, demo compose override and presenter runbook
+
+**WBS:** process (demo preparation) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `docker-compose.demo.yml` (new) — override with fast dispatcher polling, `MOCK_DELAYED_SUCCESS_DELAY=4s`, `RECOVERY_RESOLVE_DELAY=6s` (ignored by builds that predate the knob); no extra ports.
+- `scripts/demo-up.sh`, `scripts/demo-down.sh`, `scripts/demo-open.mjs` (new) — `pnpm demo:up` starts without building (`DEMO_BUILD=1` builds), writes throwaway credentials to `.demo/credentials.env`, runs `railvanta-api seed-demo` in the API container, prints key, curl examples and playground URL; `demo:open` launches headed Chromium with the session and CSRF cookies; `demo:down` warns about `-v`.
+- `scripts/demo-record.mjs` (new, optional) — Playwright video of the guided flow; not run.
+- `package.json` — `demo:up`, `demo:open`, `demo:down` scripts. `.gitignore` — `.demo/`. `README.md` — short Demo section. `docs/demo/README.md` (new) — presenter runbook.
+
+**Verification**
+- `docker compose -f docker-compose.yml -f docker-compose.demo.yml config -q` passed; `bash -n` and `shellcheck` on both shell scripts clean; `node --check` on both mjs scripts clean.
+- NOT run: `demo:up`, seeding, curl flow and `demo:open` (the stack was stopped, and no image rebuild or stack start was allowed); the Playground labels in the runbook are unverified because the page did not exist yet.
+
+## 2026-11-01 — Demo frontend: guided Payment Failure & Recovery Playground
+
+**WBS:** demo preparation (no WBS item) · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `frontend/app/dashboard/playground/page.tsx`, `frontend/components/playground/{PlaygroundView,DemoCard,RunResult,RoutingDemo}.tsx`, `frontend/lib/hooks/playground.ts` — new `/dashboard/playground`: six demo cards (what happens, what this proves, Run, result panel) driven through the real `POST /v1/sandbox/simulations` and polled via the existing `useSimulation`; evidence shown is only what the backend returns (invariants, state history, timeline, counts, journal lines with BigInt debit/credit totals, discrepancy from `/v1/reconciliation/discrepancies`). Cards whose scenario is missing from `GET /v1/sandbox/scenarios` are disabled with "backend scenario not available yet". Demo 3 has an `outage` contrast button; demo 4 uses `POST /v1/routing/evaluate`; demo 1 reuses the create-payment dialog (prefilled $100). "Run all in order" runs 1, 2, 3, 5, 6 and stops on the first failure. One polite live region announces each finished run once.
+- `frontend/components/layout/app-shell.tsx` — nav item "Playground".
+- `frontend/tests/components/playground.test.tsx` — 4 tests (cards/disabled scenarios, steps+invariants+evidence, unknown shows no retry action, exact >2^53 money).
+- `e2e/ui/playground.spec.ts` — written, NOT run: page/axe, demos 1, 2, 3, 5 (each skips when the scenario is not implemented).
+
+**Verification**
+- `vitest run tests/components/playground.test.tsx` — 1 file, 4 tests passed.
+- `eslint` on the new and changed frontend files — no findings; `prettier --write` applied.
+- `pnpm --filter @railvanta/frontend typecheck` — no errors in these files; one error remains in `lib/api/routing-schemas.ts` (providerSchema vs regenerated `simulated_latency_ms`), which belongs to another agent's in-progress change.
+- Not run: the e2e spec, `pnpm check`, a browser check at 375px/1440px.
+
 ## 2026-11-01 — Restore changelog entries dropped by a merge resolution
 
 **WBS:** process · **PR/commit:** PR #4 (`feat/simulator-webhook-scenarios`)

@@ -19,6 +19,7 @@ import (
 	"github.com/railvanta/railvanta/backend/internal/event"
 	"github.com/railvanta/railvanta/backend/internal/payment"
 	"github.com/railvanta/railvanta/backend/internal/provider/mock"
+	"github.com/railvanta/railvanta/backend/internal/simulation"
 	"github.com/railvanta/railvanta/backend/internal/storage"
 	httpapi "github.com/railvanta/railvanta/backend/internal/transport/http"
 )
@@ -57,7 +58,12 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	// The dispatcher starts only after migrations (storage.Open) and seeding.
 	providers := payment.ProviderSet{"mock": mock.New(store.DB, mock.Options{DelayedSuccessDelay: cfg.Dispatcher.MockDelayedSuccessDelay, TimeoutDelay: cfg.Dispatcher.MockTimeoutDelay})}
-	executor := payment.NewExecutor(store.DB, payment.ExecutorOptions{Providers: providers, ProviderTimeout: cfg.Dispatcher.ProviderTimeout, Logger: logger})
+	// Simulated demo providers (Demo 4): same deterministic mock adapter, distinct
+	// code, rails and fixed latency. Rows are seeded only in the demo workspace.
+	for _, profile := range mock.Profiles {
+		providers[profile.Code] = mock.NewProfile(store.DB, profile, mock.Options{DelayedSuccessDelay: cfg.Dispatcher.MockDelayedSuccessDelay, TimeoutDelay: cfg.Dispatcher.MockTimeoutDelay})
+	}
+	executor := payment.NewExecutor(store.DB, payment.ExecutorOptions{Providers: providers, ProviderTimeout: cfg.Dispatcher.ProviderTimeout, ResolveDelay: cfg.Dispatcher.RecoveryResolveDelay, Logger: logger})
 	recovery := payment.NewRecovery(store.DB, payment.RecoveryOptions{
 		Providers: providers, LookupTimeout: cfg.Dispatcher.ProviderTimeout, BaseBackoff: cfg.Dispatcher.RecoveryBaseBackoff,
 		MaxBackoff: cfg.Dispatcher.RecoveryMaxBackoff, LookupDelay: cfg.Dispatcher.RecoveryLookupDelay, Logger: logger,
@@ -112,13 +118,28 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 		writeHealth(w, http.StatusOK)
 	})
-	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, RequestsPerMinute: 600, Router: executor.Router(), OnAccepted: dispatcher.Notify}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
+	api := &http.Server{Handler: httpapi.NewHandler(store.DB, httpapi.Config{Logger: logger, PublicOrigin: cfg.PublicOrigin, PublicSandboxAccess: cfg.PublicSandboxAccess, RequestsPerMinute: 600, Router: executor.Router(), OnAccepted: dispatcher.Notify}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 	health := &http.Server{Handler: healthMux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 	errorsCh := make(chan error, 2)
 	go func() { errorsCh <- api.Serve(apiListener) }()
 	go func() { errorsCh <- health.Serve(healthListener) }()
 	dispatcher.Start()
-	logger.Info("sandbox API ready", "http_addr", apiListener.Addr().String(), "health_addr", healthListener.Addr().String(), "demo_mode", cfg.DemoMode)
+	logger.Info("sandbox API ready", "http_addr", apiListener.Addr().String(), "health_addr", healthListener.Addr().String(), "demo_mode", cfg.DemoMode, "public_sandbox_access", cfg.PublicSandboxAccess, "sandbox_sample_data", cfg.SandboxSampleData)
+	samplesDone := make(chan struct{})
+	sampleCtx, stopSamples := context.WithCancel(ctx)
+	defer stopSamples()
+	if cfg.SandboxSampleData {
+		// Background, so readiness never waits; it stops at shutdown.
+		runner := simulation.NewRunner(store.DB, payment.NewService(store.DB, payment.Options{}), simulation.Options{Notify: dispatcher.Notify})
+		go func() {
+			defer close(samplesDone)
+			if err := runner.SeedSamples(sampleCtx, auth.DemoWorkspaceID, logger); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Warn("sample data stopped", "error", err.Error())
+			}
+		}()
+	} else {
+		close(samplesDone)
+	}
 	var serveErr error
 	select {
 	case <-ctx.Done():
@@ -127,6 +148,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	draining.Store(true)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// Stop the sample seeder (also on a serve error) and let it return before
+	// the deferred store.Close.
+	stopSamples()
+	select {
+	case <-samplesDone:
+	case <-shutdownCtx.Done():
+	}
 	// Stop claiming and drain bounded in-flight work alongside HTTP shutdown;
 	// the deferred store.Close runs only after both have returned.
 	dispatcherErr := make(chan error, 1)

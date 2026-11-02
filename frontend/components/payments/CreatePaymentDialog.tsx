@@ -120,7 +120,12 @@ export function CreatePaymentDialog({
     const method = methods.find(
       (candidate) => candidate.id === resume?.payment_method_id,
     );
-    const firstMock = methods.find((candidate) => candidate.rail === "mock");
+    // Prefer the seeded "Mock success" method (…0121), then any mock method.
+    const firstMock =
+      methods.find(
+        (candidate) =>
+          candidate.rail === "mock" && candidate.id.endsWith("0121"),
+      ) ?? methods.find((candidate) => candidate.rail === "mock");
     const currency = (resume?.currency ?? "USD") as FormValues["currency"];
     return {
       amount: resume ? minorToMajorInput(resume.amount_minor, currency) : "",
@@ -245,6 +250,7 @@ export function CreatePaymentDialog({
                 id={`${formId}-amount`}
                 inputMode="decimal"
                 autoComplete="off"
+                placeholder="100.00"
                 disabled={locked}
                 aria-invalid={Boolean(errors.amount)}
                 aria-describedby={`${formId}-amount-hint${errors.amount ? ` ${formId}-amount-error` : ""}`}

@@ -47,6 +47,8 @@ const (
 	ScenarioTimeoutBeforeExecution Scenario = "timeout_before_execution"
 	ScenarioTimeoutAfterSuccess    Scenario = "timeout_after_success"
 	ScenarioOutage                 Scenario = "outage"
+	// ScenarioLatency is only passed to SleepFunc for a profile's fixed latency.
+	ScenarioLatency Scenario = "profile_latency"
 )
 
 // Scenarios lists every scenario, longest token prefix first.
@@ -111,6 +113,14 @@ type Options struct {
 	// TimeoutDelay is how long timeout scenarios hang before giving up (default 5s);
 	// a caller deadline that ends sooner wins.
 	TimeoutDelay time.Duration
+	// Code is the provider code reported by Capabilities (default "mock").
+	Code string
+	// Rails overrides the rails reported by Capabilities (default card, ach, mock).
+	Rails []string
+	// Latency is a short FIXED simulated processing time applied before every
+	// scenario except outage (default 0 = none). It is never random and never
+	// derived from the wall clock; tests zero it through the Sleep hook.
+	Latency time.Duration
 }
 
 // Adapter implements provider.Provider against SQLite.
@@ -155,9 +165,19 @@ func sleep(ctx context.Context, _ Scenario, d time.Duration) error {
 // and Lookup returns provider.ErrUnavailable.
 func (a *Adapter) SetAvailable(available bool) { a.unavailable.Store(!available) }
 
+// Latency is the fixed simulated processing latency of this adapter (0 = none).
+func (a *Adapter) Latency() time.Duration { return a.opts.Latency }
+
 // Capabilities reports idempotent replay and lookup support.
 func (a *Adapter) Capabilities() provider.Capabilities {
-	return provider.Capabilities{Code: "mock", IdempotentReplay: true, LookupByIdempotencyKey: true, Rails: []string{"card", "ach", "mock"}}
+	code, rails := a.opts.Code, a.opts.Rails
+	if code == "" {
+		code = "mock"
+	}
+	if rails == nil {
+		rails = []string{"card", "ach", "mock"}
+	}
+	return provider.Capabilities{Code: code, IdempotentReplay: true, LookupByIdempotencyKey: true, Rails: append([]string(nil), rails...)}
 }
 
 // ProviderReference derives the deterministic reference for a key.
@@ -179,6 +199,12 @@ func (a *Adapter) Submit(ctx context.Context, req provider.SubmitRequest) provid
 		return provider.Ambiguous(provider.CodeProviderUnavailable, provider.ErrUnavailable)
 	}
 	scenario := ScenarioForToken(req.TokenReference)
+	if a.opts.Latency > 0 && scenario != ScenarioOutage {
+		if err := a.opts.Sleep(ctx, ScenarioLatency, a.opts.Latency); err != nil {
+			// Nothing was recorded yet; the caller resolves it by lookup.
+			return provider.Ambiguous(provider.ContextCode(err), err)
+		}
+	}
 	switch scenario {
 	case ScenarioOutage:
 		// The request never reaches execution; nothing is recorded.

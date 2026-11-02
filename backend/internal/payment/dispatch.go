@@ -59,10 +59,14 @@ type ExecutorOptions struct {
 	// PersistTimeout bounds each outcome transaction, which runs on a context
 	// detached from shutdown cancellation (default 10s).
 	PersistTimeout time.Duration
-	Now            func() time.Time
-	Metrics        *ExecutionMetrics
-	Logger         *slog.Logger
-	Hooks          ExecutorHooks
+	// ResolveDelay postpones the first same-provider lookup after an ambiguous
+	// outcome (sandbox demo knob; default 0 = immediately). It only sets the
+	// outbox command's available_at; nothing sleeps.
+	ResolveDelay time.Duration
+	Now          func() time.Time
+	Metrics      *ExecutionMetrics
+	Logger       *slog.Logger
+	Hooks        ExecutorHooks
 }
 
 // Executor handles payment.dispatch commands: route, persist a submitted
@@ -260,7 +264,7 @@ func (e *Executor) reclaimStale(tx *gorm.DB, claim event.Claim, payment storage.
 			_, err := ApplyUnknown(tx, Outcome{
 				WorkspaceID: payment.WorkspaceID, PaymentID: payment.ID, AttemptID: a.ID, Code: "stale_submitted",
 				Reason:         "dispatch lease expired with the attempt submitted; treated as possibly executed, lookup scheduled at the original provider",
-				ActorReference: DispatchActor, Now: now, Claim: &claim,
+				ActorReference: DispatchActor, Now: now, Claim: &claim, LookupDelay: e.opts.ResolveDelay,
 			})
 			return err
 		}
@@ -293,7 +297,7 @@ func (e *Executor) record(ctx context.Context, claim event.Claim, prepared Prepa
 		o := Outcome{
 			WorkspaceID: prepared.WorkspaceID, PaymentID: prepared.PaymentID, AttemptID: prepared.AttemptID,
 			ProviderReference: result.ProviderReference, Code: result.Code, ActorReference: DispatchActor,
-			Now: e.opts.Now().UnixMilli(), Claim: &claim,
+			Now: e.opts.Now().UnixMilli(), Claim: &claim, LookupDelay: e.opts.ResolveDelay,
 		}
 		var err error
 		switch result.Outcome {
