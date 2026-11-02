@@ -14,6 +14,20 @@ A record of every change to code, configuration or design docs, newest first. Ea
 - Frames were reviewed for API keys and tokens; none seen. Narration claims were checked against the live UI while recording. Not run: any test; the voice-over has not been listened to by a person.
 - Known mismatch: README and `docs/demo/story.md` say "eight sample runs", but the hub showed six failure rows when recorded; the video says six.
 
+## 2026-11-02 — Clean README with the YouTube walkthrough; remove the committed video; fix the settings E2E spec
+
+**PR/commit:** main (after PR #5 was merged)
+
+**Changed**
+- `README.md` — rewritten and shortened: one-line pitch, the YouTube walkthrough (https://www.youtube.com/watch?v=KyC8T2YNafI) as a clickable thumbnail, "Why this project exists" as a failure → guarantee table, "Try it in two minutes" (`pnpm demo:up`), a Mermaid flow and stack table, prerequisites, install/verify/test (the `quickstart:` markers and block are unchanged for `pnpm test:e2e:quickstart`), running without the launcher, and scope and limits. No WBS references.
+- `docs/demo/video/` (mp4, poster, captions, about 42 MB, added in `1805ad4`) — deleted; `docs/demo/README.md` now links to the YouTube video. The files remain in Git history.
+- `e2e/ui/docs-settings.spec.ts` — "settings reads require a workspace membership" failed in both CI E2E jobs after PR #5 (118 or 114 passed, 1 failed): it expected a session-less browser to see an error, but with public sandbox access on (native harness and Compose) the dashboard's session guard now starts a visitor session. The browser half now checks the behaviour that applies: with public access, the visitor sees the demo workspace and no error; without it, the error with a request ID and no data. The API assertions (401 anonymous or wrong key, 200 reader without secrets) are unchanged.
+
+**Verification**
+- `playwright test ui/docs-settings.spec.ts` (native): 8 passed.
+- Prettier check on the spec, `pnpm typecheck`, `pnpm check:tracked`: pass. `git grep` finds no remaining references to the video files outside this changelog. The YouTube thumbnail URL returns 200.
+- Not run: the whole E2E suite or `pnpm check` after this change; CI on main will run them.
+
 ## 2026-11-02 — Fix the failing CI secret scan (fake fixture key)
 
 **WBS:** 5.2.10 secret scanning · **PR/commit:** feat/demo-playground
