@@ -8,6 +8,9 @@ services:
     environment:
       # Same loopback-only, sandbox-only opt-in as docker-compose.yml (kept explicit here).
       SANDBOX_PUBLIC_ACCESS: "true"
+      # Run the eight headline simulations once at startup (after `seed-demo` creates the
+      # workspace) so every dashboard page opens with data. Demo override only.
+      SANDBOX_SAMPLE_DATA: "true"
       # Fast dispatcher so a payment leaves "pending" within a blink.
       DISPATCHER_POLL_INTERVAL: 50ms
       DISPATCHER_LEASE: 2s

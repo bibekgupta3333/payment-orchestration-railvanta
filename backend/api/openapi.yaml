@@ -875,6 +875,41 @@ paths:
         schema:
           type: string
           pattern: ^[A-Za-z0-9_-]{1,64}$
+  /v1/sandbox/samples:
+    get:
+      operationId: listSampleRuns
+      summary: List the startup sample runs
+      tags:
+      - Sandbox
+      responses:
+        default: *id001
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SampleRunList'
+        '401': *id001
+        '403': *id001
+        '429': *id001
+      description: One item per headline sample scenario (SIMULATED / SANDBOX ONLY), in a fixed order, from the most recent run in the caller's workspace carrying the scenario's sample seed ("sample-" + scenario). With SANDBOX_SAMPLE_DATA the API runs each once at startup; a scenario without such a run is "missing" with null ids. Any role may read it. Not cacheable.
+      parameters:
+      - name: X-Request-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+      - name: X-Correlation-ID
+        in: header
+        required: false
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
   /v1/providers/health:
     get:
       operationId: getProviderHealth
@@ -3964,6 +3999,57 @@ components:
       required:
       - label
       - items
+    SampleRunList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SampleRun'
+      required:
+      - items
+    SampleRun:
+      type: object
+      additionalProperties: false
+      properties:
+        scenario:
+          type: string
+          enum:
+          - success
+          - decline
+          - duplicate_request
+          - timeout_after_success
+          - outage
+          - duplicate_posting
+          - duplicate_webhook
+          - settlement_mismatch
+        run_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - running
+          - completed
+          - failed
+          - missing
+        payment_id:
+          type: string
+          nullable: true
+        invariants_passed:
+          type: integer
+          minimum: 0
+        invariants_total:
+          type: integer
+          minimum: 0
+      required:
+      - scenario
+      - run_id
+      - status
+      - payment_id
+      - invariants_passed
+      - invariants_total
     SimulationInvariant:
       type: object
       additionalProperties: false

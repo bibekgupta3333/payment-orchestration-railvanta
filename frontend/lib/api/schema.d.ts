@@ -281,6 +281,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox/samples": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the startup sample runs
+     * @description One item per headline sample scenario (SIMULATED / SANDBOX ONLY), in a fixed order, from the most recent run in the caller's workspace carrying the scenario's sample seed ("sample-" + scenario). With SANDBOX_SAMPLE_DATA the API runs each once at startup; a scenario without such a run is "missing" with null ids. Any role may read it. Not cacheable.
+     */
+    get: operations["listSampleRuns"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers/health": {
     parameters: {
       query?: never;
@@ -1474,6 +1494,27 @@ export interface components {
         injected_fault: string;
       }[];
     };
+    SampleRunList: {
+      items: components["schemas"]["SampleRun"][];
+    };
+    SampleRun: {
+      /** @enum {string} */
+      scenario:
+        | "success"
+        | "decline"
+        | "duplicate_request"
+        | "timeout_after_success"
+        | "outage"
+        | "duplicate_posting"
+        | "duplicate_webhook"
+        | "settlement_mismatch";
+      run_id: string | null;
+      /** @enum {string} */
+      status: "running" | "completed" | "failed" | "missing";
+      payment_id: string | null;
+      invariants_passed: number;
+      invariants_total: number;
+    };
     SimulationInvariant: {
       id: string;
       title: string;
@@ -2148,6 +2189,34 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ScenarioCatalog"];
+        };
+      };
+      401: components["responses"]["Error"];
+      403: components["responses"]["Error"];
+      429: components["responses"]["Error"];
+      default: components["responses"]["Error"];
+    };
+  };
+  listSampleRuns: {
+    parameters: {
+      query?: never;
+      header?: {
+        "X-Request-ID"?: string;
+        "X-Correlation-ID"?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful response */
+      200: {
+        headers: {
+          "X-Request-ID"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SampleRunList"];
         };
       };
       401: components["responses"]["Error"];

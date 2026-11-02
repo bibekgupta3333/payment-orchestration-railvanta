@@ -63,6 +63,7 @@ The M1 API config loader implements `APP_ENV`, `HTTP_ADDR`, `HEALTH_ADDR`, `SQLI
 | `SQLITE_PATH` | API | `/var/lib/railvanta/railvanta.db` in containers |
 | `API_INTERNAL_ORIGIN` | Next.js server | Internal API service URL; never a provider credential |
 | `PUBLIC_APP_ORIGIN` | Server configuration | Deployed HTTPS origin for origin/redirect validation |
+| `SANDBOX_SAMPLE_DATA` | API | Default `false`. When `true`, runs the eight headline simulations once in the demo workspace at startup (skipped if their `sample-<scenario>` runs exist); requires `DEMO_MODE` or `SANDBOX_PUBLIC_ACCESS`. Set only in `docker-compose.demo.yml` |
 | Session and provider credentials | API only | Inject through secret management; no real-money credentials |
 
 Public JavaScript uses relative `/v1` URLs. Never put provider secrets or session signing keys into `NEXT_PUBLIC_*` variables. Keep environment examples limited to placeholders. Database files, backup archives, and logs must not contain raw card or bank credentials.

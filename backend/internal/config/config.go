@@ -20,7 +20,12 @@ type Config struct {
 	// PublicSandboxAccess (SANDBOX_PUBLIC_ACCESS, default false) lets anyone who
 	// reaches the API mint a throwaway operator session in the demo workspace.
 	PublicSandboxAccess bool
-	Dispatcher          Dispatcher
+	// SandboxSampleData (SANDBOX_SAMPLE_DATA, default false) runs the eight
+	// headline simulations once in the demo workspace at startup. It needs a
+	// demo workspace: DEMO_MODE seeds one, and with SANDBOX_PUBLIC_ACCESS the
+	// container stack seeds it through `railvanta-api seed-demo`.
+	SandboxSampleData bool
+	Dispatcher        Dispatcher
 }
 
 // Dispatcher holds outbox dispatcher and mock provider timing. Defaults suit
@@ -69,6 +74,15 @@ func Load(getenv func(string) string) (Config, error) {
 		if err != nil {
 			return Config{}, errors.New("SANDBOX_PUBLIC_ACCESS must be true or false")
 		}
+	}
+	if raw := getenv("SANDBOX_SAMPLE_DATA"); raw != "" {
+		c.SandboxSampleData, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("SANDBOX_SAMPLE_DATA must be true or false")
+		}
+	}
+	if c.SandboxSampleData && !c.DemoMode && !c.PublicSandboxAccess {
+		return Config{}, errors.New("SANDBOX_SAMPLE_DATA requires DEMO_MODE or SANDBOX_PUBLIC_ACCESS: sample data only exists in the demo workspace")
 	}
 	if c.DemoMode && !Loopback(c.HTTPAddr) {
 		return Config{}, errors.New("DEMO_MODE requires a literal loopback HTTP_ADDR")
