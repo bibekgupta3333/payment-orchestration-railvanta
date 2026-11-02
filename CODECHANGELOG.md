@@ -2,6 +2,128 @@
 
 A record of every change to code, configuration or design docs, newest first. Each entry says what changed, which [WBS](docs/wbs.md) item it serves, and what was actually run to verify it. Only record results you observed. If a check was skipped or failed, say so.
 
+## 2026-11-01 — Add recorded portfolio demo video
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `docs/demo/video/railvanta-demo.mp4` (new, about 40 MB), `railvanta-demo.srt`, `railvanta-demo-poster.jpg` — a 145 s 1080p screen recording of the running sandbox stack with synthetic voice-over and burned-in captions. Produced outside this repo; no code here was changed to make it.
+- `README.md` (Demo section) and `docs/demo/README.md` — link to the video.
+
+**Verification**
+- Frames were reviewed for API keys and tokens; none seen. Narration claims were checked against the live UI while recording. Not run: any test; the voice-over has not been listened to by a person.
+- Known mismatch: README and `docs/demo/story.md` say "eight sample runs", but the hub showed six failure rows when recorded; the video says six.
+
+## 2026-11-02 — Fix the failing CI secret scan (fake fixture key)
+
+**WBS:** 5.2.10 secret scanning · **PR/commit:** feat/demo-playground
+
+**Changed**
+- `.gitleaks.toml` — PR #5's `containers` job failed at `scripts/secret-scan.sh`: gitleaks `generic-api-key` flagged 4 lines in committed history (`frontend/tests/components/{api-keys,dashboard-hub,landing,default-demos-b}.test.tsx`). All four are the same fixed fake fixture `rvk_1a2b3c4d.0123456789abcdef…` (never a minted key). Allowlisted that exact quoted string (line regex), not the files, following the existing placeholder rule. History is not rewritten.
+
+**Verification**
+- Pinned gitleaks over a clean clone of `feat/demo-playground` with the new config: 80 commits scanned, no leaks found (before: leaks found: 4, the same as CI run 41330186439).
+- `pnpm check`: exit 0 (152 Vitest tests, Go tests, contracts in sync, build).
+- CI not re-run yet at the time of writing.
+
+## 2026-11-01 — Redesign the landing page wireframe (design only)
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `docs/frontend/wireframes.md` — section 1 rewritten and the separate 1a addendum folded in: design brief (audiences, page job, one-sentence message, primary action, success signal, constraints), an audit of the current page (inaccurate "every rail" headline, four competing CTAs, the lifecycle and architecture strip duplicating the same seven steps, Planned-badge capabilities, mechanism before evidence), principles, the new information architecture (hero with problem headline and lifecycle beside it → scope strip → "The gaps" failure/guarantee/evidence table → Try it in one step → Engineering decisions with ADR links → closing CTA), desktop and mobile ASCII wireframes, behaviour and states, visual system, a removals table and acceptance criteria including test impact. The implementation status note marks it as not implemented.
+
+**Verification**
+- Docs only; nothing run. The wireframe's claims about behaviour were checked against the current components (SandboxStart, Lifecycle, why-story.ts, SandboxSessionGuard).
+
+## 2026-11-01 — Dashboard starts a sandbox session instead of showing a 401
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `frontend/components/layout/SandboxSessionGuard.tsx` (new), `frontend/app/dashboard/layout.tsx` — opening any dashboard page without a valid session (never started, or invalid after the demo stack was rebuilt) showed "Unable to load this view … A valid sandbox session or API key is required". The guard probes `GET /v1/workspace`; on 401 it reads `GET /v1/sandbox/status` and, only when public sandbox access is on (ADR 0013), calls `POST /v1/sandbox/session`, refreshes `["railvanta"]` queries and renders the page. With public access off, or on any other error (API down), the page renders as before with its own error state.
+- `frontend/tests/components/sandbox-session-guard.test.tsx` (new) — signed in (no session created), 401 with public access on (session created), 401 with it off (none created).
+
+**Verification**
+- `pnpm --filter @railvanta/frontend test`: 18 files, 152 tests passed; `pnpm typecheck`: clean.
+- Web container rebuilt; a brand-new headless Chromium opening `/dashboard/payments` directly showed 20 payment rows and no error panel (the only console error is the guard's expected 401 probe).
+- `playwright test ui/payments.spec.ts ui/shell.spec.ts ui/why-story.spec.ts`: 17 passed (including the spec that stops the API and expects the error panel).
+- Not run: the whole E2E suite again, `pnpm check` after this change.
+
+## 2026-11-01 — Integrate prepopulated sandbox samples and the "why" story; verification
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed (integration of the three entries below)**
+- `docs/decisions/0014-prepopulated-sandbox-samples.md` — added the rule the backend actually enforces: the flag needs `DEMO_MODE` or `SANDBOX_PUBLIC_ACCESS`, and the seeder waits for the demo workspace created by `seed-demo`.
+- `docs/demo/story.md` — removed the *(unverified)* marks for the landing section, the hub panel and its link labels (checked on the stack); corrected "all eight on the hub" to the six failure rows, with `success`/`decline` found on Payments. The outage Routing-tab notice is still marked unverified.
+
+**Verification**
+- `DEMO_BUILD=1 pnpm demo:up` on the existing volume: with no request made, `GET /v1/sandbox/samples` reported all eight samples `completed` with every invariant passing (6/6, 6/6, 8/8, 6/6, 6/6, 6/6, 10/10, 9/9).
+- Headless Chromium on the stack: the landing "Why Railvanta exists" section (six cards) and, after Start sandbox, the hub story panel (six rows, Completed, Inspect run / Payment links) screenshotted; no console errors.
+- `pnpm test:e2e` (the spec filter did not apply, so the whole native suite ran once): 115 passed, 5 skipped, 0 failed, including `why-story.spec.ts` 2/2.
+- `pnpm check`: exit 0 (149 Vitest tests, Go tests, generated contracts in sync, build).
+- Not run: container-mode E2E, CI, Safari, mobile-width screenshot of the new sections (the frontend spec checks no horizontal overflow at 375px).
+
+## 2026-11-01 — "Why Railvanta exists" on the landing page and the hub story panel
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `frontend/lib/why-story.ts` (new) — six problems (double charge on retry, lost response, provider outage, duplicate webhook, ledger double posting, settlement mismatch) with scenario, plain-words failure, guarantee (catalog wording, sandbox mock provider only) and proof page; plus the success/decline baseline.
+- `frontend/components/landing/WhyRailvanta.tsx` (new), `frontend/app/page.tsx`, `frontend/app/landing.css` — section "Why Railvanta exists" between the hero and the lifecycle: h2, framing paragraph, card grid (3/2/1 columns) with problem → guarantee → "See it in the sandbox".
+- `frontend/lib/api/sample-schemas.ts`, `frontend/lib/hooks/sandbox-samples.ts` (new) — hand-written Zod schema and `useSandboxSamples` for `GET /v1/sandbox/samples`, key `["railvanta", ws, env, "sandbox", "samples"]`, 3 s refetch only while a row is running.
+- `frontend/components/dashboard/Hub.tsx`, `Overview.tsx`, `frontend/app/dashboard-hub.css` — `StoryPanel` "The story: what this sandbox proves" right after the hub heading: per problem the title, guarantee, status pill (Completed/Failed + "n/m invariants pass", Running, Not loaded) and Inspect run / Payment links; all-missing hint linking to the Load sample data card (`#hub-sample-data`).
+- `frontend/lib/hooks/sample-data.ts` — the client loader now uses seeds `sample-<scenario>` (was `freshSeed()`), so a manual load shows up in the story panel; each run still has its own Idempotency-Key.
+- `frontend/tests/components/why-story.test.tsx`, `e2e/ui/why-story.spec.ts` (new); `docs/frontend/wireframes.md` sections 1a and 2a.
+
+**Verification**
+- `pnpm --filter @railvanta/frontend test` — 17 files, 149 tests passed (includes 6 new).
+- `pnpm typecheck` — frontend and e2e clean. `pnpm lint` — passed (Go 0 issues, eslint + prettier clean, OpenAPI valid with 1 pre-existing warning).
+- `pnpm --filter @railvanta/frontend build` — succeeded.
+- Not run: `e2e/ui/why-story.spec.ts` or any Playwright suite, `pnpm check`.
+
+## 2026-11-01 — Prepopulate the demo sandbox with sample runs at startup (`SANDBOX_SAMPLE_DATA`)
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `backend/internal/config/config.go`, `config_test.go` — new `SANDBOX_SAMPLE_DATA` bool (default `false`, `SandboxSampleData`). Refused unless `DEMO_MODE` **or** `SANDBOX_PUBLIC_ACCESS` is on (the container demo keeps `DEMO_MODE` off and seeds the demo workspace with `seed-demo`, so requiring `DEMO_MODE` alone would stop `pnpm demo:up`). Tests for on/off/invalid/refused and the default.
+- `backend/internal/simulation/samples.go` (new) — `SampleScenarios` (same order as `frontend/lib/hooks/sample-data.ts`), `SampleSeed`, `LatestSampleRun`, and `Runner.SeedSamples`: waits for the demo workspace's seeded methods, skips scenarios that already have a `sample-<scenario>` run, otherwise starts a real $100.00 USD simulation (actor `sample-data`) and polls it every 250 ms (90 s cap, ctx-aware); per-scenario errors are logged and skipped.
+- `backend/cmd/api/main.go` — when the flag is on, a background goroutine after `dispatcher.Start()` seeds the demo workspace; it never blocks readiness and is cancelled and awaited (bounded by the shutdown timeout) before the store closes.
+- `backend/internal/transport/http/simulations.go` — `GET /v1/sandbox/samples` (any role, `no-store`): one `SampleRunView` per scenario in order, `missing` with null ids when none. `runInvariants` is now shared with the simulation view.
+- `backend/api/openapi.yaml` — path `listSampleRuns`, schemas `SampleRunList`/`SampleRun`; regenerated `frontend/lib/api/schema.d.ts` and `frontend/public/openapi.json`.
+- `backend/tests/sample_data_test.go` (new) — seeds once per scenario, second seed adds none, endpoint order/ids/invariants, `missing` before seeding and for the other workspace, 401 unauthenticated, cancelled ctx stops.
+- `backend/.env.example`, `docker-compose.demo.yml` (`SANDBOX_SAMPLE_DATA: "true"`; not `docker-compose.yml` or the E2E harness), `docs/backend/flows.md`, `docs/operations/deployment.md`.
+
+**Verification**
+- `go -C backend test ./tests -run TestSampleData -v` — 3 passed (seed test 2.06 s). `go -C backend test ./internal/config/` — ok.
+- `go -C backend test ./...` — all packages ok (`backend/tests` 26.8 s). `go -C backend vet ./...` — clean. `gofmt -l backend` — no files.
+- `pnpm generate:api`, then `pnpm check:generated` — match. `pnpm lint:openapi` — valid, 1 pre-existing warning (`no-server-example.com` on the localhost server).
+- Not run: the demo Compose stack, E2E, `pnpm check`.
+
+## 2026-11-01 — Presenter script and ADR for the prepopulated sandbox samples
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed (docs only)**
+- `docs/demo/story.md` (new) — a 10-minute spoken script: the problem (the gap between "sent the charge" and "know what happened"), what Railvanta is, then one Say/Show/Takeaway block per startup sample (success, decline, duplicate_request, timeout_after_success, outage, duplicate_posting, duplicate_webhook, settlement_mismatch), closing scope and Q&A. Setup box: `pnpm demo:up`, Chromium/Firefox not Safari, samples seed within about a minute, **Load sample data** as fallback.
+- `docs/decisions/0014-prepopulated-sandbox-samples.md` (new) — ADR for `SANDBOX_SAMPLE_DATA` startup seeding (demo compose only, demo workspace, idempotent by `sample-<scenario>` seed, real simulation runner), alternatives (SQL fixtures rejected; client button kept as fallback) and consequences.
+- `docs/README.md` — Demo rows (runbook, presenter script) and the ADR 0014 row. `docs/demo/README.md` — link to the script at the top. `README.md` — a short "Why this project exists" paragraph near the top.
+
+**Verification**
+- Click paths and evidence strings checked by reading `frontend/components/simulator/SimulatorView.tsx` (run page tabs), `frontend/components/payments/PaymentDetail.tsx`, `frontend/components/playground/RunResult.tsx`, `frontend/app/page.tsx`, `frontend/components/landing/*` and `backend/internal/simulation/{catalog,invariants,runner}.go`. Not verified (being built in parallel, absent from the tree when written): the landing "Why Railvanta exists" section, the hub story panel and its link labels, the `SANDBOX_SAMPLE_DATA` flag and `GET /v1/sandbox/samples`; the "Unsafe failover blocked" notice for the startup outage sample. No tests, builds or live-stack checks were run.
+
+## 2026-11-01 — Tighten the landing page's top spacing
+
+**WBS:** demo preparation · **PR/commit:** feat/demo-playground (uncommitted)
+
+**Changed**
+- `frontend/app/globals.css` — the header and hero left about 185px of empty space above the "Sandbox infrastructure" badge. Header min-height 100px → 76px (mobile 85px → 68px); hero padding 85px/70px → 32px/56px (mobile 45px/40px → 20px/36px).
+
+**Verification**
+- Rebuilt the web container on the Docker demo stack and took a 1440×900 screenshot: the badge now starts at 108px instead of 185px, and the lifecycle card is visible in the first viewport. No tests run (CSS only); mobile width not screenshotted.
+
 ## 2026-11-01 — Integrate public sandbox access, landing lifecycle and default demos; verification and fixes
 
 **WBS:** demo preparation · **PR/commit:** feat/demo-playground
