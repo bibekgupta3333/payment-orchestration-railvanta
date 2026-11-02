@@ -537,7 +537,7 @@ td {
   padding: 0 48px;
 }
 .public-header {
-  min-height: 100px;
+  min-height: 76px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -550,7 +550,7 @@ td {
   font-size: 12px;
 }
 .hero {
-  padding: 85px 0 70px;
+  padding: 32px 0 56px;
   max-width: 850px;
 }
 .hero h1 {
@@ -741,7 +741,7 @@ td {
     padding: 0 22px;
   }
   .public-header {
-    min-height: 85px;
+    min-height: 68px;
     gap: 10px;
   }
   .public-header .brand {
@@ -755,7 +755,7 @@ td {
     font-size: 11px;
   }
   .hero {
-    padding: 45px 0 40px;
+    padding: 20px 0 36px;
   }
   .hero .badge {
     font-size: 9px;
