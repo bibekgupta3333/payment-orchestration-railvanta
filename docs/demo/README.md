@@ -2,7 +2,7 @@
 
 **Presenting the context?** Start with the [10-minute presenter script](story.md): why the project exists, then the eight sample runs the demo stack seeds at startup ([ADR 0014](../decisions/0014-prepopulated-sandbox-samples.md)), each with a click path and a one-line takeaway.
 
-**Short on time?** Watch the [2½-minute recorded walkthrough](video/railvanta-demo.mp4) ([captions](video/railvanta-demo.srt)).
+**Short on time?** Watch the [recorded walkthrough on YouTube](https://www.youtube.com/watch?v=KyC8T2YNafI).
 
 The one page to read before presenting. Everything runs locally in a sandbox: a deterministic mock provider, one Go API with SQLite, a Next.js dashboard. No real funds move.
 

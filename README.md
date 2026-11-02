@@ -1,26 +1,86 @@
 # Railvanta
 
-Railvanta is a sandbox multi-rail payment orchestration platform: a Go/GORM/SQLite API (`backend/`), a Next.js operator dashboard (`frontend/`) and a Playwright black-box suite (`e2e/`). Payments are accepted idempotently, dispatched through a leased outbox to a deterministic mock provider, posted to a balanced double-entry ledger, and recovered by lookup against the original provider when an outcome is ambiguous. Only the sandbox mock provider exists; **no real funds move**.
+**A sandbox payment orchestration platform that makes payment failures reproducible and shows the guarantee that handles each one.**
 
-**Why this project exists.** Most hard payment bugs live in the gap between "we sent the charge" and "we know what happened": retries that double-charge, lost responses, outages where failing over could charge twice, webhooks delivered twice or out of order, ledgers that drift, settlement records that disagree. Railvanta makes each of those failures reproducible and shows the guarantee that handles it, with the evidence. `pnpm demo:up` starts a sandbox that already contains eight sample runs, one per failure ([presenter script](docs/demo/story.md), [ADR 0014](docs/decisions/0014-prepopulated-sandbox-samples.md)).
+Go API · Next.js dashboard · SQLite · Playwright. Deterministic mock provider only: **no real money moves**.
 
-Background: [project brief](idea.md), [architecture](docs/architecture.md), [documentation index](docs/README.md), [OpenAPI contract](backend/api/openapi.yaml) (also rendered with runnable examples on the dashboard's `/docs` page), [WBS and status](docs/wbs.md), [verification record](CODECHANGELOG.md).
+[![Watch the Railvanta walkthrough on YouTube](https://img.youtube.com/vi/KyC8T2YNafI/maxresdefault.jpg)](https://www.youtube.com/watch?v=KyC8T2YNafI)
+
+▶ **[Watch the walkthrough on YouTube](https://www.youtube.com/watch?v=KyC8T2YNafI)**: a recording of the real sandbox covering a lost response, duplicate requests, a provider outage and reconciliation.
+
+## Why this project exists
+
+Most hard payment bugs live in the gap between *"we sent the charge"* and *"we know what happened"*:
+
+| What goes wrong | What Railvanta guarantees |
+| --- | --- |
+| A retry or double click charges the customer twice | Every create carries an `Idempotency-Key`: ten concurrent requests give one payment and nine replays, and a changed body gets `409` |
+| The provider charged, but the response was lost | The payment is marked **unknown**, not failed, and is resolved only by a lookup at the **same** provider |
+| The provider goes down mid-payment | The payment stays unknown and is never failed over to another provider, which could charge twice |
+| The same webhook arrives several times | A webhook inbox keyed by provider event ID applies the effect once |
+| A replayed job posts to the ledger twice | Posting keys leave exactly one balanced double-entry journal |
+| The provider's records disagree with ours | Reconciliation records the discrepancy with evidence and never edits the books |
+
+Each row is a scenario you can run in the sandbox, with the evidence (attempts, journals, events, discrepancies) on the dashboard.
+
+## Try it in two minutes
+
+```sh
+pnpm install --frozen-lockfile
+pnpm demo:up          # starts the Docker stack (builds images on first run; DEMO_BUILD=1 rebuilds)
+```
+
+Open <http://localhost:3000> in Chromium or Firefox. Safari does not keep `Secure` cookies on plain-http localhost.
+
+1. **Landing page:** read *Why Railvanta exists*, watch the 3D payment lifecycle, then click **Start sandbox**. You get a session and a one-time API key, and **Run it** sends a real `POST /v1/payments`.
+2. **Dashboard:** the hub's *The story: what this sandbox proves* panel lists the eight sample runs that were executed at startup, each linked to its evidence.
+3. **Every page** has a one-click **Default demo**. **API reference** opens Swagger UI, and **Settings → API keys** generates sandbox keys.
+
+`pnpm demo:down` stops the stack (add `-v` to delete the data). For a guided presentation, see the [presenter script](docs/demo/story.md) and the [demo runbook](docs/demo/README.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+    Client -->|Idempotency-Key| API[Go API]
+    API -->|same transaction| Outbox[(Outbox)]
+    Outbox --> Dispatcher[Dispatcher<br/>leased workers]
+    Dispatcher --> Router[Router<br/>explainable decision]
+    Router --> Provider[Mock provider<br/>I/O outside DB transactions]
+    Provider -->|unknown outcome| Recovery[Lookup at the<br/>same provider]
+    Provider --> Ledger[(Double-entry ledger)]
+    Recovery --> Ledger
+    Ledger --> Recon[Reconciliation<br/>evidence only]
+    Webhooks -->|deduplicated inbox| API
+```
+
+- **Acceptance:** idempotent by key, with the request stored and replayed byte-for-byte.
+- **Execution:** a leased outbox dispatcher calls the provider outside any database transaction.
+- **Ambiguity:** an unknown outcome is resolved only by looking it up at the original provider, never by retrying elsewhere.
+- **Money:** integer minor units, a balanced double-entry ledger with posting keys, and reconciliation that records evidence without changing the books.
+
+More detail: [architecture](docs/architecture.md), [design decisions](docs/decisions/), [OpenAPI contract](backend/api/openapi.yaml), [documentation index](docs/README.md).
+
+| Area | Stack |
+| --- | --- |
+| API | Go 1.26, GORM, SQLite (WAL), OpenAPI 3 |
+| Dashboard | Next.js, React, TanStack Query, Zod, three.js, Swagger UI |
+| Tests | Go tests, Vitest + Testing Library, Playwright (API, UI, accessibility, ops) |
+| Runtime | Docker Compose (API, web, unprivileged Nginx proxy), optional Kubernetes manifests |
 
 ## Prerequisites
 
-| Tool | Version | Used for |
-| --- | --- | --- |
-| Node.js | 22 (`.nvmrc`) | frontend, scripts, Playwright |
-| pnpm | 11.3.0 (`packageManager`; `corepack enable` selects it) | JS workspace |
-| Go | 1.26 | API |
-| C compiler (Xcode CLT, `build-essential`) | any | the CGO SQLite driver |
-| Docker with Compose v2 | recent | container sandbox, container E2E, `pnpm check` (`docker compose config`) |
-| Python 3 | 3.9+ | E2E harness offline-corruption fixtures |
-| `openssl`, `curl` | any | the demo credential walkthrough |
+| Tool | Version |
+| --- | --- |
+| Node.js | 22 (`.nvmrc`) |
+| pnpm | 11.3.0 (`corepack enable`) |
+| Go | 1.26, plus a C compiler for the CGO SQLite driver |
+| Docker with Compose v2 | recent |
+| Python 3, `openssl`, `curl` | for the test harness and examples |
 
-Network access is needed once for dependency downloads and the Chromium install. Run every command from the repository root.
+Run every command from the repository root.
 
-## Quickstart: install, verify, test
+## Install, verify and test
 
 <!-- quickstart:start -->
 ```sh
@@ -30,104 +90,18 @@ pnpm check
 ```
 <!-- quickstart:end -->
 
-`pnpm check` runs the workspace and tracked-file policy checks, `docker compose config`, lint (gofmt, vet, golangci-lint, ESLint, OpenAPI lint), generated-contract and `/docs`-example checks, typecheck, Go and Vitest tests, and the production builds. Then run the full black-box suite (builds the API, starts an isolated API and Next.js on free loopback ports with a temporary database and generated credentials, and cleans up):
-
-```sh
-pnpm test:e2e
-```
-
-Go dependencies are resolved from the committed `backend/go.sum`; `pnpm deps:api` (`go mod tidy`) is only needed when you change them.
-
-## Run the sandbox natively
-
-Terminal 1: the API in demo mode. Demo mode seeds a workspace, three API keys and one browser session, and is only allowed when the API binds a literal loopback address. Generate the secrets locally (never commit them); this uses a throwaway database so the keys always match it.
-
-```sh
-export APP_ENV=sandbox DEMO_MODE=true HTTP_ADDR=127.0.0.1:8080
-export SQLITE_PATH=data/demo-$(date +%s).db
-export DEMO_OPERATOR_KEY="oper.$(openssl rand -hex 16)"
-export DEMO_READER_KEY="read.$(openssl rand -hex 16)"
-export DEMO_OTHER_WORKSPACE_KEY="othr.$(openssl rand -hex 16)"
-export DEMO_SESSION_TOKEN="$(openssl rand -hex 16)" DEMO_CSRF_TOKEN="$(openssl rand -hex 16)"
-echo "operator key: $DEMO_OPERATOR_KEY"
-pnpm dev:api
-```
-
-Terminal 2: the dashboard, proxying `/v1/*` to the API (open <http://localhost:3000>):
-
-```sh
-API_INTERNAL_ORIGIN=http://127.0.0.1:8080 pnpm dev:web
-```
-
-Terminal 3 (or any shell with the operator key from the `echo` line): create a payment against the seeded mock payment methods. Amounts are integer minor units sent as strings; `Idempotency-Key` makes retries safe.
-
-```sh
-KEY=<operator key printed above>
-METHOD=00000000-0000-7000-8000-000000000121   # "Mock success"; list all: GET /v1/payment-methods
-curl -s -H "Authorization: Bearer $KEY" localhost:3000/v1/payment-methods
-curl -s -X POST localhost:3000/v1/payments \
-  -H "Authorization: Bearer $KEY" -H "Idempotency-Key: demo-$(date +%s)" \
-  -H "Content-Type: application/json" \
-  -d "{\"amount_minor\":\"2500\",\"currency\":\"USD\",\"payment_method_id\":\"$METHOD\"}"
-curl -s -H "Authorization: Bearer $KEY" localhost:3000/v1/payments
-```
-
-The other seeded methods drive the simulator scenarios (`...122` decline, `...123` delayed success, `...124` timeout before execution, `...125` timeout after success, `...126` outage); the `/docs` page lists runnable examples.
-
-To see data in the dashboard, the browser needs the demo session. Without one the shell renders but data pages show an error with a request ID. In Chromium DevTools, Application, Cookies for `http://localhost:3000`, add `__Host-railvanta_session` = `$DEMO_SESSION_TOKEN` (Path `/`, Secure, HttpOnly, SameSite Strict) and `railvanta_csrf` = `$DEMO_CSRF_TOKEN` (Path `/`, Secure, SameSite Strict); Chromium treats loopback HTTP as secure. The `__Host-` prefix and `Secure` flag are deliberate; do not weaken them. The API health endpoints (`/health/live`, `/health/ready`, `/health/startup`) are on the private `HEALTH_ADDR` (default `127.0.0.1:8081`) and are not public routes.
-
-The binary requires an explicit `APP_ENV=sandbox`; any other value fails startup. Environment files are examples only (`backend/.env.example`, `frontend/.env.example`); nothing auto-loads them. Seeding never resets existing keys, so reuse the same secrets with the same database across restarts, or pick a new `SQLITE_PATH`. Ordinary startup without `DEMO_MODE` seeds no credentials.
-
-## Run the sandbox in Docker Compose
-
-Separate images for the Go API and Next.js, plus an unprivileged Nginx proxy; only the proxy is published, on host loopback.
-
-```sh
-pnpm compose:up        # docker compose up --build --detach --wait
-```
-
-Open <http://localhost:3000> (`RAILVANTA_PORT=3100 pnpm compose:up` picks another host port). The data volume is named `railvanta_railvanta-data` regardless of project name, so a second stack needs both `COMPOSE_PROJECT_NAME=<name>` and `RAILVANTA_DATA_VOLUME=<name>-data`. Useful follow-ups:
-
-```sh
-pnpm compose:logs      # follow logs
-pnpm compose:down      # stop; the railvanta-data volume (SQLite + WAL/SHM) is retained
-docker compose down -v # also delete the volume
-```
-
-`DEMO_MODE` is off in containers (its trust boundary is a loopback bind). `docker-compose.yml` and `docker-compose.demo.yml` (loopback-only) set `SANDBOX_PUBLIC_ACCESS=true`, so the landing page's **Start sandbox** gives a browser session and a one-time key in one click and `pnpm demo:open` is optional ([ADR 0013](docs/decisions/0013-public-sandbox-access-and-default-demos.md)); the trade-off is that anyone who can reach the proxy is an operator of the shared sandbox workspace. Safari does not store `Secure` cookies on plain-http `localhost`, so use Chromium or Firefox. With the flag off (the default for the API binary, the Kubernetes manifests and the E2E override) protected APIs need separately provisioned credentials: `docker compose exec` the API container's `railvanta-api seed-demo` with `DEMO_*` values in its environment (see [deployment](docs/operations/deployment.md#implemented-container-backup-restore-and-drill-wbs-52)). Do not scale API replicas with SQLite. Verify image builds, startup and persistence separately from `pnpm compose:config` (YAML validation only).
-
-### Backup and restore
-
-`scripts/backup-db.sh` takes a consistent online snapshot with a SHA-256 manifest; `scripts/restore-backup.sh <backup.db> [--start]` restores into a new volume after verification and preserves the old one; `scripts/restore-drill.sh` runs backup and restore under write load; `railvanta-api check` verifies integrity and ledger invariants. The runbook, drill record and supply-chain notes are in [docs/operations/deployment.md](docs/operations/deployment.md); optional Kubernetes manifests are in [docs/operations/kubernetes.md](docs/operations/kubernetes.md).
-
-## Demo
-
-**Watch the 2½-minute walkthrough:** [docs/demo/video/railvanta-demo.mp4](docs/demo/video/railvanta-demo.mp4) ([captions](docs/demo/video/railvanta-demo.srt)). It is a screen recording of the real sandbox stack covering the lost response, duplicate requests, provider outage and reconciliation, with a synthetic voice-over (Kokoro).
-
-[![Railvanta demo video](docs/demo/video/railvanta-demo-poster.jpg)](docs/demo/video/railvanta-demo.mp4)
-
-With the Compose stack, open the landing page and click **Start sandbox** (needs `SANDBOX_PUBLIC_ACCESS`, set in the Compose files): it creates a throwaway operator session, mints a one-time key and shows a curl with the real key and a real payment method id, with a **Run it** button. The landing page also draws the payment lifecycle (client to reconciliation) with a three.js visual and a text equivalent. Every dashboard page has a **Default demo** card that runs one real, simulated $100 payment through a backend scenario and fills the page, and the hub's **Load sample data** card runs the eight headline scenarios in about 20 seconds ([ADR 0013](docs/decisions/0013-public-sandbox-access-and-default-demos.md)). Nothing runs on page load. The dashboard home (`/dashboard`) is a hub: **Generate default demo key** mints a sandbox key on click (never on page load) and shows the secret once with a ready curl, **Run a demo now** starts three real, simulated $100 runs, and **API reference** (`/dashboard/api-reference`) embeds Swagger UI over the real OpenAPI document with an Authorize button for a key ([ADR 0012](docs/decisions/0012-dashboard-hub-and-swagger-reference.md); the ADR 0011 key caveats still apply). Signed in as an operator, **Settings → API keys** generates a sandbox key (name, role, expiry), shows the secret once with a curl example, and can revoke it. For a live walkthrough of the Payment Failure & Recovery Playground: `pnpm demo:up` (start, seed throwaway credentials, print curl examples; still the way to seed the demo workspace and get the demo timings), `pnpm demo:open` (optional with public sandbox access: a headed browser already signed in), `pnpm demo:down` (add `-v` to delete demo data). Script, Q&A, honest claims and fallbacks are in [docs/demo/README.md](docs/demo/README.md).
-
-## Tests, lint and format
+`pnpm check` runs lint, generated-contract checks, typecheck, Go and Vitest tests and the production builds. `pnpm test:e2e` runs the full Playwright suite against an isolated API and dashboard that it starts and cleans up itself.
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm check` | Whole-repository pre-PR gate (see Quickstart) |
-| `pnpm test` | Go tests (file-backed SQLite) and frontend unit tests |
-| `pnpm test:api` / `pnpm test:web` | Go only / Vitest only |
-| `pnpm test:api:foundation` | Dependency-free config and exact-money tests |
-| `pnpm lint` / `pnpm typecheck` | Go format+vet+golangci-lint, ESLint, OpenAPI lint / workspace TypeScript |
-| `pnpm format` / `pnpm format:check` | Apply / verify formatting (gofmt, Prettier) |
-| `pnpm build` | Go and Next.js builds, including client-bundle secret sentinels |
-| `pnpm generate:api` / `pnpm check:generated` | Regenerate / verify frontend types derived from the OpenAPI file |
-| `pnpm check:docs` | Every `/docs` example validates against the OpenAPI contract |
-| `pnpm check:tracked` | Reject tracked credentials and database files |
-| `pnpm test:e2e` / `pnpm test:e2e:ci` | Full Playwright suite / same with retries disabled |
-| `pnpm test:e2e:quickstart` | Opt-in: re-runs this README's Quickstart in a fresh clone, then the smoke and central-demo specs |
+| `pnpm check` | Whole-repository gate before a PR |
+| `pnpm test` | Go and frontend unit tests (`test:api` / `test:web` for one side) |
+| `pnpm test:e2e` | Playwright black-box suite (`test:e2e:ci` disables retries) |
+| `pnpm lint` / `pnpm typecheck` / `pnpm format` | Linters, TypeScript, formatting |
+| `pnpm generate:api` / `pnpm check:generated` | Regenerate / verify frontend types from OpenAPI |
+| `pnpm check:docs` | Validate every `/docs` example against the contract |
 
-### End-to-end tests
-
-Native mode (the default) needs no running services; the harness builds and starts everything it uses. Container mode runs the same suite, plus the `e2e/ops` specs (backup/restore, non-root runtime, private health, container kill), against a Compose stack on a **fresh** volume (run `docker compose down -v` first; a volume reused from `pnpm compose:up` made one spec fail in a trial run) with fast dispatcher timings. `down -v` deletes the data volume (`railvanta_railvanta-data` by default; set `RAILVANTA_DATA_VOLUME` to use another), and the backup/restore spec leaves a `*-restored-*` volume to remove by hand:
+Container-mode E2E (also runs the backup/restore and container ops specs) needs a fresh volume:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build --detach --wait
@@ -135,10 +109,45 @@ E2E_BASE_URL=http://localhost:3000 pnpm test:e2e
 docker compose down -v
 ```
 
-Details of the harness, its test-only control server and fixtures are in [e2e/README.md](e2e/README.md). The suite uses one worker and no retries because lifecycle specs restart shared processes. `pnpm test:e2e:quickstart` (sets `RUN_QUICKSTART=1`) is slow and needs network; it clones the repo into a temporary directory, runs the Quickstart block above as written, then the smoke (`api/scaffold.spec.ts`) and central-demo (`api/recovery.spec.ts`) specs, and deletes the clone.
+See [e2e/README.md](e2e/README.md) for the harness details.
 
-CI (`.github/workflows/`) runs the same checks; no GitHub Actions run is claimed here. Measured results and their environments are recorded per change in [CODECHANGELOG.md](CODECHANGELOG.md), not in this README.
+## Run without the demo launcher
 
-## Scope and safety
+**Docker Compose:** `pnpm compose:up` starts the stack on <http://localhost:3000> (`RAILVANTA_PORT` changes the port). `pnpm compose:logs` follows the logs, `pnpm compose:down` stops it and keeps the SQLite volume, and `docker compose down -v` deletes it. Public sandbox access is on in the loopback-only Compose files ([ADR 0013](docs/decisions/0013-public-sandbox-access-and-default-demos.md)), so **Start sandbox** works without prepared credentials.
 
-Sandbox only. Money is integer minor units (decimal strings in the API); idempotency boundaries are preserved; an ambiguous provider outcome is reconciled against the original provider and never automatically retried against another. The single-owner SQLite design offers no horizontal API scaling or database high availability. Commands here create no cloud resources. Every change is logged in [CODECHANGELOG.md](CODECHANGELOG.md) and tracked against [docs/wbs.md](docs/wbs.md).
+**Natively:** run the API in demo mode on loopback, then the dashboard:
+
+```sh
+# Terminal 1: API (demo mode seeds a workspace and keys; loopback only)
+export APP_ENV=sandbox DEMO_MODE=true SANDBOX_PUBLIC_ACCESS=true HTTP_ADDR=127.0.0.1:8080
+export SQLITE_PATH=data/demo-$(date +%s).db
+export DEMO_OPERATOR_KEY="oper.$(openssl rand -hex 16)" DEMO_READER_KEY="read.$(openssl rand -hex 16)"
+export DEMO_OTHER_WORKSPACE_KEY="othr.$(openssl rand -hex 16)"
+export DEMO_SESSION_TOKEN="$(openssl rand -hex 16)" DEMO_CSRF_TOKEN="$(openssl rand -hex 16)"
+echo "operator key: $DEMO_OPERATOR_KEY"
+pnpm dev:api
+
+# Terminal 2: dashboard, proxying /v1/* to the API
+API_INTERNAL_ORIGIN=http://127.0.0.1:8080 pnpm dev:web
+```
+
+Then create a payment with the printed key:
+
+```sh
+KEY=<operator key printed above>
+curl -s -X POST localhost:3000/v1/payments \
+  -H "Authorization: Bearer $KEY" -H "Idempotency-Key: demo-$(date +%s)" \
+  -H "Content-Type: application/json" \
+  -d '{"amount_minor":"2500","currency":"USD","payment_method_id":"00000000-0000-7000-8000-000000000121"}'
+```
+
+Other seeded methods drive the failure scenarios: `…122` decline, `…124` timeout before execution, `…125` timeout after success, `…126` outage. The `/docs` page lists runnable examples. Environment variables are documented in `backend/.env.example` and [deployment](docs/operations/deployment.md); backup, restore and the restore drill are covered there too.
+
+## Scope and limits
+
+- **Sandbox only:** one deterministic mock provider with simulated profiles. Real provider integrations (Stripe, Plaid) are not built.
+- **Single node:** single-owner SQLite, with no horizontal API scaling or database high availability.
+- **Public sandbox access is a demo convenience:** when it is on, anyone who can reach the local proxy is an operator of the shared sandbox workspace. It is off by default and in Kubernetes.
+- **Labelled data:** sample runs and demo data are real simulations through the payment pipeline, labelled *Simulated*.
+
+Changes and their verification are recorded in [CODECHANGELOG.md](CODECHANGELOG.md).
