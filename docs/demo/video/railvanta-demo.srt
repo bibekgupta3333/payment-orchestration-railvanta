@@ -1,0 +1,231 @@
+1
+00:00:00,150 --> 00:00:01,512
+Railvanta.
+
+2
+00:00:01,512 --> 00:00:05,188
+A sandbox payment orchestrator that
+makes the hard payment failures
+
+3
+00:00:05,188 --> 00:00:08,650
+reproducible, and proves
+how each one is handled.
+
+4
+00:00:10,175 --> 00:00:11,600
+When an app takes a payment,
+
+5
+00:00:11,600 --> 00:00:13,688
+there is a gap between:
+we sent the charge,
+
+6
+00:00:13,688 --> 00:00:15,388
+and: we know what happened.
+
+7
+00:00:15,388 --> 00:00:16,975
+A request times out.
+
+8
+00:00:16,975 --> 00:00:18,587
+Did the card get charged?
+
+9
+00:00:18,587 --> 00:00:21,062
+Retry, and you may charge twice.
+
+10
+00:00:21,062 --> 00:00:22,725
+Fail over to a backup provider,
+
+11
+00:00:22,725 --> 00:00:24,562
+and you may charge twice.
+
+12
+00:00:24,562 --> 00:00:26,400
+Webhooks arrive more than once,
+
+13
+00:00:26,400 --> 00:00:29,600
+and a replayed job can post
+the same success twice,
+
+14
+00:00:29,600 --> 00:00:31,300
+so the ledger drifts.
+
+15
+00:00:31,300 --> 00:00:33,975
+Most hard payment bugs live in that gap.
+
+16
+00:00:34,575 --> 00:00:37,025
+Railvanta runs the whole lifecycle:
+
+17
+00:00:37,025 --> 00:00:40,250
+an idempotent API, a leased outbox,
+
+18
+00:00:40,250 --> 00:00:42,000
+a deterministic mock provider,
+
+19
+00:00:42,000 --> 00:00:44,850
+a double entry ledger, and reconciliation.
+
+20
+00:00:44,850 --> 00:00:49,250
+It is a Go API on SQLite, a
+Next.js operator dashboard,
+
+21
+00:00:49,250 --> 00:00:51,813
+and a Playwright black box test suite.
+
+22
+00:00:51,813 --> 00:00:53,650
+Everything is a sandbox.
+
+23
+00:00:53,650 --> 00:00:55,350
+No real money moves.
+
+24
+00:00:55,900 --> 00:00:58,375
+One click starts a sandbox session,
+
+25
+00:00:58,375 --> 00:01:02,287
+and the dashboard opens already
+holding simulated sample runs,
+
+26
+00:01:02,287 --> 00:01:04,550
+one for each of six failures.
+
+27
+00:01:05,050 --> 00:01:07,750
+The central case: the
+provider charges the card,
+
+28
+00:01:07,750 --> 00:01:09,675
+but the response is lost.
+
+29
+00:01:09,675 --> 00:01:11,675
+Railvanta does not mark it failed,
+
+30
+00:01:11,675 --> 00:01:13,250
+and does not retry.
+
+31
+00:01:13,250 --> 00:01:14,900
+The payment becomes unknown,
+
+32
+00:01:14,900 --> 00:01:16,538
+which is a real state.
+
+33
+00:01:16,538 --> 00:01:19,163
+A recovery worker asks the same provider,
+
+34
+00:01:19,163 --> 00:01:21,325
+using the stored idempotency key,
+
+35
+00:01:21,325 --> 00:01:23,662
+and the payment resolves to succeeded.
+
+36
+00:01:23,662 --> 00:01:27,325
+The invariants tab shows
+exactly one succeeded charge,
+
+37
+00:01:27,325 --> 00:01:29,700
+and no attempt on a second provider.
+
+38
+00:01:30,225 --> 00:01:34,837
+Ten concurrent requests with the same
+idempotency key become one payment,
+
+39
+00:01:34,837 --> 00:01:37,313
+one attempt, and one charge.
+
+40
+00:01:37,313 --> 00:01:41,550
+The same key with a changed amount
+is rejected with a four oh nine.
+
+41
+00:01:42,050 --> 00:01:45,475
+When the provider is down,
+failing over is tempting.
+
+42
+00:01:45,475 --> 00:01:48,187
+But the first provider
+may already have charged.
+
+43
+00:01:48,187 --> 00:01:50,125
+So the payment stays unknown,
+
+44
+00:01:50,125 --> 00:01:51,275
+and visible.
+
+45
+00:01:51,275 --> 00:01:54,875
+Railvanta never fails
+over an ambiguous outcome.
+
+46
+00:01:55,425 --> 00:01:58,500
+Reconciliation compares
+settlement records.
+
+47
+00:01:58,500 --> 00:02:02,700
+When they disagree, it records
+the discrepancy with its evidence.
+
+48
+00:02:02,700 --> 00:02:05,725
+It never edits the ledger
+to make the numbers match.
+
+49
+00:02:06,250 --> 00:02:09,375
+Every guarantee is checked
+against stored evidence,
+
+50
+00:02:09,375 --> 00:02:12,125
+by the backend and by the automated tests,
+
+51
+00:02:12,125 --> 00:02:15,750
+including tests that
+kill the API mid payment.
+
+52
+00:02:15,750 --> 00:02:20,450
+Real providers, scale, and production
+auth are deliberately out of scope.
+
+53
+00:02:20,450 --> 00:02:23,550
+The point is the correctness
+of the orchestration.
