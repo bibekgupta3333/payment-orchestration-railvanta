@@ -76,3 +76,62 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Story panel: failure → guarantee → sample run evidence. */
+.hub-story {
+  margin-top: 24px;
+}
+.story-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+.story-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  gap: 16px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.story-text h3 {
+  font-size: 14px;
+  margin: 0 0 2px;
+}
+.story-text p {
+  margin: 0;
+}
+.story-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.story-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.story-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.story-running {
+  border-color: var(--accent);
+}
+.story-missing {
+  color: var(--muted);
+}
+.story-invariant-gap {
+  font-weight: 650;
+}
+@media (max-width: 767px) {
+  .story-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}

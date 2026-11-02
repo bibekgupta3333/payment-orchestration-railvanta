@@ -19,6 +19,9 @@ import {
   type HeroScenario,
 } from "@/lib/hooks/dashboard-demo";
 import { sampleScenarios, useSampleData } from "@/lib/hooks/sample-data";
+import { useSandboxSamples } from "@/lib/hooks/sandbox-samples";
+import type { SandboxSample } from "@/lib/api/sample-schemas";
+import { whyProblems } from "@/lib/why-story";
 import { useSettings } from "@/lib/hooks/events";
 import { usePaymentMethods } from "@/lib/hooks/payments";
 import { paymentStatusLabels } from "@/components/ui";
@@ -386,6 +389,146 @@ export function ArchitectureStrip() {
   );
 }
 
+function SampleStatus({ sample }: { sample: SandboxSample | undefined }) {
+  if (!sample || sample.status === "missing")
+    return (
+      <span className="status-pill story-missing">
+        <span aria-hidden="true">○</span> Not loaded
+      </span>
+    );
+  if (sample.status === "running")
+    return (
+      <span className="status-pill story-running">
+        <span aria-hidden="true">◔</span> Running
+      </span>
+    );
+  const allPass =
+    sample.invariants_total > 0 &&
+    sample.invariants_passed === sample.invariants_total;
+  return (
+    <span className="story-status">
+      {sample.status === "completed" ? (
+        <span className="status-pill status-succeeded">
+          <span aria-hidden="true">✓</span> Completed
+        </span>
+      ) : (
+        <span className="status-pill status-failed">
+          <span aria-hidden="true">✕</span> Failed
+        </span>
+      )}
+      <span className={`small ${allPass ? "" : "story-invariant-gap"}`}>
+        {sample.invariants_passed}/{sample.invariants_total} invariants pass
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The hub's opening story: each real-world failure, the guarantee that handles
+ * it, and the server-seeded sample run (seed `sample-<scenario>`) that proves
+ * it. Read-only; it never starts a run.
+ */
+export function StoryPanel() {
+  const samples = useSandboxSamples();
+  const items = samples.query.data?.data.items;
+  const byScenario = new Map(items?.map((item) => [item.scenario, item]));
+  const allMissing =
+    items !== undefined && items.every((item) => item.status === "missing");
+  const anyRunning = items?.some((item) => item.status === "running") ?? false;
+  return (
+    <Card
+      aria-labelledby="hub-story-title"
+      className="hub-card hub-story"
+      data-testid="hub-story"
+    >
+      <div className="card-heading">
+        <h2 id="hub-story-title">The story: what this sandbox proves</h2>
+        <Badge>Simulated / sandbox</Badge>
+      </div>
+      <p className="muted">
+        Payment systems fail in the gaps between &ldquo;we sent it&rdquo; and
+        &ldquo;we know what happened&rdquo;. Each row is one of those failures,
+        the guarantee that handles it, and a sample run against the mock
+        provider that shows the evidence.
+      </p>
+      {samples.query.isPending && samples.query.fetchStatus !== "idle" && (
+        <p className="muted small" role="status">
+          Loading sample runs…
+        </p>
+      )}
+      {samples.query.isError && (
+        <p className="muted small" role="note" data-testid="hub-story-error">
+          Sample run status is unavailable right now. The guarantees below still
+          apply; use Load sample data to run the scenarios.
+        </p>
+      )}
+      {allMissing && (
+        <p className="small" role="note" data-testid="hub-story-empty">
+          No sample runs on this server yet. Use{" "}
+          <a className="text-link" href="#hub-sample-data">
+            Load sample data
+          </a>{" "}
+          below to run every scenario once.
+        </p>
+      )}
+      {anyRunning && (
+        <p className="small" role="status" data-testid="hub-story-running">
+          Sample runs in progress… refreshing every few seconds.
+        </p>
+      )}
+      <ol className="story-list">
+        {whyProblems.map((problem) => {
+          const sample = byScenario.get(problem.scenarios[0]);
+          return (
+            <li
+              key={problem.id}
+              className="story-row"
+              data-testid={`hub-story-${problem.id}`}
+            >
+              <div className="story-text">
+                <h3>{problem.title}</h3>
+                <p className="muted small">{problem.guarantee}</p>
+              </div>
+              <div className="story-meta">
+                {items && <SampleStatus sample={sample} />}
+                <span className="story-links small">
+                  {sample?.run_id && (
+                    <Link
+                      className="text-link"
+                      href={`/dashboard/simulator?run=${encodeURIComponent(sample.run_id)}`}
+                      aria-label={`Inspect run: ${problem.title}`}
+                    >
+                      Inspect run
+                    </Link>
+                  )}
+                  {sample?.payment_id && (
+                    <Link
+                      className="text-link"
+                      href={`/dashboard/payments/${encodeURIComponent(sample.payment_id)}`}
+                      aria-label={`Payment: ${problem.title}`}
+                    >
+                      Payment
+                    </Link>
+                  )}
+                  {!sample?.run_id && (
+                    <Link
+                      className="text-link"
+                      href={problem.proof.href}
+                      aria-label={`${problem.proof.label}: ${problem.title}`}
+                    >
+                      {problem.proof.label}
+                    </Link>
+                  )}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
 export function SampleDataCard() {
   const { start, phase, rows, settledCount, total } = useSampleData();
   const running = phase === "running";
@@ -405,6 +548,8 @@ export function SampleDataCard() {
           : "";
   return (
     <Card
+      id="hub-sample-data"
+      tabIndex={-1}
       aria-labelledby="hub-sample-title"
       className="hub-card"
       data-testid="sample-data-card"

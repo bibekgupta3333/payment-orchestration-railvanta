@@ -186,3 +186,55 @@
     display: none;
   }
 }
+/* Why Railvanta exists: problem → guarantee → evidence cards. */
+.why-story {
+  margin: 0 0 40px;
+}
+.why-story h2 {
+  margin: 0 0 12px;
+}
+.why-intro {
+  max-width: 760px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 0 0 20px;
+}
+.why-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.why-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.why-card h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.why-card p {
+  margin: 0;
+}
+.why-guarantee {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+.why-card .text-link {
+  margin-top: auto;
+}
+@media (max-width: 1100px) {
+  .why-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .why-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -16,6 +16,7 @@ import {
   HubHeading,
   QuickActions,
   SampleDataCard,
+  StoryPanel,
 } from "@/components/dashboard/Hub";
 import { EmptyState } from "@/components/ui";
 import { QueryState } from "@/components/ui/query-state";
@@ -154,6 +155,7 @@ export function Overview() {
   return (
     <>
       <HubHeading />
+      <StoryPanel />
       <QuickActions />
       <div className="hub-columns">
         <CredentialsCard />

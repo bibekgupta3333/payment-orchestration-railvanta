@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui";
 import { Lifecycle } from "@/components/landing/Lifecycle";
 import { SandboxStart } from "@/components/landing/SandboxStart";
 import { StartSandboxButton } from "@/components/landing/StartSandboxButton";
+import { WhyRailvanta } from "@/components/landing/WhyRailvanta";
 
 const flow: { step: string; detail: string; available: boolean }[] = [
   { step: "Browser", detail: "Next.js dashboard", available: true },
@@ -117,6 +118,7 @@ export default function Home() {
             collected.
           </p>
         </section>
+        <WhyRailvanta />
         <Lifecycle />
         <SandboxStart />
         <section

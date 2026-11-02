@@ -7,7 +7,7 @@ import {
   scenarioCatalogSchema,
   simulationSchema,
 } from "@/lib/api/routing-schemas";
-import { freshSeed, invariantSummary } from "@/lib/hooks/dashboard-demo";
+import { invariantSummary } from "@/lib/hooks/dashboard-demo";
 
 /** Fixed order; each is a real backend scenario. */
 export const sampleScenarios = [
@@ -20,6 +20,14 @@ export const sampleScenarios = [
   "duplicate_webhook",
   "settlement_mismatch",
 ] as const;
+
+/**
+ * Same seed as the server's startup samples, so the hub story panel (latest
+ * run per `sample-<scenario>` seed) reflects a client-side load too. Each run
+ * still gets its own Idempotency-Key (`sim_<run id>`), so reusing the seed
+ * never replays an earlier run.
+ */
+export const sampleSeed = (scenario: string) => `sample-${scenario}`;
 
 export type SampleOutcome =
   | { state: "pending" }
@@ -117,7 +125,7 @@ export function useSampleData() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 scenario,
-                seed: freshSeed(),
+                seed: sampleSeed(scenario),
                 amount_minor: "10000",
                 currency: "USD",
               }),
