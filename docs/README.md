@@ -29,6 +29,9 @@ Design and reference documentation for the Railvanta sandbox. Start with the [pr
 | [Measurements](measurements.md) | Recorded latency, recovery outcomes and test counts, with date, commit and environment |
 | [Known limitations](known-limitations.md) | Single writer, no HA, mock only, deferred capabilities, unverified items |
 | [Case study](case-study.md) | Design choices, lessons, and demo scenarios mapped to passing specs |
+| **Demo** | |
+| [Demo runbook](demo/README.md) | Commands, 90-second and 5-minute scripts, honest claims, fallbacks |
+| [Presenter script: why Railvanta exists](demo/story.md) | 10-minute story: the problem, then the eight startup sample runs with click paths and takeaways |
 
 Diagrams use Mermaid. Wireframes are plain text.
 
@@ -49,6 +52,7 @@ Diagrams use Mermaid. Wireframes are plain text.
 | [0011](decisions/0011-sandbox-api-key-generator.md) | Sandbox API key generator in Settings | Accepted |
 | [0012](decisions/0012-dashboard-hub-and-swagger-reference.md) | Dashboard hub and embedded Swagger API reference | Accepted |
 | [0013](decisions/0013-public-sandbox-access-and-default-demos.md) | Public sandbox access (opt-in) and default demos on every dashboard page | Accepted |
+| [0014](decisions/0014-prepopulated-sandbox-samples.md) | Demo stack runs eight real sample scenarios once at startup (`SANDBOX_SAMPLE_DATA`) | Accepted |
 
 Each ADR has Context, Decision, Consequences and Status. ADR 0001 predates this template and adds an Alternatives section.
 

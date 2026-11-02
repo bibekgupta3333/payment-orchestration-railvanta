@@ -8,7 +8,7 @@ All routes below exist in `frontend/`, as does `/dashboard/playground` (see the 
 
 - **Shell:** there is no workspace switcher (the topbar shows a fixed "Sandbox workspace" label and the Sandbox badge), no notification control, and the account menu is a static panel with no actions. A "Sandbox build / Sandbox infrastructure. No real funds." note sits in the sidebar. See [ADR 0010](../decisions/0010-original-frontend-components.md).
 - **Icons:** navigation uses Unicode glyphs, not an icon set.
-- **Landing page:** no GitHub link (no destination is configured); Stripe and Plaid are shown as planned and not configured.
+- **Landing page:** section 1 was redesigned on 2026-11-01 and is **not implemented yet**; the live page still has the previous hero, lifecycle, why, API, architecture and capabilities sections. No GitHub link (no destination is configured).
 - **Payments:** filters and cursor live in the URL as designed. The detail page has Attempts, Events and Journal tabs. There is **no cancel control** and **no recovery panel**, although `POST /v1/payments/{id}/cancel` and `GET /v1/payments/{id}/recovery` exist in the API.
 - **Routing:** rules are inspect-only, as drawn; there is no rule editor.
 - **Simulator:** `duplicate_webhook` and `reordered_events` are listed but disabled.
@@ -63,91 +63,196 @@ Drawer: workspace, every navigation destination, theme, and close button. Openin
 
 ## 1. Public landing page — `/`
 
-The landing page lets a visitor see the payment lifecycle and call the API without reading documentation first. Everything is sandbox: no real funds, no card or bank credentials. Nothing is created on page load: no session, no key and no payment until a button is clicked.
+Redesigned on 2026-11-01. This replaces the earlier landing wireframe and the separate "Why Railvanta exists" addendum. Status: **wireframe only, not implemented yet**. The live page still follows the previous layout until this is built.
 
-Desktop (1440 px):
+### 1.1 Design brief
+
+| | |
+| --- | --- |
+| **Who lands here** | (1) A reviewer or hiring manager opening a portfolio link: 30–60 seconds of attention, may never scroll. (2) An engineer who wants to see whether it is real: will try the API and read the decisions. (3) The presenter during a live demo, who needs a clean narrative to talk over. |
+| **Job of the page** | In 5 s: what this is, and that it is a sandbox. In 30 s: which problem it solves and why that problem is hard. In 2 min: proof, meaning a real API call and real evidence, not claims. |
+| **One-sentence message** | Payment systems fail in the gap between "we sent it" and "we know what happened"; Railvanta makes each of those failures reproducible and shows the guarantee that handles it. |
+| **Primary action** | Start a sandbox (session, one-time key, a real `POST /v1/payments`). **Secondary:** open the dashboard, already populated with sample runs. |
+| **Success signal** | A first-time visitor reaches a 202 response or the hub story panel without reading docs. |
+| **Hard constraints** | Honest scope (mock provider, no real money, real providers not built); nothing is created on page load; WCAG 2.2 AA; no horizontal scroll at 375 px; three.js loaded lazily and never required for meaning. |
+
+### 1.2 Audit of the current page (why it is redesigned)
+
+1. **The headline contradicts the product.** "Payments, intelligently routed. One API. Every rail. Complete control." is a generic marketing claim, and "every rail" is not true: there is one mock provider plus simulated profiles. The real story ("payments fail in the gaps") is in the second section, below the fold.
+2. **The primary action is diluted.** The hero has three calls to action (Start sandbox, Explore the dashboard, Open API reference), the header has a fourth (Explore sandbox), and Start sandbox appears again further down. The visitor has no single obvious next step.
+3. **Content is duplicated.** The lifecycle visual and the "Architecture" flow strip show the same seven steps twice. The "Capabilities" cards repeat the problem cards in feature language and lead with "Planned" badges, which advertises what is missing.
+4. **The order is mechanism first, evidence last.** The page explains how before it earns attention with why, and it never shows proof that the guarantees hold, although the sandbox has that proof (seeded sample runs with passing invariants).
+5. **It is long and flat.** Seven stacked sections of similar visual weight give no rhythm and no clear end.
+
+### 1.3 Principles
+
+- **Problem → proof → try → depth.** Each section answers the question the previous one raises.
+- **One primary action per viewport.** Start sandbox is the only filled button on the page; everything else is a quiet button or a link.
+- **Show evidence, not adjectives.** Every guarantee links to the run or page that proves it; numbers are only shown when the backend produced them.
+- **Scope honesty is a feature.** "What is real and what is simulated" gets its own small section instead of scattered Planned badges.
+- **Motion is optional.** The three.js lifecycle illustrates; the ordered list carries the meaning.
+
+### 1.4 Information architecture (top to bottom)
+
+| # | Section | Question it answers | Replaces |
+| --- | --- | --- | --- |
+| 0 | Header | Where am I, where can I go? | Same; drops the duplicate CTA |
+| 1 | Hero: problem headline + lifecycle visual | What is this, and why should I care? | Hero + lifecycle section |
+| 2 | Scope strip | Is this real money? What is real? | Sandbox notice + Planned badges |
+| 3 | Failure modes ("The gaps") | Which problems exactly, and what is the guarantee? | "Why Railvanta exists" |
+| 4 | Try it in one step | Can I verify it myself, now? | "Call the API in one step" |
+| 5 | Engineering decisions | How is it built, and why this way? | Architecture strip + Capabilities |
+| 6 | Closing CTA + footer | What next? | Footer |
+
+### 1.5 Desktop (1440 px, content max-width 1120 px)
 
 ```text
-+--------------------------------------------------------------------------+
-| ◇ Railvanta                                  API docs   [Explore sandbox]|
-|--------------------------------------------------------------------------|
-| [Sandbox infrastructure]                                                 |
-| Payments,                                                                |
-| intelligently routed.                                                    |
-| One API. Every rail. Complete control.                                   |
-| [Start sandbox]  [Explore the dashboard]  [Open API reference]           |
-| Sandbox only / no real funds. Simulated methods; no credentials.         |
-|--------------------------------------------------------------------------|
-| PAYMENT LIFECYCLE                                                        |
-| +------------------------------------+  Use case                         |
-| |  three.js canvas (decorative,      |  [Happy path][Lost response][Dup] |
-| |  aria-hidden)                      |  (segmented, aria-pressed)        |
-| |  [Client]->[API]->[Outbox]->[Route]|  Caption for the chosen use case  |
-| |   ->[Provider]->[Ledger]->[Recon]  |  [Pause] / [Play]                 |
-| |  glowing token travels the path    |                                   |
-| +------------------------------------+  1. Client sends the request      |
-|  (WebGL missing: static SVG/CSS flow)   2. API accepts once (key)  <-now |
-|                                         3. Outbox   4. Router            |
-|                                         5. Provider (outside DB tx)      |
-|                                         6. Ledger   7. Reconciliation    |
-|--------------------------------------------------------------------------|
-| CALL THE API IN ONE STEP                                                 |
-| Status unknown : "Checking sandbox access..." (button disabled)          |
-| Public access off: "Public sandbox access is off. Start the stack with   |
-|   pnpm demo:up (it turns it on) and open the dashboard with             |
-|   pnpm demo:open"  [Start sandbox] disabled; static example, placeholders|
-| Public access on : [Start sandbox]                                       |
-|   Starting...     : button disabled, "Starting sandbox..." (role=status) |
-|   Error           : role=alert message + [Try again]                     |
-|   Started         : Key (shown ONCE) rvk_...  [Copy key]                 |
-|                     [I have copied it, hide the key]                     |
-|                     curl with the REAL key and sandbox method id [Copy]  |
-|                     [Run it]  [Run it again (same Idempotency-Key)]      |
-|                     Response: 202 + pretty JSON (replay: same body)      |
-|                     [Open the dashboard]  [API reference]                |
-|--------------------------------------------------------------------------|
-| CAPABILITIES   [card][card][card] ... (Available / Planned badges)       |
-|--------------------------------------------------------------------------|
-| Railvanta · Sandbox only / No real funds                                 |
-+--------------------------------------------------------------------------+
++--------------------------------------------------------------------------------+
+| ◇ Railvanta                  Docs   API reference         [Open dashboard →]    |  quiet button
+|================================================================================|
+| SANDBOX PAYMENT ORCHESTRATION · PORTFOLIO PROJECT          (eyebrow)           |
+|                                                                                |
+| Payments fail in the gaps.                 +---------------------------------+ |
+| Railvanta makes the gaps visible.  (h1)    |  three.js lifecycle (aria-hidden)| |
+|                                            |  Client→API→Outbox→Router→       | |
+| A sandbox orchestration API that           |  Provider→Ledger→Reconciliation  | |
+| reproduces retries, lost responses,        |  token travels the path          | |
+| outages and duplicate events, and          |                                  | |
+| proves each payment is charged at most     |  [Happy path][Lost response]     | |
+| once and recorded exactly once.            |  [Duplicate request]  (segmented)| |
+|                                            |  Caption: "Response lost; parked | |
+| [Start sandbox →]  Open the dashboard →    |  as unknown; looked up at the    | |
+|  (only filled btn)  (text link)            |  SAME provider; never a second." | |
+|                                            +---------------------------------+ |
+|                                            ▸ Show the steps as text (details) |
+|--------------------------------------------------------------------------------|
+| ● Mock provider only — no real money, no card or bank data   ● Real: API,      |
+|   idempotency, outbox, ledger, reconciliation   ○ Not built: real providers  |  scope strip
+|--------------------------------------------------------------------------------|
+| THE GAPS                                                                       |
+| Six ways a payment goes wrong, and what Railvanta guarantees.          (h2)    |
+|                                                                                |
+|  Failure                      Guarantee                          Evidence       |
+|  ─────────────────────────────────────────────────────────────────────────────  |
+|  01 A retry charges twice     One Idempotency-Key: 1 accept,     Duplicate     →|
+|                               9 replays, changed body → 409      request run    |
+|  02 Response lost after       Marked unknown, not failed;        Lost response →|
+|     the charge                resolved by lookup at SAME provider                |
+|  03 Provider outage           Stays unknown; never failed over   Outage run    →|
+|  04 Webhook delivered 3–5×    Inbox keyed by event id; one effect Webhook run  →|
+|  05 Ledger posted twice       Posting key: exactly one balanced  Journal       →|
+|                               journal                                           |
+|  06 Provider disagrees        Discrepancy recorded with evidence; Reconciliation→|
+|                               no ledger row changed                             |
+|  (rows expand on click to "What goes wrong" detail; table on desktop)          |
+|--------------------------------------------------------------------------------|
+| TRY IT IN ONE STEP                                                             |
+| +----------------------------------+  +--------------------------------------+ |
+| | 1  Start a sandbox session       |  | $ curl -X POST .../v1/payments \     | |
+| | 2  Copy your one-time key        |  |   -H "Authorization: Bearer rvk_…" \ | |
+| | 3  Run it — then run it again    |  |   -H "Idempotency-Key: landing-…"    | |
+| |    with the same key             |  |                          [Copy]      | |
+| |                                  |  |--------------------------------------| |
+| | [Start sandbox]  (anchor target  |  | HTTP 202  { "id": "…", "status": … } | |
+| |  of the hero button)             |  | Replay: same body, no second payment | |
+| +----------------------------------+  +--------------------------------------+ |
+|  [Run it] [Run it again]   Open this payment in the dashboard →                 |
+|--------------------------------------------------------------------------------|
+| ENGINEERING DECISIONS                                                          |
+| +-----------------+ +-----------------+ +-----------------+ +-----------------+ |
+| | Outbox + leases | | Unknown ≠ failed| | Double-entry    | | Evidence-only   | |
+| | Provider I/O    | | Ambiguous charge| | ledger, posting | | reconciliation  | |
+| | outside the DB  | | never retried   | | keys            | | never edits the | |
+| | transaction     | | elsewhere       | |                 | | books           | |
+| | ADR →           | | ADR →           | | ADR →           | | ADR →           | |
+| +-----------------+ +-----------------+ +-----------------+ +-----------------+ |
+|  Go · GORM · SQLite · Next.js · Playwright        Architecture doc →            |
+|--------------------------------------------------------------------------------|
+| See every failure, already run.   [Open the dashboard →]  (sample data ready)  |
+| Railvanta · Sandbox only / No real funds · Docs · API reference                 |
++--------------------------------------------------------------------------------+
 ```
 
-Mobile (375 px): one column, no horizontal page scroll.
+Above the fold at 1440×900: the header, the whole hero with the lifecycle visual and its controls, and the scope strip. Everything a 30-second reviewer needs.
+
+### 1.6 Mobile (375 px, 16 px gutters, single column)
 
 ```text
 +-----------------------------------+
-| ◇ Railvanta     [Explore sandbox] |
-| Payments, intelligently routed.   |
-| [Start sandbox]                   |
-| [Explore the dashboard]           |
-| [Open API reference]              |
-| Sandbox only / no real funds.     |
+| ◇ Railvanta          [Dashboard]  |
 |-----------------------------------|
-| PAYMENT LIFECYCLE                 |
-| [Happy][Lost response][Duplicate] |
-| Caption  [Pause]                  |
+| SANDBOX PAYMENT ORCHESTRATION     |
+| Payments fail in the gaps.        |
+| Railvanta makes the gaps visible. |
+| Short description (3 lines)       |
+| [Start sandbox →]  (full width)   |
+| Open the dashboard →              |
 | +-------------------------------+ |
-| | canvas (shorter, same flow)   | |
+| | lifecycle canvas (16:10)      | |
 | +-------------------------------+ |
-| 1. Client ... 7. Reconciliation   |
+| [Happy][Lost resp.][Duplicate]    |  wraps, 44px targets
+| Caption                           |
 |-----------------------------------|
-| CALL THE API IN ONE STEP          |
+| ● Mock provider · no real money   |
+|-----------------------------------|
+| THE GAPS                          |
+| 01 A retry charges twice      [+] |  disclosure rows:
+|    One key: 1 accept, 9 replays   |  failure + guarantee visible,
+|    Evidence →                     |  detail on expand
+| 02 ...                            |
+|-----------------------------------|
+| TRY IT IN ONE STEP                |
+| 1·2·3 steps                       |
 | [Start sandbox]                   |
-| key, curl (scrolls inside block)  |
+| curl (scrolls inside its block)   |
 | [Run it] [Run it again]           |
-| response, [Open the dashboard]    |
+| response                          |
 |-----------------------------------|
-| Capability cards (one column)     |
-| Footer                            |
+| ENGINEERING DECISIONS (stacked)   |
+| Closing CTA · footer              |
 +-----------------------------------+
 ```
 
-States and rules:
+### 1.7 Behaviour and states
 
-- **Lifecycle canvas:** decorative and `aria-hidden`; the ordered list below it is the text alternative, the current step is highlighted (`aria-current="step"`) and one polite live region announces step changes at a low rate. With `prefers-reduced-motion` the canvas renders one static frame and the list shows every step without animation; Play/Pause is available otherwise. The render loop pauses off-screen and in a hidden tab. If WebGL is unavailable a static SVG/CSS diagram of the same flow is shown.
-- **Use cases:** Happy path runs straight to the ledger. Lost response: the token reaches the provider, the response is lost, the payment parks as Unknown, a lookup returns to the SAME provider, then the ledger; never a second provider. Duplicate request: a second token reaches the API and the stored response is replayed; no second payment.
-- **API panel:** the key is shown once and lives only in component state (never stored, never in the URL); hiding it removes it from the DOM. The curl example and "Run it" use the real key and a real sandbox payment method; "Run it" sends the bearer key, not the session cookie. "Run it again" replays the same Idempotency-Key.
-- **Kept for the shell tests:** heading "Payments, ...", link "Explore the dashboard", the text "Sandbox only / no real funds." and the Planned badge.
+- **Hero Start sandbox** scrolls to "Try it in one step" and starts the session there (one implementation, two entry points). The focus moves to the step list, and the result is announced with `role="status"`.
+- **Try it, states:**
+  - Checking: the button is disabled with "Checking sandbox access…".
+  - Public access off: the existing off message and a static curl with placeholders.
+  - Starting: the button is disabled.
+  - Error: `role="alert"` plus Try again.
+  - Started: the key is shown once and lives only in component state. The curl uses the real key and method. Run it sends the bearer key, not the cookie. Run it again replays the same Idempotency-Key. Afterwards "Open this payment in the dashboard" deep-links to `/dashboard/payments/<id>`.
+- **Lifecycle:** this keeps the current rules for `aria-hidden` canvas, reduced motion (static frame), off-screen and hidden-tab pause, the WebGL fallback (SVG/CSS) and the three use cases. The seven-step text list moves into a `details` element ("Show the steps as text"), so it no longer competes visually but stays one click and one screen-reader landmark away. Height is fixed (`aspect-ratio`), so no layout shift occurs when three.js loads.
+- **The gaps:** content comes from `frontend/lib/why-story.ts` (shared with the hub story panel). On desktop it is a semantic `table` (caption "Failure modes and guarantees") or a `dl` grid; on mobile, disclosure rows. Evidence links go to the dashboard page that shows the proof. The dashboard auto-starts a sandbox session (SandboxSessionGuard), so the links work for a first-time visitor.
+- **Engineering decisions:** four cards. Each has a one-line decision, a one-line reason and a link to its ADR in `docs/decisions/`. There are no Available/Planned badges; scope lives in the scope strip.
+- **Closing CTA:** one sentence and one button, ending the page with the same next step as the hero.
+
+### 1.8 Visual system
+
+- **Type scale:** h1 56/60 desktop and 36/40 mobile; h2 32; body 17/28; eyebrow 12 uppercase tracking 0.12em. The h1 is smaller than today's 80 px so the visual fits beside it.
+- **Rhythm:** sections are separated by 96 px (desktop) and 56 px (mobile); the content max-width is 1120 px with the hero as a 6/6 two-column grid.
+- **Colour:** existing tokens only. The accent is used for the single primary button, the active use case and the evidence links, and nothing else. The scope strip uses the existing notice tokens, never warning red.
+- **Density:** at most one card style per section. The gaps use a table rather than six heavy cards, which reduces visual weight by half.
+
+### 1.9 What is removed, and why
+
+| Removed | Reason |
+| --- | --- |
+| "Payments, intelligently routed. One API. Every rail. Complete control." | Inaccurate ("every rail") and says nothing about the problem. |
+| Header "Explore sandbox" button | A second primary action; replaced by a quiet "Open dashboard". |
+| "Architecture" flow strip | Duplicates the lifecycle's seven steps. |
+| "Capabilities" grid with Planned badges | Repeats the gaps in feature language; scope moves to the scope strip. |
+| Hero "Open API reference" button | Kept as a header link; three hero CTAs dilute the primary action. |
+
+### 1.10 Acceptance criteria (for implementation)
+
+1. At 1440×900 the h1, the primary button, the lifecycle visual and the scope strip are visible without scrolling. At 375 px the h1 and the primary button are visible without scrolling.
+2. Exactly one filled (primary) button is visible in each viewport-height band of the page.
+3. No layout shift from the canvas (reserved aspect ratio); Lighthouse CLS under 0.05 on the landing page.
+4. axe: no serious or critical violations; heading order h1 → h2 → h3; every evidence link has a unique accessible name.
+5. With JavaScript or WebGL unavailable, every message on the page is still readable (the text steps, table and scope strip are server-rendered).
+6. No session, key or payment is created until a button is clicked.
+7. **Test impact:** `e2e/ui/shell.spec.ts` and `e2e/ui/landing.spec.ts` assert the old heading text ("Payments,") and a "Planned" badge, and `frontend/tests/components/landing.test.tsx` and `why-story.test.tsx` assert the current sections. These are updated in the same change.
 
 ## 2. Dashboard hub — `/dashboard`
 
@@ -244,6 +349,58 @@ States:
 Empty state: with no payments the metrics show "No observations" and Recent payments shows "No payments yet"; the credentials and demo cards have no empty state of their own (0 of 20 is displayed as a count).
 
 The secret is held only in component state: reloading or hiding the panel discards it, and it is never written to storage or the URL.
+
+### 2a. Story panel "The story: what this sandbox proves" (hub, right after the heading)
+
+Reads `GET /v1/sandbox/samples` (the latest run per `sample-<scenario>` seed, seeded at startup when `SANDBOX_SAMPLE_DATA` is on) and never starts a run. One row per problem from `frontend/lib/why-story.ts`.
+
+Desktop:
+
+```text
++--------------------------------------------------------------------------+
+| The story: what this sandbox proves (h2)           [Simulated / sandbox] |
+| Payment systems fail in the gaps between "we sent it" and "we know what  |
+| happened". Each row is a failure, its guarantee and a sample run.        |
+|--------------------------------------------------------------------------|
+| A retry charges the customer twice (h3)      | [✓ Completed] 6/6 inv.    |
+| Every create carries an Idempotency-Key ...  | Inspect run   Payment     |
+|----------------------------------------------+---------------------------|
+| The provider charged, but the response ...   | [◔ Running]               |
+| Marked unknown, resolved by lookup at ...    | Inspect run   Payment     |
+|----------------------------------------------+---------------------------|
+| The provider goes down mid-payment           | [✕ Failed] 2/4 inv. pass  |
+| ...                                          | Inspect run               |
+|----------------------------------------------+---------------------------|
+| The same webhook arrives again and again     | [○ Not loaded]            |
+| ...                                          | Events                    |
+| ... ledger double posting, settlement mismatch                           |
++--------------------------------------------------------------------------+
+```
+
+Mobile (375 px): each row stacks the text above its status and links.
+
+```text
++-----------------------------------+
+| The story: what this sandbox      |
+| proves            [Simulated]     |
+| Framing line                      |
+|-----------------------------------|
+| A retry charges the customer twice|
+| guarantee                         |
+| [✓ Completed] 6/6 invariants pass |
+| Inspect run   Payment             |
+|-----------------------------------|
+| ... five more rows ...            |
++-----------------------------------+
+```
+
+States:
+
+- **Status pill:** Completed (with "n/m invariants pass"), Failed (with the count), Running, or Not loaded (`missing`). Icon plus text, never colour alone.
+- **Links:** "Inspect run" → `/dashboard/simulator?run=<run_id>` and "Payment" → `/dashboard/payments/<payment_id>` only when present; a row without a run links to the page that shows the evidence instead.
+- **All missing:** note "No sample runs on this server yet. Use Load sample data below to run every scenario once." linking to `#hub-sample-data` (the Load sample data card, which now uses the same `sample-<scenario>` seeds).
+- **Running:** "Sample runs in progress… refreshing every few seconds." and the query refetches every 3 s; polling stops when no row is running.
+- **Loading / error:** "Loading sample runs…"; on error a note that sample status is unavailable while the guarantees still show. The query key `["railvanta", ws, env, "sandbox", "samples"]` is refreshed when Load sample data finishes.
 
 ## 10. Developer docs — `/docs`
 

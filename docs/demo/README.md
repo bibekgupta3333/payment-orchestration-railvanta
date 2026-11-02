@@ -1,5 +1,9 @@
 # Demo runbook: Payment Failure & Recovery Playground
 
+**Presenting the context?** Start with the [10-minute presenter script](story.md): why the project exists, then the eight sample runs the demo stack seeds at startup ([ADR 0014](../decisions/0014-prepopulated-sandbox-samples.md)), each with a click path and a one-line takeaway.
+
+**Short on time?** Watch the [2½-minute recorded walkthrough](video/railvanta-demo.mp4) ([captions](video/railvanta-demo.srt)).
+
 The one page to read before presenting. Everything runs locally in a sandbox: a deterministic mock provider, one Go API with SQLite, a Next.js dashboard. No real funds move.
 
 **Zero-friction entry.** With the Compose stack (`SANDBOX_PUBLIC_ACCESS=true`, see [ADR 0013](../decisions/0013-public-sandbox-access-and-default-demos.md)) the landing page needs no prepared credentials: it draws the payment lifecycle (Client, API, Outbox, Dispatcher/Router, Provider, Ledger, Reconciliation) with a travelling token and a Happy path / Lost response / Duplicate request selector, and its **Start sandbox** button creates a throwaway operator session and a one-time key and shows a curl with the real key that **Run it** executes. Every dashboard page carries a **Default demo** card (one click, one real $100 simulation, the page fills) and the hub's **Load sample data** runs the eight headline scenarios (about 20 seconds). Nothing runs or mints on page load.
