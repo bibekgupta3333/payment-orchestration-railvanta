@@ -373,10 +373,27 @@ test("settings reads require a workspace membership", async ({
   expect((JSON.parse(body) as { role: string }).role).toBe("read");
   expect(body).not.toContain(state().readerKey);
   expect(body).not.toContain(state().operatorKey);
-  // A browser without a session sees an error with a request ID, never data.
-  await page.goto(`${state().webOrigin}/dashboard/settings`);
-  await expect(page.getByRole("main").getByRole("alert")).toContainText(
-    /Request ID/,
+  const status = await page.request.get(
+    `${state().webOrigin}/v1/sandbox/status`,
   );
-  await expect(page.getByText("Demo workspace")).toHaveCount(0);
+  const publicAccess =
+    status.ok() &&
+    ((await status.json()) as { public_access?: boolean }).public_access ===
+      true;
+  await page.goto(`${state().webOrigin}/dashboard/settings`);
+  if (publicAccess) {
+    // With public sandbox access (ADR 0013) the dashboard starts a visitor
+    // session in the demo workspace instead of showing an error.
+    await expect(page.getByText("Demo workspace").first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  } else {
+    // Otherwise a browser without a session sees an error with a request ID,
+    // never data.
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(
+      /Request ID/,
+    );
+    await expect(page.getByText("Demo workspace")).toHaveCount(0);
+  }
 });
