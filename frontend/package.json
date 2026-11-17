@@ -16,7 +16,7 @@
     "@fontsource-variable/inter": "^5.0.0",
     "@hookform/resolvers": "^5.9.2",
     "@tanstack/react-query": "^5.90.0",
-    "next": "^16.0.0",
+    "next": "^16.4.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.91.0",
